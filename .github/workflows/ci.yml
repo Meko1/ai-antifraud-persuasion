@@ -1,0 +1,186 @@
+# 本 workflow 不做部署。
+#
+# 目标服务器位于隔离的独立网段且无公网入站，GitHub 云端 runner
+# 连不上；把目标服务器凭证放进 GitHub Secrets 也是不可接受的合规风险。
+#
+# 它做的是另一件更有价值的事：在一台干净的 Linux 上，把《部署规范》
+# 里"打包自检建议"的检查项自动跑一遍，让脚本的问题在碰真机之前就暴露。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 部署链路验证 (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 服务器上到底装到哪个小版本还没定，三个版本都验，避免真机上才发现不兼容
+        python: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: 脚本语法检查
+        run: |
+          for s in install.sh start.sh stop.sh package.sh; do
+            bash -n "$s" && echo "OK  $s"
+          done
+
+      - name: 生命周期脚本必须可执行
+        run: |
+          for s in install.sh start.sh stop.sh; do
+            test -x "$s" || { echo "::error::$s 缺少可执行权限，解压到服务器后平台将无法调用"; exit 1; }
+          done
+
+      # 规范：首次部署时服务尚未运行，stop 也必须返回 0
+      - name: stop · 服务未运行时必须返回 0
+        run: ./stop.sh
+
+      - name: install
+        run: ./install.sh
+
+      # 规范：start 必须在确认服务真正可用后才返回 0
+      - name: start · 健康检查通过才返回 0
+        run: ./start.sh
+
+      - name: 验证监听端口确为 21818
+        run: |
+          curl -fsS http://127.0.0.1:21818/healthz -o health.json
+          cat health.json
+          python - <<'PY'
+          import json
+          d = json.load(open("health.json"))
+          assert d["status"] == "ok", d
+          assert d["port"] == 21818, f'端口不是 21818: {d["port"]}'
+          print("OK 端口与健康状态正确")
+          PY
+
+      - name: 验证首页可直接打开
+        run: |
+          code=$(curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:21818/)
+          test "$code" = "200" || { echo "::error::首页返回 $code"; exit 1; }
+          echo "OK 首页 200"
+
+      # 投票日的体验命脉：SSE 必须是逐字下发，不能被中间层攒着一次性吐出。
+      # 判据是"首个数据块到达的时间"——被缓冲时首块会拖到流结束才到。
+      - name: 验证 SSE 为增量下发而非缓冲
+        run: |
+          python - <<'PY'
+          import time, urllib.request
+          t0 = time.time()
+          first = None
+          chunks = 0
+          with urllib.request.urlopen(
+              "http://127.0.0.1:21818/api/demo/stream", timeout=20
+          ) as resp:
+              for line in resp:
+                  if line.startswith(b"data:"):
+                      chunks += 1
+                      if first is None:
+                          first = time.time() - t0
+          total = time.time() - t0
+          print(f"chunks={chunks} first={first:.3f}s total={total:.3f}s")
+          assert chunks >= 10, f"数据块过少: {chunks}"
+          assert first is not None and first < 0.5, (
+              f"首个数据块耗时 {first:.3f}s，疑似被响应缓冲——"
+              "上真机后若出现同样现象，对话会卡成一次性弹出"
+          )
+          print("OK SSE 增量下发正常")
+          PY
+
+      # 规范：重复执行一次完整流程，确认三个脚本都具备幂等性
+      - name: 幂等性 · 完整流程再跑一遍
+        run: ./stop.sh && ./install.sh && ./start.sh
+
+      - name: 幂等性 · 二次运行后服务仍健康
+        run: curl -fsS http://127.0.0.1:21818/healthz >/dev/null && echo "OK"
+
+      - name: stop · 收尾
+        run: ./stop.sh
+
+      - name: stop · 重复调用仍须返回 0
+        run: ./stop.sh
+
+      - name: 确认端口已释放
+        run: |
+          if curl -fsS --max-time 3 http://127.0.0.1:21818/healthz >/dev/null 2>&1; then
+            echo "::error::stop 之后端口 21818 仍在响应，进程没停干净"
+            exit 1
+          fi
+          echo "OK 端口已释放"
+
+      - name: 失败时输出应用日志
+        if: failure()
+        run: tail -n 100 "$HOME/.ai-antifraud-persuasion/logs/app.log" || true
+
+  package:
+    name: 打包并校验服务包
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # package.sh 内含规范校验：脚本在 ZIP 根、无绝对路径/上级目录、无密钥、
+      # 条目数与体积不超限。这里直接复用，校验不通过就让 CI 红。
+      - name: package.sh（含规范自检）
+        run: ./package.sh
+
+      - name: 列出 ZIP 内容供人工复核
+        run: unzip -Z1 dist/*.zip
+
+      - name: 上传服务包
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-package
+          path: dist/*.zip
+          retention-days: 30
+
+  security:
+    name: 安全基线
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 上线前需通过源码安全扫描，这里先自查最致命的一类：密钥进仓库
+      - name: 仓库内不得存在密钥文件
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$|\.key$|\.pem$|\.p12$'; then
+            echo "::error::仓库中存在密钥文件"
+            exit 1
+          fi
+          echo "OK 无密钥文件"
+
+      - name: 源码内不得硬编码疑似密钥
+        run: |
+          # .env.example 是模板，其中的键名本身不算泄漏，排除掉
+          if git grep -nEI '(api[_-]?key|secret|token|password)[[:space:]]*[:=][[:space:]]*["'"'"'][A-Za-z0-9_-]{16,}' \
+               -- ':!.env.example' ':!.github'; then
+            echo "::error::源码中存在疑似硬编码密钥"
+            exit 1
+          fi
+          echo "OK 无硬编码密钥"
+
+      - name: 依赖漏洞扫描
+        run: |
+          python -m pip install --quiet pip-audit
+          pip-audit -r requirements.txt --strict

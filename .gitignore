@@ -1,0 +1,27 @@
+# 虚拟环境与构建产物
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+
+# 密钥与本地配置 —— 绝不可入库（安全扫描会查）
+.env
+.env.local
+*.key
+*.pem
+
+# 运行时产物
+logs/
+*.log
+*.pid
+run/
+
+# 打包产物
+*.zip
+
+# 系统
+.DS_Store
+.idea/
+.vscode/

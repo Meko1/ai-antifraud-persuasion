@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 反诈劝阻 · 部署自检</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 2rem 1rem;
+    font: 15px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: radial-gradient(ellipse at top, #1b2450 0%, #0a0e23 55%, #05060f 100%);
+    color: #e8ecff; display: flex; justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 680px; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: .02em; }
+  .sub { color: #8b96c9; margin: 0 0 2rem; font-size: .9rem; }
+  .card {
+    background: rgba(255,255,255,.04); border: 1px solid rgba(140,160,255,.18);
+    border-radius: 14px; padding: 1.25rem 1.4rem; margin-bottom: 1rem;
+  }
+  .card h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em;
+    color: #7f8ac0; margin: 0 0 .9rem; font-weight: 600; }
+  .row { display: flex; justify-content: space-between; gap: 1rem;
+    padding: .4rem 0; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .row:last-child { border-bottom: 0; }
+  .row span:first-child { color: #98a2d0; }
+  .row span:last-child { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .ok   { color: #4ade80; }
+  .warn { color: #fbbf24; }
+  .bad  { color: #f87171; }
+  button {
+    background: linear-gradient(135deg,#4f7cff,#8b5cf6); color: #fff; border: 0;
+    border-radius: 9px; padding: .6rem 1.15rem; font-size: .9rem; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  #stream {
+    margin-top: .9rem; min-height: 3.4rem; padding: .85rem 1rem;
+    background: rgba(0,0,0,.32); border-radius: 9px; font-size: 1rem;
+    border-left: 3px solid #4f7cff;
+  }
+  .cursor { display:inline-block; width:.5em; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0 } }
+  .hint { color: #6b76a8; font-size: .8rem; margin-top: .7rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI 反诈劝阻</h1>
+  <p class="sub">部署自检页 · 骨架版本，对局引擎尚未接入</p>
+
+  <div class="card">
+    <h2>服务状态</h2>
+    <div id="health"><div class="row"><span>检查中…</span><span></span></div></div>
+  </div>
+
+  <div class="card">
+    <h2>SSE 流式链路验证</h2>
+    <button id="btn">开始流式测试</button>
+    <div id="stream"><span style="color:#6b76a8">点击按钮，文字应逐字出现</span></div>
+    <p class="hint">若文字是"卡住很久后一次性全部出现"，说明中间层做了响应缓冲，
+      投票日的对话体验会严重劣化，必须先解决。</p>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function row(k, v, cls) {
+  return `<div class="row"><span>${k}</span><span class="${cls || ''}">${v}</span></div>`;
+}
+
+(async function health() {
+  try {
+    const r = await fetch('/healthz');
+    const d = await r.json();
+    $('health').innerHTML = [
+      row('状态', d.status, d.status === 'ok' ? 'ok' : 'bad'),
+      row('版本', d.version),
+      row('监听端口', d.port, d.port === 21818 ? 'ok' : 'bad'),
+      row('大模型 provider', d.llm_provider),
+      row('大模型已配置', d.llm_configured ? '是' : '否（骨架阶段正常）',
+          d.llm_configured ? 'ok' : 'warn'),
+    ].join('');
+  } catch (e) {
+    $('health').innerHTML = row('健康检查失败', String(e), 'bad');
+  }
+})();
+
+$('btn').onclick = () => {
+  const btn = $('btn'), box = $('stream');
+  btn.disabled = true;
+  box.innerHTML = '<span id="txt"></span><span class="cursor">▊</span>';
+  const es = new EventSource('/api/demo/stream');
+  es.onmessage = (ev) => {
+    if (ev.data === '[DONE]') {
+      es.close();
+      const c = document.querySelector('.cursor');
+      if (c) c.remove();
+      btn.disabled = false;
+      return;
+    }
+    $('txt').textContent += ev.data;
+  };
+  es.onerror = () => {
+    es.close();
+    box.innerHTML = '<span style="color:#f87171">流式连接失败</span>';
+    btn.disabled = false;
+  };
+};
+</script>
+</body>
+</html>

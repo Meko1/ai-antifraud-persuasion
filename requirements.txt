@@ -1,0 +1,8 @@
+# 注意：故意使用 plain uvicorn 而非 uvicorn[standard]。
+# uvicorn[standard] 会拉入 uvloop / httptools，这两个包在 CentOS 7.9 的老 gcc 上
+# 需要现场编译，是部署失败的高频原因。纯 h11 实现的性能足够本作品使用。
+fastapi==0.115.6
+uvicorn==0.34.0
+pydantic==2.10.4
+python-dotenv==1.0.1
+httpx==0.28.1
