@@ -1,0 +1,8 @@
+# 仅用于开发与 CI，绝不进服务包。
+#
+# requirements.txt 会随 ZIP 上 CentOS 7.9 由 install.sh 安装，多一个包就多一分
+# 现场编译失败的风险；测试依赖留在这里，install.sh 不会碰它。
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.0

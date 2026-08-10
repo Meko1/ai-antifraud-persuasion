@@ -42,13 +42,30 @@ class Settings:
     log_level: str
     enable_docs: bool
     llm: LLMSettings
+    # 对局状态由客户端持有并签名（ADR-0003）。密钥缺失时整个防线就是空的，
+    # 与其带着一个可伪造的签名上线，不如直接拒绝启动。
+    state_signing_secret: str
+    redis_url: str
+
+
+class ConfigError(RuntimeError):
+    """配置缺失或非法。启动期抛出，不做任何默认值兜底。"""
 
 
 def load_settings() -> Settings:
     provider = os.getenv("LLM_PROVIDER", "internal").strip().lower()
     prefix = "INTERNAL" if provider == "internal" else "PUBLIC"
 
+    secret = os.getenv("STATE_SIGNING_SECRET", "").strip()
+    if not secret:
+        raise ConfigError(
+            "缺少 STATE_SIGNING_SECRET。对局状态由客户端持有并签名，"
+            "没有密钥就等于没有防线——拒绝启动。"
+        )
+
     return Settings(
+        state_signing_secret=secret,
+        redis_url=os.getenv("REDIS_URL", "").strip(),
         # 平台强制固定 21818；保留环境变量只是为了本地调试时能换端口
         port=int(os.getenv("PORT", "21818")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),

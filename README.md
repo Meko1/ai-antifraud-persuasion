@@ -20,12 +20,18 @@
 ├── stop.sh             生命周期脚本 · 停止（未运行时也返回 0）
 ├── package.sh          打包为符合部署规范的 ZIP，含自检
 ├── requirements.txt
+├── CONTEXT.md          领域术语表（只定义语言，不含实现）
+├── docs/
+│   ├── TECH-DESIGN.md  技术方案 · 施工图
+│   └── adr/            五条不可轻易反转的决策及其理由
 ├── app/
 │   ├── config.py       环境变量配置，密钥不入源码
 │   ├── llm.py          大模型 provider 抽象（内网网关 / 公网接口可切换）
 │   └── main.py         FastAPI 入口
 └── static/index.html   部署自检页
 ```
+
+对局引擎怎么做，先读 [docs/TECH-DESIGN.md](docs/TECH-DESIGN.md)；动手改判分或流式粒度之前，先读 [docs/adr/](docs/adr/)——那里有几条看起来像 bug 的设计。
 
 ## 本地运行
 

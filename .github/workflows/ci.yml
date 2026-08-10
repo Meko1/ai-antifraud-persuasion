@@ -18,9 +18,45 @@ permissions:
   contents: read
 
 jobs:
+  test:
+    name: 单元测试 (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # 判分引擎、安全层、按句缓冲、状态令牌全是纯函数，跑一遍以秒计。
+      # 它们是作品的技术内核，必须在碰真机之前就全绿。
+      - name: 安装依赖
+        run: python -m pip install --quiet -r requirements-dev.txt
+
+      - name: pytest
+        env:
+          STATE_SIGNING_SECRET: ci-only-not-a-real-secret
+        run: python -m pytest
+
+      # 判分脱离模型，于是平衡可以离线批量重跑。这一步把 §9.4 的数值门槛
+      # 守住：改判分参数、增补钥匙、调整取整方向，任何一项动了都会在这里红。
+      - name: 蒙特卡洛平衡验证 · §9.4 门槛
+        run: python -m tools.balance_sim --games 20000
+
+      # 附录 B 承诺"蒙特卡洛脚本与实测数据可现场重跑"——让对照实验的结果
+      # 留在 CI 日志里，路演时有据可查。
+      - name: 蒙特卡洛 · §9.2 扎根门控对照实验
+        run: python -m tools.balance_sim --games 20000 --no-grounding
+
   verify:
     name: 部署链路验证 (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    env:
+      # 缺失时服务会拒绝启动，这里给 CI 一个一次性的值
+      STATE_SIGNING_SECRET: ci-only-not-a-real-secret
     strategy:
       fail-fast: false
       matrix:
