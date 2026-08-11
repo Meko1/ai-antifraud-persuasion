@@ -176,6 +176,9 @@ async def play_turn(
         gid=session.gid,
         state=outcome.state,
         history=session.history + (record,),
+        # 开场白要一路带下去：服务端不存任何东西，令牌里没有的就是永远没有了，
+        # 复盘要靠它才能还原出完整的对话
+        opening=session.opening,
     )
     yield Event(
         "state", {"token": sign_session(next_session, secret=secret, issued_at=now)}

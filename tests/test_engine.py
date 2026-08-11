@@ -180,6 +180,32 @@ async def test_开场白与历史都要送到网关手里() -> None:
     assert "history" in gateway.演绎入参
 
 
+async def test_开场白要一路跟着令牌走() -> None:
+    """开场白是角色说的第一句，复盘要从令牌里读出整段对话，它不能中途丢。
+
+    服务端不存任何东西：令牌里没有的，就是永远没有了。
+    """
+    开场白 = "别打岔行不行？我这三十万都凑齐了。"
+    gateway = FakeGateway(
+        台词="你少管。", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    events = [
+        event
+        async for event in play_turn(
+            new_session(gid="01JTESTGID", opening=开场白),
+            "这三十万原本是准备干什么用的？",
+            gateway=gateway,
+            secret=SECRET,
+            now=NOW,
+        )
+    ]
+
+    token = next(e for e in events if e.name == "state").data["token"]
+
+    assert verify_token(token, secret=SECRET, now=NOW).opening == 开场白
+
+
 class 演绎卡住的Gateway(FakeGateway):
     async def act(self, **kwargs: object) -> AsyncIterator[str]:
         self.演绎调用次数 += 1

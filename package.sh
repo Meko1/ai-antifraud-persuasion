@@ -43,19 +43,25 @@ log "自检中…"
 ENTRIES="$(unzip -Z1 "${ZIP_PATH}" | wc -l | tr -d ' ')"
 SIZE_MB="$(du -m "${ZIP_PATH}" | cut -f1)"
 
+# 条目清单只取一次，后面全用 herestring 喂给 grep。
+# 不能写成 `unzip -Z1 ... | grep -q`：grep -q 命中即退出，unzip 随后吃到
+# SIGPIPE 返回非零，pipefail 把它当成整条流水线失败——匹配越靠前、清单越长
+# 越容易触发。install.sh 恰好是第一个条目，于是"检查通过"反而变成打包失败。
+ENTRY_LIST="$(unzip -Z1 "${ZIP_PATH}")"
+
 # 生命周期脚本必须在根目录（条目名不含 /）
 for f in install.sh start.sh stop.sh; do
-  unzip -Z1 "${ZIP_PATH}" | grep -qx "$f" \
+  grep -qx "$f" <<< "${ENTRY_LIST}" \
     || fail "生命周期脚本 $f 不在 ZIP 根目录"
 done
 
 # 禁止绝对路径 / 上级目录 / 反斜杠
-if unzip -Z1 "${ZIP_PATH}" | grep -qE '^/|\.\./|\\'; then
+if grep -qE '^/|\.\./|\\' <<< "${ENTRY_LIST}"; then
   fail "ZIP 内存在绝对路径、上级目录或反斜杠"
 fi
 
 # 禁止密钥文件混入
-if unzip -Z1 "${ZIP_PATH}" | grep -qE '(^|/)\.env$|\.key$|\.pem$'; then
+if grep -qE '(^|/)\.env$|\.key$|\.pem$' <<< "${ENTRY_LIST}"; then
   fail "ZIP 内混入了密钥文件"
 fi
 
