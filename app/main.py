@@ -25,8 +25,9 @@ from .engine import play_turn
 from .fallback import opening_line
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
-from .scoring import MAX_ROUNDS
+from .scoring import MAX_ROUNDS, WIN_THRESHOLD
 from .state_token import InvalidStateToken, new_session, sign_session, verify_token
+from .stats import stats
 
 logging.basicConfig(
     level=settings.log_level,
@@ -64,11 +65,17 @@ async def game_start() -> JSONResponse:
     line = opening_line()
     # 开场白必须进 session：它是第 1 轮唯一可供"扎根"的对话内容
     session = new_session(gid=uuid.uuid4().hex, opening=line)
+    stats.record_start()
     return JSONResponse(
         {
             "gid": session.gid,
             "opening": line,
             "remaining": MAX_ROUNDS,
+            # 前端画信任度条与那条 80 线要用；判分参数只此一份，
+            # 抄到前端去迟早对不上
+            "trust": session.state.trust,
+            "win_threshold": WIN_THRESHOLD,
+            "contest_id": settings.contest_id,
             "token": sign_session(
                 session,
                 secret=settings.state_signing_secret,
@@ -120,6 +127,12 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
         async for event in play_turn(
             session, body.utterance, gateway=gateway, secret=settings.state_signing_secret, now=now
         ):
+            # 统计在这一层旁听，不塞进 engine：编排层不该知道 Redis 存在，
+            # 而这里本来就是所有事件的必经之路
+            if event.name == "score":
+                stats.record_turn(event.data.get("hits", ()))
+            elif event.name == "ending":
+                stats.record_ending(event.data.get("kind", ""))
             yield _sse(event.name, event.data)
     except LLMError as exc:
         logger.warning("网关不可用: %s", exc)
@@ -152,6 +165,12 @@ async def healthz(probe: int = 0) -> JSONResponse:
     if probe:
         body["llm_probe"] = await llm_client.probe()
     return JSONResponse(body)
+
+
+@app.get("/api/stats")
+async def api_stats() -> JSONResponse:
+    """全局统计。Redis 是旁路，不可用时返回 available=false（§7.1）。"""
+    return JSONResponse(await stats.snapshot())
 
 
 async def _demo_tokens() -> AsyncIterator[str]:

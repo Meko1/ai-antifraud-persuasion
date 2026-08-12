@@ -206,6 +206,33 @@ async def test_开场白要一路跟着令牌走() -> None:
     assert verify_token(token, secret=SECRET, now=NOW).opening == 开场白
 
 
+async def test_判分事件带上情绪档位() -> None:
+    """「信任度 50」对玩家没有意义，「他开始动摇了」才有。
+
+    档位由信任度映射而来（`mood_for`），阈值是判分引擎的参数。前端自己算一份
+    迟早跟服务端走散——调参时蒙特卡洛会重跑，页面上那几档不会自己动。
+    """
+    gateway = FakeGateway(
+        台词="别劝我。",
+        分类结果='{"hit_keys": ["anchor_real_purpose"], "grounded": true}',
+    )
+
+    events = [
+        event
+        async for event in play_turn(
+            new_session(gid="01JTESTGID"),
+            "这三十万原本是留着办什么事的？",
+            gateway=gateway,
+            secret=SECRET,
+            now=NOW,
+        )
+    ]
+
+    score = next(e for e in events if e.name == "score")
+    assert score.data["trust"] == 50
+    assert score.data["mood"] == "wavering"  # 45 ≤ 50 < 65
+
+
 class 演绎卡住的Gateway(FakeGateway):
     async def act(self, **kwargs: object) -> AsyncIterator[str]:
         self.演绎调用次数 += 1

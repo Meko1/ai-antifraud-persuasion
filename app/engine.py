@@ -148,6 +148,9 @@ async def play_turn(
         {
             "delta": outcome.delta,
             "trust": outcome.state.trust,
+            # 档位随分数一起下发：前端要把「信任度 50」说成「他开始动摇了」，
+            # 阈值只此一份，抄到前端去调参时就会走散
+            "mood": mood_for(outcome.state.trust).value,
             "hits": list(hit_keys),
             "grounded": grounded,
             "pool": outcome.state.pool,

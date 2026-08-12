@@ -1,0 +1,719 @@
+/* AI 反诈劝阻 · 微信式界面
+ *
+ * 界面语法整体照搬微信：白色导航栏、#EDEDED 会话背景、左白右绿的气泡、
+ * 居中灰色系统提示、底部输入栏。理由不是"微信好看"——微信恰恰极度克制——
+ * 而是这类荐股骗局本来就发生在聊天软件里。玩家在这套熟悉的语法里劝阻，
+ * 等于站在事发现场，一眼就知道每个东西是干什么的，不用学。
+ *
+ * 借位而非新造：判分卡走微信「系统提示」那个槽（显示"你撤回了一条消息"的地方），
+ * 对局状态走「群公告条」那个槽，结局走「转账卡片」和「消息被拒收」那两个槽。
+ *
+ * 只有一处颜色不属于微信：--gold，专供游戏层（劝住线、全场最有力的一轮）。
+ * 留一个外来色，是为了让"这是一局游戏"和"这是一次真实对话"能被一眼分开。
+ */
+
+:root {
+  color-scheme: light;
+
+  --wx-bg: #ededed;        /* 会话列表与聊天背景 */
+  --wx-white: #ffffff;
+  --wx-green: #95ec69;     /* 自己发出的气泡 */
+  --wx-brand: #07c160;     /* 微信绿：按钮、进度 */
+  --wx-text: #191919;
+  --wx-sub: #b2b2b2;       /* 次要文字：时间、预览 */
+  --wx-gray: #7f7f7f;      /* 系统提示文字 */
+  --wx-line: #e3e3e3;
+  --wx-field: #ededed;     /* 搜索框底色 */
+  --wx-red: #fa5151;       /* 未读红点、拒收 */
+  --wx-pay: #fa9d3b;       /* 转账卡片橙 */
+  --wx-rise: #e64340;      /* 涨：信任上升 */
+  --wx-fall: #09bb07;      /* 跌：信任下降 */
+  --gold: #c9a227;         /* 游戏层专用 */
+
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: #dcdcdc;
+  color: var(--wx-text);
+  font: 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+:focus-visible { outline: 2px solid var(--wx-brand); outline-offset: 1px; }
+
+/* 单栏，最宽 480 —— 投票日大家都在手机上玩 */
+.screen { display: none; }
+
+.screen.on {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--wx-bg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+/* ── 导航栏 ───────────────────────────────────────────────── */
+
+.navbar {
+  flex: none;
+  position: relative;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f7f7;
+  border-bottom: 1px solid #d8d8d8;
+}
+
+.navbar h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.nav-count { font-weight: 400; color: var(--wx-gray); }
+
+.navback {
+  position: absolute;
+  left: 4px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* 返回箭头用边框拼，不引外部图标 */
+.navback::before {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin-left: 15px;
+  border-left: 2px solid #444;
+  border-bottom: 2px solid #444;
+  transform: rotate(45deg);
+}
+
+.navmore {
+  position: absolute;
+  right: 16px;
+  width: 18px;
+  height: 4px;
+  background:
+    radial-gradient(circle, #444 1.6px, transparent 1.7px) 0 50%/6px 6px repeat-x;
+}
+
+/* ── 首页：会话列表 ───────────────────────────────────────── */
+
+.searchbar { flex: none; padding: 8px 12px; background: #f7f7f7; }
+
+.search-input {
+  display: block;
+  height: 32px;
+  line-height: 32px;
+  padding-left: 30px;
+  border-radius: 5px;
+  background: var(--wx-white)
+    url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b2b2b2' stroke-width='2.4'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 21 21'/%3E%3C/svg%3E")
+    no-repeat 9px 50% / 15px 15px;
+  color: var(--wx-sub);
+  font-size: 13.5px;
+}
+
+.chatlist {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--wx-white);
+}
+
+.chatrow {
+  position: relative;
+  display: flex;
+  gap: 11px;
+  padding: 9px 16px;
+  background: var(--wx-white);
+  transition: background 140ms var(--ease);
+}
+
+/* 分隔线从头像右侧起，微信就是这么切的 */
+.chatrow + .chatrow::before {
+  content: "";
+  position: absolute;
+  left: 73px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--wx-line);
+}
+
+/* 只有老陈那条能点。其余六分之五不做灰化——已读的会话本来就不是灰的，
+   把它们调暗会立刻露出"这是布景"。红点自己会说话。 */
+#openChen { cursor: pointer; }
+#openChen:hover { background: #f0f0f0; }
+#openChen:active { background: #e4e4e4; }
+
+.avatar {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.av-chen { background: #6f8bb5; }
+.av-bank { background: #c0392b; }
+.av-wife { background: #b7845c; }
+.av-daughter { background: #7d9f7a; }
+.av-gov { background: #4a6fa5; }
+
+/* 群头像是九宫格，这里取四格——不写"群"字也一眼认得出 */
+.av-group {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  place-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  background: #d6d6d6;
+}
+
+.av-group i { display: block; border-radius: 1px; }
+.av-group i:nth-child(1) { background: #b8a06a; }
+.av-group i:nth-child(2) { background: #8fa8c4; }
+.av-group i:nth-child(3) { background: #c49a8f; }
+.av-group i:nth-child(4) { background: #9db08c; }
+
+.row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;
+  justify-content: center; line-height: 1.2; }
+
+.row-top { align-items: baseline; }
+.row-bottom { align-items: center; }
+
+.row-top, .row-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.row-name { font-size: 17px; overflow: hidden; white-space: nowrap;
+  text-overflow: ellipsis; }
+.row-time { flex: none; font-size: 12.5px; color: var(--wx-sub); }
+
+.row-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--wx-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--wx-red);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.mutebell {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  background:
+    url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23c8c8c8' stroke-width='2'%3E%3Cpath d='M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6z'/%3E%3Cpath d='M10 20h4'/%3E%3Cpath d='M3 3l18 18'/%3E%3C/svg%3E")
+    no-repeat 50% / contain;
+}
+
+/* 列表下方剩多少空白由屏高决定，把这行字放在那块空白的正中间，
+   空出来的地方就显得是留的，不是没做完。 */
+.home-note {
+  flex: none;
+  margin: auto 0;
+  padding: 24px 20px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 2;
+  color: #9a9a9a;
+}
+
+/* ── 底部标签栏（纯布景）─────────────────────────────────── */
+
+.tabbar {
+  flex: none;
+  display: flex;
+  background: #f7f7f7;
+  border-top: 1px solid #d8d8d8;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0 5px;
+  color: #7a7a7a;
+}
+
+.tab.on { color: var(--wx-brand); }
+.tab svg { width: 26px; height: 26px; }
+.tab b { font-size: 10.5px; font-weight: 400; }
+
+.tabdot {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  margin-left: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--wx-red);
+  border: 1.5px solid #f7f7f7;
+}
+
+/* ── 对局状态条（借微信群公告的位置）────────────────────────── */
+
+.statusbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #fbfbfb;
+  border-bottom: 1px solid var(--wx-line);
+  font-size: 12px;
+  color: var(--wx-gray);
+}
+
+.st-value { font-size: 15px; font-weight: 600; color: var(--wx-text); }
+
+/* 判分那一跳的余韵：数字滚完，涨跌值在旁边亮一下就走 */
+.st-delta {
+  flex: none;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 220ms var(--ease);
+}
+
+.st-delta.show { opacity: 1; }
+.st-delta.up { color: var(--wx-rise); }
+.st-delta.down { color: var(--wx-fall); }
+
+.st-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: #e0e0e0;
+}
+
+.st-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 32%;
+  border-radius: 2px;
+  background: var(--wx-brand);
+  transition: width 480ms var(--ease), background 300ms var(--ease);
+}
+
+.st-fill.low { background: #f0a020; }
+.st-fill.danger { background: var(--wx-red); }
+
+/* 劝住线：80 那一格。金色是游戏层专用色，跟微信的任何东西都不撞 */
+.st-goal {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--gold);
+}
+
+.st-rounds { flex: none; }
+.st-rounds b { color: var(--wx-text); font-size: 13px; }
+
+/* ── 对话 ─────────────────────────────────────────────────── */
+
+/* 不做贴底：这是一段刚开始的对话，微信里新会话的第一条就在顶上。
+   贴底会在第 1 轮留出七百像素的空白，看着像没加载出来。 */
+.thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  scroll-behavior: smooth;
+}
+
+.strangertip {
+  align-self: center;
+  max-width: 88%;
+  margin: 4px 0 2px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.045);
+  color: var(--wx-gray);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.timedivider {
+  align-self: center;
+  font-size: 12px;
+  color: var(--wx-sub);
+  padding: 2px 0;
+}
+
+.msg { display: flex; gap: 9px; align-items: flex-start; max-width: 100%; }
+.msg.me { flex-direction: row-reverse; }
+
+.msg .avatar { width: 38px; height: 38px; font-size: 16px; border-radius: 4px; }
+.msg.me .avatar { background: #7ea86b; }
+
+.bubble {
+  position: relative;
+  max-width: calc(100% - 100px);
+  padding: 9px 13px;
+  border-radius: 5px;
+  font-size: 16.5px;
+  line-height: 1.5;
+  word-break: break-word;
+  animation: pop 220ms var(--ease) both;
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.msg.them .bubble { background: var(--wx-white); }
+.msg.me .bubble { background: var(--wx-green); }
+
+/* 气泡小尖角 */
+.bubble::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  border: 5px solid transparent;
+}
+
+.msg.them .bubble::before {
+  left: -5px;
+  border-left: 0;
+  border-right-color: var(--wx-white);
+}
+
+.msg.me .bubble::before {
+  right: -5px;
+  border-right: 0;
+  border-left-color: var(--wx-green);
+}
+
+.bubble.typing::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--wx-sub);
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 判分卡＝微信的系统提示。就是显示"你撤回了一条消息"的那个位置 */
+.sysnote {
+  align-self: center;
+  max-width: 92%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.045);
+  color: var(--wx-gray);
+  font-size: 12px;
+  line-height: 1.5;
+  animation: pop 220ms var(--ease) both;
+}
+
+.sysnote.bad { color: #c85a5a; }
+
+.sysnote .delta { font-weight: 600; font-size: 13px; }
+.sysnote .delta.up { color: var(--wx-rise); }
+.sysnote .delta.down { color: var(--wx-fall); }
+.sysnote .delta.flat { color: var(--wx-gray); }
+
+.tag { color: var(--wx-gray); }
+.tag.key { color: var(--wx-rise); }
+.tag.penalty { color: var(--wx-fall); }
+
+.sysnote .sep { color: #cfcfcf; }
+
+.sysnote button {
+  margin-left: 4px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--wx-brand);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ── 结局 ─────────────────────────────────────────────────── */
+
+/* 结局不另起一块 UI，它就是这段对话里的最后一件东西。
+   微信本来就有这三个东西，玩家不用学就知道自己看到了什么：
+   转账凭证（他截图发过来）、同一张凭证的作废态、以及消息被拒收的红叹号。
+   劝住和转走共用一张卡，只翻一个位——整局游戏赌的就是这一位。 */
+
+.bubble.photo { padding: 0; background: transparent !important; }
+.bubble.photo::before { display: none; }
+
+.receipt {
+  width: 216px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--wx-pay);
+  color: #fff;
+}
+
+.receipt-body { display: flex; align-items: center; gap: 11px; padding: 14px; }
+
+.receipt-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.26);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.receipt-amt { font-size: 19px; font-weight: 600; letter-spacing: 0.01em; }
+.receipt-to { margin-top: 2px; font-size: 12.5px; color: rgba(255, 255, 255, 0.85); }
+
+.receipt-foot {
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.09);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* 作废态：同一张卡，灰掉，金额划掉。
+   文字转深色——橙卡上的白字挪到灰底上就成了 1.9:1，读不出来。 */
+.receipt.void { background: #d6d6d6; color: #5a5a5a; }
+.receipt.void .receipt-icon { background: rgba(0, 0, 0, 0.08); }
+.receipt.void .receipt-amt { text-decoration: line-through; text-decoration-thickness: 1px; }
+.receipt.void .receipt-to { color: #6e6e6e; }
+.receipt.void .receipt-foot { background: rgba(0, 0, 0, 0.06); color: #6e6e6e; }
+
+.endcta {
+  align-self: center;
+  margin: 6px 0 4px;
+  padding: 9px 26px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--wx-brand);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  animation: pop 260ms var(--ease) both;
+}
+
+/* ── 输入栏 ───────────────────────────────────────────────── */
+
+.composer {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  background: #f7f7f7;
+  border-top: 1px solid #d8d8d8;
+}
+
+.composer input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--wx-white);
+  color: var(--wx-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.composer button {
+  flex: none;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--wx-brand);
+  color: #fff;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 140ms var(--ease);
+}
+
+.composer button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── 复盘（微信的二级页面）─────────────────────────────────── */
+
+.review {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--wx-bg);
+  animation: slidein 260ms var(--ease) both;
+}
+
+@keyframes slidein {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+.review-body { flex: 1; overflow-y: auto;
+  padding-bottom: calc(36px + env(safe-area-inset-bottom)); }
+
+.group { margin-top: 14px; }
+
+.group-title {
+  padding: 8px 16px 6px;
+  font-size: 12.5px;
+  color: var(--wx-gray);
+}
+
+.panel { background: var(--wx-white); border-top: 1px solid var(--wx-line);
+  border-bottom: 1px solid var(--wx-line); }
+
+.summary { padding: 18px 16px; background: var(--wx-white);
+  border-bottom: 1px solid var(--wx-line); }
+
+.summary .kind { font-size: 22px; font-weight: 600; }
+.summary.persuaded .kind { color: var(--wx-brand); }
+.summary.blacklisted .kind,
+.summary.transferred .kind { color: var(--wx-red); }
+
+.summary .copy { margin: 10px 0 0; font-size: 14.5px; line-height: 1.9; color: #4a4a4a; }
+.summary .copy em { font-style: normal; font-weight: 600; color: var(--wx-text); }
+
+#chart { display: block; width: 100%; height: 176px; padding: 12px 8px 4px; }
+
+.legend { margin: 0; padding: 0 16px 14px; font-size: 12px; line-height: 1.9; color: var(--wx-sub); }
+
+.round {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  gap: 10px;
+  padding: 12px 16px;
+  align-items: start;
+}
+
+.round + .round { box-shadow: inset 0 1px 0 var(--wx-line); }
+.round.pivot { background: #fbfaf3; }
+.round .no { font-size: 12px; color: var(--wx-sub); padding-top: 2px; }
+.round.pivot .no { color: var(--gold); }
+.round .said { font-size: 14.5px; line-height: 1.55; }
+.round .tags { margin-top: 5px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.round .score { text-align: right; font-size: 14px; font-weight: 600; white-space: nowrap; }
+.round .score .after { display: block; font-size: 11px; font-weight: 400; color: var(--wx-sub); }
+
+.tip { padding: 13px 16px; }
+.tip + .tip { box-shadow: inset 0 1px 0 var(--wx-line); }
+.tip .title { font-size: 14.5px; font-weight: 600; }
+.tip p { margin: 5px 0 0; font-size: 13px; line-height: 1.85; color: #6b6b6b; }
+.empty { padding: 14px 16px; font-size: 13.5px; color: var(--wx-sub); }
+
+.actions { display: flex; gap: 10px; padding: 20px 16px 0; }
+
+.actions button {
+  flex: 1;
+  padding: 11px;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--wx-brand);
+  color: #fff;
+}
+
+.actions button.plain { background: var(--wx-white); color: var(--wx-text);
+  border: 1px solid var(--wx-line); }
+
+#cardWrap { padding: 16px; }
+
+#card {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.savehint { margin: 10px 0 0; text-align: center; font-size: 12.5px; color: var(--wx-sub); }
+.savelink { color: var(--wx-brand); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
