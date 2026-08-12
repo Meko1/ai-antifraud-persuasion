@@ -148,6 +148,9 @@ async def play_turn(
         {
             "delta": outcome.delta,
             "trust": outcome.state.trust,
+            # 档位随分数一起下发：前端要把「信任度 50」说成「他开始动摇了」，
+            # 阈值只此一份，抄到前端去调参时就会走散
+            "mood": mood_for(outcome.state.trust).value,
             "hits": list(hit_keys),
             "grounded": grounded,
             "pool": outcome.state.pool,
@@ -176,6 +179,9 @@ async def play_turn(
         gid=session.gid,
         state=outcome.state,
         history=session.history + (record,),
+        # 开场白要一路带下去：服务端不存任何东西，令牌里没有的就是永远没有了，
+        # 复盘要靠它才能还原出完整的对话
+        opening=session.opening,
     )
     yield Event(
         "state", {"token": sign_session(next_session, secret=secret, issued_at=now)}

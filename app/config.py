@@ -46,6 +46,9 @@ class Settings:
     # 与其带着一个可伪造的签名上线，不如直接拒绝启动。
     state_signing_secret: str
     redis_url: str
+    # 分享卡上印的参赛编号（§8）。没配就空着——分享卡会发到社交平台上，
+    # 空一行远好过印一个占位符出去。
+    contest_id: str
 
 
 class ConfigError(RuntimeError):
@@ -66,6 +69,7 @@ def load_settings() -> Settings:
     return Settings(
         state_signing_secret=secret,
         redis_url=os.getenv("REDIS_URL", "").strip(),
+        contest_id=os.getenv("CONTEST_ID", "").strip(),
         # 平台强制固定 21818；保留环境变量只是为了本地调试时能换端口
         port=int(os.getenv("PORT", "21818")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),

@@ -2,114 +2,178 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI 反诈劝阻 · 部署自检</title>
-<style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100vh; padding: 2rem 1rem;
-    font: 15px/1.7 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: radial-gradient(ellipse at top, #1b2450 0%, #0a0e23 55%, #05060f 100%);
-    color: #e8ecff; display: flex; justify-content: center;
-  }
-  .wrap { width: 100%; max-width: 680px; }
-  h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: .02em; }
-  .sub { color: #8b96c9; margin: 0 0 2rem; font-size: .9rem; }
-  .card {
-    background: rgba(255,255,255,.04); border: 1px solid rgba(140,160,255,.18);
-    border-radius: 14px; padding: 1.25rem 1.4rem; margin-bottom: 1rem;
-  }
-  .card h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em;
-    color: #7f8ac0; margin: 0 0 .9rem; font-weight: 600; }
-  .row { display: flex; justify-content: space-between; gap: 1rem;
-    padding: .4rem 0; border-bottom: 1px solid rgba(255,255,255,.05); }
-  .row:last-child { border-bottom: 0; }
-  .row span:first-child { color: #98a2d0; }
-  .row span:last-child { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .ok   { color: #4ade80; }
-  .warn { color: #fbbf24; }
-  .bad  { color: #f87171; }
-  button {
-    background: linear-gradient(135deg,#4f7cff,#8b5cf6); color: #fff; border: 0;
-    border-radius: 9px; padding: .6rem 1.15rem; font-size: .9rem; font-weight: 600;
-    cursor: pointer; font-family: inherit;
-  }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  #stream {
-    margin-top: .9rem; min-height: 3.4rem; padding: .85rem 1rem;
-    background: rgba(0,0,0,.32); border-radius: 9px; font-size: 1rem;
-    border-left: 3px solid #4f7cff;
-  }
-  .cursor { display:inline-block; width:.5em; animation: blink 1s steps(1) infinite; }
-  @keyframes blink { 50% { opacity: 0 } }
-  .hint { color: #6b76a8; font-size: .8rem; margin-top: .7rem; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="十二轮对话，劝住一个正准备把三十万转给荐股骗局的人。">
+<title>AI 反诈劝阻</title>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="wrap">
-  <h1>AI 反诈劝阻</h1>
-  <p class="sub">部署自检页 · 骨架版本，对局引擎尚未接入</p>
 
-  <div class="card">
-    <h2>服务状态</h2>
-    <div id="health"><div class="row"><span>检查中…</span><span></span></div></div>
+<!-- 首页 = 会话列表。这类骗局本来就发生在聊天软件里，把入口做成一条未读消息，
+     玩家一上来就站在事发现场。
+     六条会话不是布景：每一条各交代一件事——他在哪个群、已经转过一次钱、
+     家里等着这笔钱、女儿劝过而且劝失败了、官方也提醒过而他划掉了。
+     开局要说的话全在这一屏上，一句旁白都不用写。 -->
+<section class="screen on" id="home">
+  <header class="navbar">
+    <h1>微信<span class="nav-count">(1)</span></h1>
+  </header>
+
+  <div class="searchbar"><span class="search-input">搜索</span></div>
+
+  <ul class="chatlist">
+    <li class="chatrow" id="openChen" tabindex="0" role="button" aria-label="打开与老陈的对话，1 条未读">
+      <span class="avatar av-chen" aria-hidden="true">陈</span>
+      <span class="row-main">
+        <span class="row-top">
+          <span class="row-name">老陈</span>
+          <span class="row-time">14:47</span>
+        </span>
+        <span class="row-bottom">
+          <span class="row-preview">我这三十万都凑齐了，就等着下午开盘。</span>
+          <span class="badge">1</span>
+        </span>
+      </span>
+    </li>
+
+    <!-- 这个群是玩家能找上他的理由：同群的人才能私聊。 -->
+    <li class="chatrow" aria-disabled="true">
+      <span class="avatar av-group" aria-hidden="true">
+        <i></i><i></i><i></i><i></i>
+      </span>
+      <span class="row-main">
+        <span class="row-top">
+          <span class="row-name">启航投顾 · 内部交流群</span>
+          <span class="row-time">14:44</span>
+        </span>
+        <span class="row-bottom">
+          <span class="row-preview">李老师：三点前统一操作，别掉队</span>
+          <span class="mutebell" aria-label="消息免打扰"></span>
+        </span>
+      </span>
+    </li>
+
+    <li class="chatrow" aria-disabled="true">
+      <span class="avatar av-bank" aria-hidden="true">招</span>
+      <span class="row-main">
+        <span class="row-top">
+          <span class="row-name">招商银行</span>
+          <span class="row-time">14:31</span>
+        </span>
+        <span class="row-bottom">
+          <span class="row-preview">您尾号8823账户支出50,000.00元</span>
+        </span>
+      </span>
+    </li>
+
+    <li class="chatrow" aria-disabled="true">
+      <span class="avatar av-wife" aria-hidden="true">桂</span>
+      <span class="row-main">
+        <span class="row-top">
+          <span class="row-name">老伴</span>
+          <span class="row-time">13:52</span>
+        </span>
+        <span class="row-bottom">
+          <span class="row-preview">定金那头又催了一遍，那笔钱你可千万别动啊</span>
+        </span>
+      </span>
+    </li>
+
+    <!-- 女儿劝过，而且劝失败了。玩家读到这一行就知道：直接说"这是诈骗"没用。 -->
+    <li class="chatrow" aria-disabled="true">
+      <span class="avatar av-daughter" aria-hidden="true">雨</span>
+      <span class="row-main">
+        <span class="row-top">
+          <span class="row-name">小雨</span>
+          <span class="row-time">昨天</span>
+        </span>
+        <span class="row-bottom">
+          <span class="row-preview">爸，我查过那个启航投顾了，工商上根本查不到这家公司，你听我一次行不行</span>
+        </span>
+      </span>
+    </li>
+
+    <li class="chatrow" aria-disabled="true">
+      <span class="avatar av-gov" aria-hidden="true">反</span>
+      <span class="row-main">
+        <span class="row-top">
+          <span class="row-name">国家反诈中心</span>
+          <span class="row-time">8月9日</span>
+        </span>
+        <span class="row-bottom">
+          <span class="row-preview">您可能正在遭遇投资理财类诈骗，请立即停止转账</span>
+        </span>
+      </span>
+    </li>
+  </ul>
+
+  <p class="home-note">他下午三点前要把三十万转出去。<br>你有十二轮对话。</p>
+
+  <!-- 底部标签栏不接任何功能，它是布景的最后一块：少了它，这一屏的下缘就空着，
+       整个界面看着像没做完，而不像一台手机。 -->
+  <nav class="tabbar" aria-hidden="true">
+    <span class="tab on">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 4C7 4 3 7.3 3 11.3c0 2.3 1.3 4.3 3.4 5.6L5.6 20l3.2-1.7c1 .3 2.1.4 3.2.4
+                 5 0 9-3.3 9-7.4S17 4 12 4Z"/>
+      </svg>
+      <b>微信</b><i class="tabdot"></i>
+    </span>
+    <span class="tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 5h16v14H4z"/><path d="M8 5v14"/><path d="M12 10h5"/><path d="M12 14h5"/>
+      </svg>
+      <b>通讯录</b>
+    </span>
+    <span class="tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="8"/><path d="m15 9-2.2 4.8L8 16l2.2-4.8L15 9Z"/>
+      </svg>
+      <b>发现</b>
+    </span>
+    <span class="tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c0-3.6 3.1-5.5 7-5.5s7 1.9 7 5.5"/>
+      </svg>
+      <b>我</b>
+    </span>
+  </nav>
+</section>
+
+<!-- 聊天页 -->
+<section class="screen" id="chat">
+  <header class="navbar chat-nav">
+    <button class="navback" id="backHome" type="button" aria-label="返回"></button>
+    <h1 id="peer">老陈</h1>
+    <span class="navmore" aria-hidden="true"></span>
+  </header>
+
+  <!-- 微信在导航栏下方放群公告条，这里借那个位置放对局状态 -->
+  <div class="statusbar">
+    <span class="st-label">信任度</span>
+    <b class="st-value num" id="trust" role="status" aria-live="polite">32</b>
+    <b class="st-delta num" id="trustDelta" aria-hidden="true"></b>
+    <span class="st-track">
+      <i class="st-fill" id="trustFill"></i>
+      <i class="st-goal" id="trustGoal" title="劝住线"></i>
+    </span>
+    <span class="st-rounds">还剩 <b class="num" id="remaining">12</b> 轮</span>
   </div>
 
-  <div class="card">
-    <h2>SSE 流式链路验证</h2>
-    <button id="btn">开始流式测试</button>
-    <div id="stream"><span style="color:#6b76a8">点击按钮，文字应逐字出现</span></div>
-    <p class="hint">若文字是"卡住很久后一次性全部出现"，说明中间层做了响应缓冲，
-      投票日的对话体验会严重劣化，必须先解决。</p>
-  </div>
-</div>
+  <main class="thread" id="thread" aria-live="polite" aria-label="对话">
+    <p class="strangertip">对方不是你的朋友，你们同在群聊「启航投顾 · 内部交流群」</p>
+  </main>
 
-<script>
-const $ = (id) => document.getElementById(id);
+  <form class="composer" id="composer" autocomplete="off">
+    <input id="say" maxlength="120" enterkeyhint="send" aria-label="跟他说">
+    <button id="send" type="submit">发送</button>
+  </form>
+</section>
 
-function row(k, v, cls) {
-  return `<div class="row"><span>${k}</span><span class="${cls || ''}">${v}</span></div>`;
-}
-
-(async function health() {
-  try {
-    const r = await fetch('/healthz');
-    const d = await r.json();
-    $('health').innerHTML = [
-      row('状态', d.status, d.status === 'ok' ? 'ok' : 'bad'),
-      row('版本', d.version),
-      row('监听端口', d.port, d.port === 21818 ? 'ok' : 'bad'),
-      row('大模型 provider', d.llm_provider),
-      row('大模型已配置', d.llm_configured ? '是' : '否（骨架阶段正常）',
-          d.llm_configured ? 'ok' : 'warn'),
-    ].join('');
-  } catch (e) {
-    $('health').innerHTML = row('健康检查失败', String(e), 'bad');
-  }
-})();
-
-$('btn').onclick = () => {
-  const btn = $('btn'), box = $('stream');
-  btn.disabled = true;
-  box.innerHTML = '<span id="txt"></span><span class="cursor">▊</span>';
-  const es = new EventSource('/api/demo/stream');
-  es.onmessage = (ev) => {
-    if (ev.data === '[DONE]') {
-      es.close();
-      const c = document.querySelector('.cursor');
-      if (c) c.remove();
-      btn.disabled = false;
-      return;
-    }
-    $('txt').textContent += ev.data;
-  };
-  es.onerror = () => {
-    es.close();
-    box.innerHTML = '<span style="color:#f87171">流式连接失败</span>';
-    btn.disabled = false;
-  };
-};
-</script>
+<script src="/static/app.js"></script>
 </body>
 </html>

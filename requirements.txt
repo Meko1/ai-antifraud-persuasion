@@ -6,3 +6,6 @@ uvicorn==0.34.0
 pydantic==2.10.4
 python-dotenv==1.0.1
 httpx==0.28.1
+# 旁路统计用（§10.2）。纯 Python 实现，不触发 CentOS 7.9 上的现场编译；
+# 没装或连不上都不影响启动与对局，app/stats.py 对缺包做了降级。
+redis==5.2.1
