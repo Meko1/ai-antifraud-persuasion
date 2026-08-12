@@ -25,7 +25,7 @@ from .engine import play_turn
 from .fallback import opening_line
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
-from .scoring import MAX_ROUNDS, WIN_THRESHOLD
+from .scoring import MAX_ROUNDS, WIN_THRESHOLD, mood_for
 from .state_token import InvalidStateToken, new_session, sign_session, verify_token
 from .stats import stats
 
@@ -71,9 +71,12 @@ async def game_start() -> JSONResponse:
             "gid": session.gid,
             "opening": line,
             "remaining": MAX_ROUNDS,
-            # 前端画信任度条与那条 80 线要用；判分参数只此一份，
+            # 前端画那条细进度条与 80 线要用；判分参数只此一份，
             # 抄到前端去迟早对不上
             "trust": session.state.trust,
+            # 对局中前端只显示情绪词，不显示分数。档位阈值同样只此一份——
+            # 开局这一下没有 score 事件可用，所以在这里给出初始档位
+            "mood": mood_for(session.state.trust).value,
             "win_threshold": WIN_THRESHOLD,
             "contest_id": settings.contest_id,
             "token": sign_session(

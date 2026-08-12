@@ -30,6 +30,13 @@ MOOD_DIRECTION = {
     Mood.SOFTENING: "你在犹豫，会主动透露一些原本不想说的事。",
 }
 
+# 李老师每 3 轮催一次。玩家不是在跟一个静止的人说话，他背后有人在往回拉——
+# 把这件事写进台词里，那 3 分才不是凭空掉的。
+PRESSURE_DIRECTION = (
+    "李老师刚在群里又催了一遍，说过了三点就没这个价了。"
+    "你更急，也更没耐心听他讲道理。"
+)
+
 # 骗局剧本：标的一律虚构，且角色被要求永远不说出具体代码或公司名。
 # 这是安全层之外的第一道防线——最好的过滤是让它压根不产生。
 SCAM_SCRIPT = """\
@@ -55,9 +62,14 @@ ACT_SYSTEM_PROMPT = """\
 {mood}
 
 说话要求：
-- 开口就是短句，一句一句说，不要长篇大论
-- 用口语，像在微信上打字，不要书面语
-- 绝不说出任何股票代码、上市公司名称、具体收益百分比、联系方式或链接
+- 你在用微信打字，不是在讲话。一次只发一小句，最多两句。
+- 绝不写括号里的动作、神态、心理。「（停顿了一下）」这种东西一次都不许出现。
+- 不用书面语，不用"然而""因此""此外"这类词。
+- 标点能省就省，句末常常不打句号。
+- 答不上来的问题就岔开或者反问，绝不承认对方说得有道理。
+- 反复用这几句当挡箭牌："李老师说的""群里几百号人都跟着""我跟了三个月了"。
+- 你今年五十二，机械厂干了二十年，说话带点老工人的口气。
+- 绝不说出任何股票代码、上市公司名称、具体收益百分比、联系方式或链接。
 """
 
 # 三条消歧规则不是凑字数：它们各自对应标注集上量出来的一类系统性误判
@@ -129,13 +141,18 @@ class ModelGateway:
         utterance: str,
         history: Sequence[Any] = (),
         opening: str = "",
+        pressured: bool = False,
+        **_: Any,
     ) -> AsyncIterator[str]:
         """演绎请求（流式）。产出文本增量，调用方不必知道 SSE 长什么样。"""
+        direction = MOOD_DIRECTION[mood]
+        if pressured:
+            direction += "\n" + PRESSURE_DIRECTION
         messages = [
             {
                 "role": "system",
                 "content": ACT_SYSTEM_PROMPT.format(
-                    script=SCAM_SCRIPT, mood=MOOD_DIRECTION[mood]
+                    script=SCAM_SCRIPT, mood=direction
                 ),
             },
             *_history_messages(history, opening),

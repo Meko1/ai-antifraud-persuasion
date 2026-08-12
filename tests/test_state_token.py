@@ -8,10 +8,18 @@
 
 import base64
 import json
+from dataclasses import replace
 
 import pytest
 
-from app.state_token import InvalidStateToken, new_session, sign_session, verify_token
+from app.state_token import (
+    InvalidStateToken,
+    _encode,
+    _signature,
+    new_session,
+    sign_session,
+    verify_token,
+)
 
 SECRET = "test-secret-not-a-real-key"
 NOW = 1788000000
@@ -32,6 +40,37 @@ def test_开场白随令牌往返() -> None:
     token = sign_session(session, secret=SECRET, issued_at=NOW)
 
     assert verify_token(token, secret=SECRET, now=NOW).opening == session.opening
+
+
+def test_防御姿态与追问窗口随令牌往返() -> None:
+    """服务端不存会话，令牌里没有的就是永远没有了。
+
+    guard / window / peak 少带一个，玩家只要刷新一下就能洗掉责骂的后遗症、
+    或者把错过的追问窗口重新变出来——判分的连续性全靠这三个字段。
+    """
+    session = new_session(gid="01JTESTGID")
+    局中 = replace(
+        session,
+        state=replace(session.state, round=5, trust=58, guard=3, window=2, peak=61),
+    )
+
+    token = sign_session(局中, secret=SECRET, issued_at=NOW)
+
+    assert verify_token(token, secret=SECRET, now=NOW).state == 局中.state
+
+
+def test_旧版本令牌一律拒绝() -> None:
+    """v1 的载荷里没有 guard / window / peak。
+
+    签名是好的、载荷也解得开，但按默认值补齐续玩会算出与判分规格不符的分数。
+    让玩家重开一局，比让他打完一局假的要好。
+    """
+    v1 = _encode({"v": 1, "gid": "01JTESTGID", "round": 5, "trust": 58,
+                  "pool": 0, "used": {}, "history": [], "op": "", "iat": NOW})
+    伪造令牌 = f"{v1}.{_signature(v1, SECRET)}"
+
+    with pytest.raises(InvalidStateToken):
+        verify_token(伪造令牌, secret=SECRET, now=NOW)
 
 
 def test_换一把密钥无法通过校验() -> None:

@@ -11,14 +11,14 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, List, Optional, Protocol
+from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Protocol
 
 import logging
 
 from .classify import Classification, parse_classification
 from .fallback import fallback_line
 from .safety import absorb_injection, screen_sentence
-from .scoring import MAX_ROUNDS, Ending, evaluate_turn, mood_for
+from .scoring import MAX_ROUNDS, Ending, evaluate_turn, mood_for, under_pressure
 from .state_token import Session, TurnRecord, sign_session
 from .streaming import SentenceBuffer
 
@@ -71,6 +71,26 @@ class Event:
     data: Dict[str, Any] = field(default_factory=dict)
 
 
+def _screened(sentences: Iterable[str]) -> List[str]:
+    """过安全层，并丢掉被剥成空壳的句子（整句只是一句舞台指示）。"""
+    out = []
+    for sentence in sentences:
+        text = screen_sentence(sentence)
+        if text is not None:
+            out.append(text)
+    return out
+
+
+def _split_screened(text: str) -> List[str]:
+    """把一整段文本切成句子再过安全层。
+
+    结局台词是非流式拿到的一整段，但它下发时同样一句一个气泡——
+    对玩家来说，最后那几句和前面十二轮没有任何区别。
+    """
+    buffer = SentenceBuffer()
+    return _screened(buffer.feed(text) + buffer.flush())
+
+
 async def play_turn(
     session: Session,
     utterance: str,
@@ -120,13 +140,14 @@ async def play_turn(
                 timeout=act_timeout,
                 history=session.history,
                 opening=session.opening,
+                # 该轮李老师又催了一遍：判分要多扣 3 分，台词也得跟着紧张起来。
+                # 隐形的信任流失从这里变成一个玩家看得见的施压来源。
+                pressured=under_pressure(round_),
             ):
-                for sentence in buffer.feed(chunk):
-                    text = screen_sentence(sentence)
+                for text in _screened(buffer.feed(chunk)):
                     spoken.append(text)
                     yield Event("sentence", {"text": text})
-            for sentence in buffer.flush():
-                text = screen_sentence(sentence)
+            for text in _screened(buffer.flush()):
                 spoken.append(text)
                 yield Event("sentence", {"text": text})
         except asyncio.TimeoutError:
@@ -155,16 +176,22 @@ async def play_turn(
             "grounded": grounded,
             "pool": outcome.state.pool,
             "degraded": classification is None,
+            # 剧情事件，不是判分反馈：前端在对话里渲染成一条旁白
+            "pressure": outcome.pressured,
         },
     )
 
     if outcome.ending is not None:
-        line = await gateway.narrate_ending(
+        raw = await gateway.narrate_ending(
             ending=outcome.ending, trust=outcome.state.trust
         )
         yield Event(
             "ending",
-            {"kind": outcome.ending.value, "trust": outcome.state.trust, "line": line},
+            {
+                "kind": outcome.ending.value,
+                "trust": outcome.state.trust,
+                "lines": _split_screened(raw),
+            },
         )
 
     record = TurnRecord(

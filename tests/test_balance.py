@@ -66,8 +66,12 @@ def test_扎根门控是必需品而非优化项() -> None:
     有门控 = simulate(PARROT, GAMES, SEED, grounding_gate=True)
     无门控 = simulate(PARROT, GAMES, SEED, grounding_gate=False)
 
-    assert 有门控.win_rate < 0.20
-    assert 无门控.win_rate > 0.90
+    assert 有门控.win_rate < 0.15
+    # 关掉门控，复读固定句子就从"几乎赢不了"变成"多半能赢"。
+    # 上界不再是 90%——效力矩阵与阻力曲线各自也拦掉一部分复读，
+    # 但拦不住的那一大半正是这条门控在守的。
+    assert 无门控.win_rate > 0.60
+    assert 无门控.win_rate > 有门控.win_rate * 10
 
 
 def test_没有人会在第六轮就被踢出局() -> None:
@@ -81,21 +85,22 @@ def test_没有人会在第六轮就被踢出局() -> None:
     assert weighted(results, "blacklist_rate") < 0.10
 
 
-def test_失误值取整对总体胜率的影响不超过一个百分点(
+def test_失误值取半分对总体胜率的影响不超过一个百分点(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """§3.5 脚注点名要求复核的那一条。
+    """失误值必须是整数，但整数化不能把平衡推走。
 
-    失误值的蒙特卡洛标定点是 −5/−2.5/−2.5，参数表取整为 −5/−3/−3。
-    取整方向略偏严，脚注预期影响 <1pp——这里把"预期"变成"验证"。
+    现在的 −4/−2/−2 已经是整数，所以这条测的是**灵敏度**：
+    在标定点附近挪半分，总体胜率是否稳得住。挪半分就翻车的参数，
+    在真人对局的噪声下同样守不住。
     """
-    取整后 = weighted(run_all(GAMES, SEED), "win_rate")
+    标定值 = weighted(run_all(GAMES, SEED), "win_rate")
 
     monkeypatch.setattr(
         scoring,
         "PENALTY_VALUES",
-        {"scold": -5, "preach": -2.5, "bare_assertion": -2.5},
+        {"scold": -4.5, "preach": -2.5, "bare_assertion": -2.5},
     )
-    标定点 = weighted(run_all(GAMES, SEED), "win_rate")
+    挪半分 = weighted(run_all(GAMES, SEED), "win_rate")
 
-    assert abs(取整后 - 标定点) < 0.01
+    assert abs(标定值 - 挪半分) < 0.01
