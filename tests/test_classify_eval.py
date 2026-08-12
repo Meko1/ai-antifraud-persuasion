@@ -316,14 +316,16 @@ def test_按难例分类报告扎根准确率() -> None:
     assert report.grounded_accuracy_by_tag["plain"] == 1.0
 
 
-def test_复读攻略子集的门槛由平衡模型反推而来() -> None:
-    """93% 不是拍的。
+def test_复读攻略子集的门槛严于平衡模型的要求() -> None:
+    """93% 原本是反推来的，现在是**留出来的余量**。
 
-    parrot 人设标称扎根率 12%，分类器每放行一句模板句就把它抬高。
-    蒙特卡洛扫过去：有效扎根率一到 0.18，parrot 胜率就越过 §9.4 的 20% 上限，
-    对应的分类器泄漏率上限是 7%。复现：tools/balance_sim.py 改 PARROT.grounded_rate。
+    难度重设计之前：parrot 标称扎根率 12%，有效扎根率一到 0.18 就击穿胜率上限，
+    倒推出泄漏率上限 7%，于是 93%。
+    重设计之后临界点移到 0.40——效力矩阵与阻力曲线本身也在拦复读，
+    按同样的算法只需 68%。复现：tools/balance_sim.py 改 PARROT.grounded_rate。
 
-    §9.4 的 80% 通用门槛在这一类上是不够的——差了 13 个百分点。
+    不下调，是因为标注集实测这一类是 100%，守 93% 一分余量都没花；
+    而新腾出来的余量来自还会随平衡迭代变动的参数，不该拿来当安全线。
     """
     assert PARROT_GROUNDED_FLOOR == 0.93
     assert PARROT_GROUNDED_FLOOR > GROUNDED_ACCURACY_FLOOR

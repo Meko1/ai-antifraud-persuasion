@@ -83,11 +83,33 @@ def absorb_injection(utterance: str) -> Optional[str]:
     return None
 
 
-def screen_sentence(sentence: str) -> str:
-    """校验单句。命中任一规则即整句替换，不报错、不中断、不留空白。"""
-    if _violates(sentence):
+# 舞台指示：模型爱写「（停顿了一下）」「(叹气)」这类旁白。微信聊天窗口里
+# 不可能出现动作描写，它是最刺眼的一处穿帮——玩家一眼就看出对面是模型。
+# 提示词已经明令禁止（见 gateway.ACT_SYSTEM_PROMPT），这里是确定性的兜底。
+_STAGE_DIRECTION = re.compile(r"[（(][^（()）]{0,20}[)）]")
+
+
+def screen_sentence(sentence: str) -> Optional[str]:
+    """校验单句。
+
+    返回 None 表示整句丢弃（剥掉旁白后什么都不剩），调用方应跳过它；
+    命中安全规则则整句替换成兜底台词，不报错、不中断、不留空白。
+    """
+    stripped = strip_stage_directions(sentence)
+    if not stripped:
+        return None
+    if _violates(stripped):
         return SAFE_FALLBACK
-    return sentence
+    return stripped
+
+
+def strip_stage_directions(sentence: str) -> str:
+    """删掉括号里的动作、神态、心理描写。
+
+    老陈在用微信打字，括号里的东西一概不属于他——不区分"旁白"与"补充说明"，
+    一律删。长度上限只防一种情况：模型漏掉右括号，正则贪到句尾把整句吃掉。
+    """
+    return _STAGE_DIRECTION.sub("", sentence).strip()
 
 
 def _violates(sentence: str) -> bool:

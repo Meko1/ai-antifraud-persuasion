@@ -17,7 +17,9 @@ from typing import Tuple
 
 from .scoring import GameState, new_game
 
-TOKEN_VERSION = 1
+# v2：GameState 增加 guard / window / peak。旧令牌一律拒绝而不做兼容解析——
+# 缺字段的局按默认值续玩会算出与判分规格不符的分数，那比让玩家重开一局更糟。
+TOKEN_VERSION = 2
 
 # 令牌有效期。签名本身不防重放，过期时间是那道兜底：
 # 一个泄漏的令牌最多只能被拿来续玩两小时。
@@ -85,6 +87,9 @@ def sign_session(session: Session, *, secret: str, issued_at: int) -> str:
             "trust": session.state.trust,
             "pool": session.state.pool,
             "used": dict(session.state.used),
+            "guard": session.state.guard,
+            "window": session.state.window,
+            "peak": session.state.peak,
             "history": [record.to_wire() for record in session.history],
             "op": session.opening,
             "iat": issued_at,
@@ -115,6 +120,9 @@ def verify_token(token: str, *, secret: str, now: int) -> Session:
             trust=data["trust"],
             pool=data["pool"],
             used=data["used"],
+            guard=data["guard"],
+            window=data["window"],
+            peak=data["peak"],
         ),
         history=tuple(TurnRecord.from_wire(r) for r in data.get("history", ())),
         opening=data.get("op", ""),

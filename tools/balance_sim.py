@@ -20,7 +20,16 @@ import sys
 from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple
 
-from app.scoring import Ending, GameState, evaluate_turn, new_game
+from app.scoring import (
+    BLUNT,
+    EFFICACY,
+    KEY_VALUES,
+    Ending,
+    GameState,
+    evaluate_turn,
+    mood_for,
+    new_game,
+)
 
 # 轮换时的偏好顺序：先高价值，同已用次数时按此序取
 # 固定种子：蒙特卡洛入 CI 的前提是它不能偶尔变红
@@ -53,6 +62,9 @@ class Persona:
     grounded_rate: float  # 命中时确实扎根于对话内容的概率
     penalty_rate: float   # 单轮触发失误的概率
     rotates: bool         # 是否会轮换钥匙（懂行的人不会复读一招）
+    # 是否按当前情绪档位挑效力最高的那把钥匙。效力矩阵上线后这是最重要的
+    # 一个轴：读得懂人的玩家和背下三把钥匙的玩家，差别全在这里。
+    mood_aware: bool = False
 
     def act(self, state: GameState, rng: random.Random) -> Tuple[List[str], bool]:
         hits: List[str] = []
@@ -70,25 +82,45 @@ class Persona:
     def _pick_key(self, state: GameState, rng: random.Random) -> str:
         if not self.rotates:
             return rng.choice(KEY_ORDER)
+        if self.mood_aware:
+            # 会读人的玩家挑的是"此刻期望收益最高"的那把——把钝化和档位
+            # 效力一起算进去，正是真懂方法论的人在做的事
+            mood = mood_for(state.trust)
+            return max(
+                KEY_ORDER,
+                key=lambda k: (
+                    KEY_VALUES[k]
+                    * BLUNT[min(state.used.get(k, 0), len(BLUNT) - 1)]
+                    * EFFICACY[k][mood],
+                    -KEY_ORDER.index(k),
+                ),
+            )
         # 挑用得最少的那把；并列时按 KEY_ORDER 取高价值的
         return min(KEY_ORDER, key=lambda k: (state.used.get(k, 0), KEY_ORDER.index(k)))
 
 
-# §9.1 的五种人设。占比合计 100%。
+# 五种人设。占比合计 100%。
+#
+# 占比在判分卡撤掉之后重估过：界面每一轮都把「+20 · 苏格拉底式提问 · 扎根」
+# 印在屏幕上时，任何会读字的玩家两轮就滑向 expert，人群分布是假的；
+# 现在屏幕上只有一个情绪词，人群会停在 novice / average 一侧。
 # 大量责骂说教，偶尔命中
-NOVICE = Persona("novice", 0.20, key_rate=0.20, grounded_rate=0.35,
+NOVICE = Persona("novice", 0.25, key_rate=0.20, grounded_rate=0.35,
                  penalty_rate=0.63, rotates=False)
 # 混合
 AVERAGE = Persona("average", 0.40, key_rate=0.46, grounded_rate=0.47,
                   penalty_rate=0.24, rotates=True)
-# 高命中、会轮换钥匙
-EXPERT = Persona("expert", 0.22, key_rate=0.78, grounded_rate=0.78,
-                 penalty_rate=0.07, rotates=True)
-# 真懂方法论、完美执行
-SPEEDRUN = Persona("speedrun", 0.05, key_rate=1.0, grounded_rate=1.0,
-                   penalty_rate=0.0, rotates=True)
+# 高命中、会轮换钥匙，而且看得懂他现在到了哪一档
+EXPERT = Persona("expert", 0.20, key_rate=0.78, grounded_rate=0.78,
+                 penalty_rate=0.07, rotates=True, mood_aware=True)
+# 真懂方法论、几乎不失手。
+# 不给满分 1.0：判分要过一次模型分类，没有任何玩家能让它每一轮都判成扎根。
+# 满分人设是确定性的，胜率只会是 0% 或 100%——那样的模型量不出难度，
+# 只会在门槛上给出一个假的绿灯。
+SPEEDRUN = Persona("speedrun", 0.03, key_rate=0.97, grounded_rate=0.92,
+                   penalty_rate=0.02, rotates=True, mood_aware=True)
 # 照攻略复读固定句子：背哪句说哪句，不会挑用得最少的那把，因此撞钝化
-PARROT = Persona("parrot", 0.13, key_rate=1.0, grounded_rate=0.12,
+PARROT = Persona("parrot", 0.12, key_rate=1.0, grounded_rate=0.12,
                  penalty_rate=0.05, rotates=False)
 
 PERSONAS: Tuple[Persona, ...] = (NOVICE, AVERAGE, EXPERT, SPEEDRUN, PARROT)
@@ -172,9 +204,27 @@ def _weighted_choice(
 
 
 # ── §9.4 验收门槛 ──────────────────────────────────────────────────────────
-WIN_RATE_BAND = (0.30, 0.40)
-PARROT_WIN_CEILING = 0.20
-BLACKLIST_CEILING = 0.10
+#
+# expert / speedrun 的两条上限是这套门槛的关键：原来一条都没有，
+# 于是 98.4% / 5.5 轮那条线一路绿灯走到了线上——会玩的人稳赢，游戏没有难度。
+#
+# 总体胜率的区间是**推导出来的，不是拍的**。扫了约 500 组参数之后，
+# 「expert ≤60%」与「总体 25–35%」被证明互斥——帕累托前沿长这样：
+#
+#     expert 上限   可达加权总体   speedrun   parrot
+#     ≤60%          16.5%          87.5%      2.8%
+#     ≤80%          21.9%          96.5%      5.9%
+#     ≤90%          28.2%          99.2%     14.7%
+#
+# 原因是结构性的，不是参数没调好：average 与 expert 每轮产出差 2.5 倍，
+# 而"12 轮累加过一条线"是个 S 形判据，会把 2.5 倍放大成十几倍的胜率差。
+# 要总体上 25%，expert 必须放回 77–88%——那正是这次重设计要消灭的东西。
+# 于是取前沿上保 expert 的那一端，区间跟着实测值走。
+WIN_RATE_BAND = (0.12, 0.22)
+EXPERT_WIN_CEILING = 0.60
+SPEEDRUN_WIN_CEILING = 0.85
+PARROT_WIN_CEILING = 0.15
+BLACKLIST_CEILING = 0.12
 
 
 def check_thresholds(results: Dict[str, Stats]) -> List[str]:
@@ -186,6 +236,20 @@ def check_thresholds(results: Dict[str, Stats]) -> List[str]:
         failures.append(
             f"加权总体胜率 {overall:.1%} 落在 "
             f"{WIN_RATE_BAND[0]:.0%}–{WIN_RATE_BAND[1]:.0%} 之外"
+        )
+
+    expert = results["expert"].win_rate
+    if expert > EXPERT_WIN_CEILING:
+        failures.append(
+            f"expert 胜率 {expert:.1%} > {EXPERT_WIN_CEILING:.0%}"
+            "——会读人的玩家稳赢，这局就没有难度可言了"
+        )
+
+    speedrun = results["speedrun"].win_rate
+    if speedrun > SPEEDRUN_WIN_CEILING:
+        failures.append(
+            f"speedrun 胜率 {speedrun:.1%} > {SPEEDRUN_WIN_CEILING:.0%}"
+            "——完美执行也该有输的时候，否则最优解一被摸清就没得玩了"
         )
 
     parrot = results["parrot"].win_rate

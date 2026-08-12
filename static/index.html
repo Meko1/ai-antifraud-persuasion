@@ -152,11 +152,12 @@
     <span class="navmore" aria-hidden="true"></span>
   </header>
 
-  <!-- 微信在导航栏下方放群公告条，这里借那个位置放对局状态 -->
+  <!-- 微信在导航栏下方放群公告条，这里借那个位置放对局状态。
+       只有一个情绪词，没有分数——分数在对局中出现，等于把攻略印在屏幕上。
+       要读出他到了哪一档，只能看他说的话。逐轮判分留到复盘。 -->
   <div class="statusbar">
-    <span class="st-label">信任度</span>
-    <b class="st-value num" id="trust" role="status" aria-live="polite">32</b>
-    <b class="st-delta num" id="trustDelta" aria-hidden="true"></b>
+    <span class="st-label">他现在</span>
+    <b class="st-mood" id="mood" role="status" aria-live="polite">烦躁</b>
     <span class="st-track">
       <i class="st-fill" id="trustFill"></i>
       <i class="st-goal" id="trustGoal" title="劝住线"></i>

@@ -315,21 +315,26 @@ body {
   color: var(--wx-gray);
 }
 
-.st-value { font-size: 15px; font-weight: 600; color: var(--wx-text); }
-
-/* 判分那一跳的余韵：数字滚完，涨跌值在旁边亮一下就走 */
-.st-delta {
+/* 情绪词。它是对局中唯一的状态显示，所以要稳：宽度固定，
+   换词时不能把后面的进度条挤得来回跳。 */
+.st-mood {
   flex: none;
-  min-width: 0;
-  font-size: 12px;
+  min-width: 4.5em;
+  font-size: 13px;
   font-weight: 600;
-  opacity: 0;
-  transition: opacity 220ms var(--ease);
+  color: var(--wx-text);
 }
 
-.st-delta.show { opacity: 1; }
-.st-delta.up { color: var(--wx-rise); }
-.st-delta.down { color: var(--wx-fall); }
+.st-mood.turn { animation: moodturn 620ms var(--ease) both; }
+
+@keyframes moodturn {
+  0% { opacity: 0.25; transform: translateY(-3px); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-mood.turn { animation: none; }
+}
 
 .st-track {
   position: relative;
@@ -475,6 +480,14 @@ body {
 }
 
 .sysnote.bad { color: #c85a5a; }
+
+/* 剧情旁白（李老师又催了一遍）。它不是判分反馈，所以不带底色，
+   在时间线上像一条被顺手记下的事，而不像一张成绩单。 */
+.sysnote.push {
+  background: none;
+  color: var(--wx-sub);
+  font-size: 11.5px;
+}
 
 .sysnote .delta { font-weight: 600; font-size: 13px; }
 .sysnote .delta.up { color: var(--wx-rise); }

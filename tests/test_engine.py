@@ -130,7 +130,7 @@ async def test_逐轮记录进history供复盘使用() -> None:
     assert 记录.reply == "别劝我。老师说了今天最后一天。"
     assert 记录.hits == ("socratic_question",)
     assert 记录.grounded is True
-    assert 记录.delta == 20
+    assert 记录.delta == 18
 
 
 class 记录入参的Gateway(FakeGateway):
@@ -267,5 +267,5 @@ async def test_演绎超时走兜底台词但分数照算() -> None:
     assert 台词, "降级也必须有话说，不能给玩家一片空白"
 
     score = next(e for e in events if e.name == "score")
-    assert score.data["delta"] == 20  # 分数照算，不受演绎降级影响
+    assert score.data["delta"] == 18  # 分数照算，不受演绎降级影响
     assert score.data["degraded"] is False  # 降级的是演绎，分类没降级

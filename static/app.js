@@ -58,6 +58,8 @@ const ERRORS = {
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, REDUCED ? 0 : ms));
+
 // ── 状态 ────────────────────────────────────────────────────
 
 const game = {
@@ -65,6 +67,7 @@ const game = {
   contestId: '',
   opening: '',
   trust: 0,
+  mood: 'irritated',
   threshold: 80,
   maxRounds: 12,
   remaining: 12,
@@ -217,16 +220,52 @@ function avatar(who) {
   return el;
 }
 
-function say(who, text) {
+function msgRow(who, text) {
   const row = document.createElement('div');
   row.className = `msg ${who}`;
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.textContent = text;
   row.append(avatar(who), bubble);
+  return row;
+}
+
+function say(who, text) {
+  thread.appendChild(msgRow(who, text));
+  toBottom();
+}
+
+/** 「对方正在输入」的那个气泡。他说完的每一句都插在它前面。 */
+function typingRow() {
+  const row = document.createElement('div');
+  row.className = 'msg them';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble typing';
+  row.append(avatar('them'), bubble);
   thread.appendChild(row);
   toBottom();
-  return bubble;
+  return row;
+}
+
+/** 逐句下发的排队器。
+ *
+ * 后端已按句切好（ADR-0004），但 SSE 常常一口气把三句一起推过来。
+ * 真人在微信上是连发三条短消息，中间有打字的间隔——所以渲染节奏
+ * 和网络节奏必须脱钩：句子到了先排队，按 260–420ms 一条往外放。
+ */
+function paced(anchor) {
+  let chain = Promise.resolve();
+  let count = 0;
+  return {
+    push(text) {
+      chain = chain.then(async () => {
+        if (count++) await sleep(260 + Math.random() * 160);
+        thread.insertBefore(msgRow('them', text), anchor);
+        toBottom();
+      });
+    },
+    drain: () => chain,
+  };
 }
 
 function divider(text) {
@@ -278,59 +317,37 @@ function hitTags(hits, grounded) {
   return out;
 }
 
-function showVerdict(score) {
-  const d = document.createElement('b');
-  d.className = 'delta num ' + (score.delta > 0 ? 'up' : score.delta < 0 ? 'down' : 'flat');
-  d.textContent = score.delta > 0 ? `+${score.delta}` : String(score.delta);
-  sysnote([d, ...hitTags(score.hits, score.grounded)]);
+/** 剧情旁白。李老师在群里催的那一下走这个位置——
+ *  它不是判分反馈，是一个看得见的施压来源。 */
+function narrate(text) {
+  sysnote([text]).classList.add('push');
 }
 
-function paintTrust() {
+// 对局中不给数字，只给一个词。玩家要判断他到了哪一档，只能靠读他说的话——
+// 而这正是这个作品想教的那件事。数字与标签全部留到复盘。
+const MOODS = {
+  guarded: '戒备',
+  irritated: '烦躁',
+  wavering: '有点松动',
+  softening: '松动了',
+};
+
+function paintMood(mood) {
+  const el = $('mood');
+  const word = MOODS[mood] || MOODS.guarded;
+  if (el.textContent !== word) {
+    el.textContent = word;
+    el.classList.remove('turn');
+    void el.offsetWidth;  // 强制重排，让同名动画能第二次播
+    el.classList.add('turn');
+  }
+
+  // 细条不带数字也不闪：它只是个余光里的东西，用来兜住"完全没有反馈"的茫然
   const pct = Math.max(0, Math.min(100, game.trust));
   const fill = $('trustFill');
   fill.style.width = pct + '%';
   fill.className = 'st-fill' + (pct < 20 ? ' danger' : pct < 45 ? ' low' : '');
   $('trustGoal').style.left = game.threshold + '%';
-}
-
-function countTo(el, from, to, ms) {
-  el.dataset.target = String(to);
-  if (REDUCED || from === to || document.hidden) {
-    el.textContent = String(to);
-    return;
-  }
-  const started = performance.now();
-  const step = (now) => {
-    const p = Math.min(1, (now - started) / ms);
-    const eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = String(Math.round(from + (to - from) * eased));
-    if (p < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-  // 兜底：玩家切出去看一眼别的，rAF 就停摆了。动画可以丢，数值不能丢。
-  setTimeout(() => {
-    if (el.dataset.target === String(to)) el.textContent = String(to);
-  }, ms + 80);
-}
-
-function bumpTrust(next, delta) {
-  countTo($('trust'), game.trust, next, 520);
-  game.trust = next;
-  paintTrust();
-  flashDelta(delta);
-}
-
-/** 涨跌值在信任度旁边亮一下就走。状态条上只留结果，过程留在判分卡里。 */
-function flashDelta(delta) {
-  const el = $('trustDelta');
-  if (!delta) {
-    el.className = 'st-delta num';
-    return;
-  }
-  el.textContent = delta > 0 ? `+${delta}` : String(delta);
-  el.className = 'st-delta num show ' + (delta > 0 ? 'up' : 'down');
-  clearTimeout(flashDelta.timer);
-  flashDelta.timer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
 // ── 一轮 ────────────────────────────────────────────────────
@@ -341,8 +358,8 @@ async function playTurn(utterance) {
   $('say').disabled = true;
 
   say('me', utterance);
-  const bubble = say('them', '');
-  bubble.classList.add('typing');
+  const typing = typingRow();
+  const queue = paced(typing);
 
   let resp;
   try {
@@ -352,17 +369,17 @@ async function playTurn(utterance) {
       body: JSON.stringify({ token: game.token, utterance }),
     });
   } catch (e) {
-    bubble.parentElement.remove();
+    typing.remove();
     return failTurn('network');
   }
 
   if (!resp.ok || !resp.body) {
-    bubble.parentElement.remove();
+    typing.remove();
     return failTurn('internal');
   }
 
   let round = null;
-  let spoken = '';
+  const spoken = [];
   let score = null;
   let failed = null;
 
@@ -373,9 +390,8 @@ async function playTurn(utterance) {
         game.remaining = ev.data.remaining;
         $('remaining').textContent = String(ev.data.remaining);
       } else if (ev.name === 'sentence') {
-        spoken += ev.data.text;
-        bubble.textContent = spoken;
-        toBottom();
+        spoken.push(ev.data.text);
+        queue.push(ev.data.text);
       } else if (ev.name === 'score') {
         score = ev.data;
       } else if (ev.name === 'ending') {
@@ -390,8 +406,9 @@ async function playTurn(utterance) {
     failed = failed || 'network';
   }
 
-  bubble.classList.remove('typing');
-  if (!spoken) bubble.parentElement.remove();
+  // 等他把话说完。判分那一跳绝不能抢在最后一句前面落地
+  await queue.drain();
+  typing.remove();
 
   if (failed) return failTurn(failed);
 
@@ -399,7 +416,7 @@ async function playTurn(utterance) {
     game.turns.push({
       round: round || game.turns.length + 1,
       utterance,
-      reply: spoken,
+      reply: spoken.join(''),
       hits: score.hits,
       grounded: score.grounded,
       delta: score.delta,
@@ -407,9 +424,12 @@ async function playTurn(utterance) {
       before: game.trust,
       pool: score.pool,
     });
-    bumpTrust(score.trust, score.delta);
-    showVerdict(score);
-    if (score.degraded) sysnote(['这一轮没判出标签，按不加不减处理']);
+    game.trust = score.trust;
+    paintMood(score.mood);
+    // 判分卡不在对局中出现：标签与分数一律留到复盘。
+    // 边打边给答案等于把攻略印在屏幕上——玩家两轮就学会照着清单刷分，
+    // 从此不再读人。要读的东西只有一样：他说的话。
+    if (score.pressure) narrate('李老师又在群里催了一遍');
   }
 
   if (game.ending) return finish();
@@ -472,10 +492,16 @@ function photo(node) {
   toBottom();
 }
 
-function finish() {
+async function finish() {
   const kind = game.ending.kind;
-  if (game.ending.line) say('them', game.ending.line);
   $('composer').hidden = true;
+
+  // 最后几句和前面十二轮一样，一句一个气泡。结局不该是"突然弹出一整段"
+  for (const [i, line] of (game.ending.lines || []).entries()) {
+    if (i) await sleep(260 + Math.random() * 160);
+    say('them', line);
+  }
+  await sleep(400);
 
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
   if (kind === 'blacklisted') {
@@ -786,6 +812,7 @@ const ready = (async () => {
   game.token = data.token;
   game.opening = data.opening;
   game.trust = data.trust;
+  game.mood = data.mood;
   game.threshold = data.win_threshold;
   game.maxRounds = data.remaining;
   game.remaining = data.remaining;
@@ -812,9 +839,8 @@ async function enterGame() {
   game.entered = true;
   row.querySelector('.badge').remove();
   document.querySelector('.nav-count').remove();
-  $('trust').textContent = String(game.trust);
   $('remaining').textContent = String(game.remaining);
-  paintTrust();
+  paintMood(game.mood);
   divider('下午 2:47');
   say('them', game.opening);
   $('say').focus();
