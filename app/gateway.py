@@ -196,6 +196,14 @@ class ModelGateway:
         """
         instruction = {
             Ending.PERSUADED: "你终于松口了。承认自己差点上当，语气里有后怕，也有点难为情。",
+            Ending.INTERCEPTED: (
+                "你动摇了，但没能全放下：只按老师说的先转两万试试水，剩下的暂时按住。"
+                "语气里有让步，也有不甘，还替自己找了个台阶。"
+            ),
+            Ending.STALLED: (
+                "你没被说服，但也不打算现在就转。你说再看看、明天再说——"
+                "这话多半是为了把他打发走，不是让步。"
+            ),
             Ending.BLACKLISTED: "你彻底失去耐心，撂下一句狠话就把他拉黑，不再理他。",
             Ending.TRANSFERRED: "你没听劝，钱已经转出去了。语气是敷衍的、急着结束对话的。",
         }[ending]

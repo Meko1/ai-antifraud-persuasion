@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import random
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple
 
@@ -139,6 +140,9 @@ class Stats:
     win_rate: float
     blacklist_rate: float
     mean_rounds: float
+    # 各档结局的占比，键为 Ending.value。胜率只看最高一档，
+    # 而结局四档要回答的是另一个问题：有多少人拿到的是一张能发出去的卡。
+    ladder: Dict[str, float]
 
 
 def play_game(
@@ -162,18 +166,19 @@ def simulate(
 ) -> Stats:
     # 每个人设一条独立的随机流，加不加人设都不会扰动其他人设的结果
     rng = random.Random(f"{seed}:{persona.name}")
-    wins = blacklisted = total_rounds = 0
+    counts: Counter[str] = Counter()
+    total_rounds = 0
     for _ in range(games):
         result = play_game(persona, rng, grounding_gate=grounding_gate)
-        wins += result.ending is Ending.PERSUADED
-        blacklisted += result.ending is Ending.BLACKLISTED
+        counts[result.ending.value] += 1
         total_rounds += result.rounds
     return Stats(
         persona=persona.name,
         games=games,
-        win_rate=wins / games,
-        blacklist_rate=blacklisted / games,
+        win_rate=counts[Ending.PERSUADED.value] / games,
+        blacklist_rate=counts[Ending.BLACKLISTED.value] / games,
         mean_rounds=total_rounds / games,
+        ladder={e.value: counts[e.value] / games for e in Ending},
     )
 
 
@@ -190,6 +195,10 @@ def weighted(results: Dict[str, Stats], field: str) -> float:
     return sum(
         getattr(results[p.name], field) * p.share for p in PERSONAS
     )
+
+
+def weighted_ladder(results: Dict[str, Stats], kind: str) -> float:
+    return sum(results[p.name].ladder[kind] * p.share for p in PERSONAS)
 
 
 def _weighted_choice(
@@ -225,6 +234,12 @@ EXPERT_WIN_CEILING = 0.60
 SPEEDRUN_WIN_CEILING = 0.85
 PARROT_WIN_CEILING = 0.15
 BLACKLIST_CEILING = 0.12
+
+# 结局四档要守的不是难度，是**打完之后手里有没有一张发得出去的卡**。
+# 改档之前 87% 的人拿到同一张「他还是转走了」，没有人会把失败截图发到群里，
+# 病毒循环在源头就断了。这条盯的是最底下那一档有多挤——劝住线一动不动，
+# 所以它与上面几条难度门槛不冲突：调难度不会碰它，把阶梯改窄了才会。
+WORST_TIER_CEILING = 0.60
 
 
 def check_thresholds(results: Dict[str, Stats]) -> List[str]:
@@ -266,6 +281,13 @@ def check_thresholds(results: Dict[str, Stats]) -> List[str]:
             "——太多人会在中途被踢出局，投票转化率受损"
         )
 
+    worst = weighted_ladder(results, Ending.TRANSFERRED.value)
+    if worst > WORST_TIER_CEILING:
+        failures.append(
+            f"落到最低一档（转账）的比例 {worst:.1%} > {WORST_TIER_CEILING:.0%}"
+            "——大多数人打完只拿到一张发不出去的卡，阶梯就白分了"
+        )
+
     return failures
 
 
@@ -288,6 +310,33 @@ def format_table(results: Dict[str, Stats]) -> str:
     return "\n".join(lines)
 
 
+# 阶梯顺序即 Ending 的声明顺序：劝住 / 拦下 / 拖住 / 转账 / 被拉黑
+ENDING_LABELS: Dict[str, str] = {
+    Ending.PERSUADED.value: "劝住",
+    Ending.INTERCEPTED.value: "拦下",
+    Ending.STALLED.value: "拖住",
+    Ending.TRANSFERRED.value: "转账",
+    Ending.BLACKLISTED.value: "被拉黑",
+}
+
+
+def format_ladder(results: Dict[str, Stats]) -> str:
+    """结局四档的分布。胜率那张表看的是难度，这张看的是"分享卡上写什么"。"""
+    head = "".join(f"{label:>8}" for label in ENDING_LABELS.values())
+    lines = [f"{'人设':<10}{head}", "─" * (10 + 8 * len(ENDING_LABELS))]
+    for p in PERSONAS:
+        row = "".join(
+            f"{results[p.name].ladder[kind]:>8.1%}" for kind in ENDING_LABELS
+        )
+        lines.append(f"{p.name:<10}{row}")
+    lines.append("─" * (10 + 8 * len(ENDING_LABELS)))
+    lines.append(
+        f"{'加权总体':<8}"
+        + "".join(f"{weighted_ladder(results, kind):>8.1%}" for kind in ENDING_LABELS)
+    )
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="判分引擎平衡验证")
     parser.add_argument("--games", type=int, default=20000, help="每个人设的局数")
@@ -306,6 +355,8 @@ def main() -> int:
           f"扎根门控 {'开' if gate else '关'}")
     print()
     print(format_table(results))
+    print()
+    print(format_ladder(results))
     print()
 
     if not gate:

@@ -554,13 +554,17 @@ body {
   color: rgba(255, 255, 255, 0.88);
 }
 
-/* 作废态：同一张卡，灰掉，金额划掉。
-   文字转深色——橙卡上的白字挪到灰底上就成了 1.9:1，读不出来。 */
-.receipt.void { background: #d6d6d6; color: #5a5a5a; }
-.receipt.void .receipt-icon { background: rgba(0, 0, 0, 0.08); }
+/* 作废态（劝住）与待发态（拖住）：同一张卡，灰掉。
+   文字转深色——橙卡上的白字挪到灰底上就成了 1.9:1，读不出来。
+   两者只差一道删除线：劝住是他把转账撤了，拖住是那一页还停在他手机上没点。 */
+.receipt.void, .receipt.hold { background: #d6d6d6; color: #5a5a5a; }
+.receipt.void .receipt-icon, .receipt.hold .receipt-icon { background: rgba(0, 0, 0, 0.08); }
 .receipt.void .receipt-amt { text-decoration: line-through; text-decoration-thickness: 1px; }
-.receipt.void .receipt-to { color: #6e6e6e; }
-.receipt.void .receipt-foot { background: rgba(0, 0, 0, 0.06); color: #6e6e6e; }
+.receipt.void .receipt-to, .receipt.hold .receipt-to { color: #6e6e6e; }
+.receipt.void .receipt-foot, .receipt.hold .receipt-foot {
+  background: rgba(0, 0, 0, 0.06);
+  color: #6e6e6e;
+}
 
 .endcta {
   align-self: center;
@@ -656,9 +660,15 @@ body {
   border-bottom: 1px solid var(--wx-line); }
 
 .summary .kind { font-size: 22px; font-weight: 600; }
-.summary.persuaded .kind { color: var(--wx-brand); }
+/* 阶梯四档在这里只分三种颜色：保住了钱的、只争到时间的、什么也没留下的。
+   给四个档各配一个色会让这一块看着像评级表，而结局不是评级。 */
+.summary.persuaded .kind,
+.summary.intercepted .kind { color: var(--wx-brand); }
+.summary.stalled .kind { color: var(--wx-gray); }
 .summary.blacklisted .kind,
 .summary.transferred .kind { color: var(--wx-red); }
+
+.summary .saved { margin-top: 6px; font-size: 13.5px; color: var(--wx-gray); }
 
 .summary .copy { margin: 10px 0 0; font-size: 14.5px; line-height: 1.9; color: #4a4a4a; }
 .summary .copy em { font-style: normal; font-weight: 600; color: var(--wx-text); }
@@ -690,6 +700,29 @@ body {
 .tip p { margin: 5px 0 0; font-size: 13px; line-height: 1.85; color: #6b6b6b; }
 .empty { padding: 14px 16px; font-size: 13.5px; color: var(--wx-sub); }
 
+/* 名场面：他说过的话，一句一行，选中的那句上分享卡。
+   传播单元是他的台词，所以这张列表值得占一整块，而不是塞在按钮旁边。 */
+.quote {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.quote + .quote { box-shadow: inset 0 1px 0 var(--wx-line); }
+.quote .qno { font-size: 12px; color: var(--wx-sub); padding-top: 3px; }
+.quote .qtext { font-size: 14.5px; line-height: 1.55; color: #4a4a4a; }
+.quote[aria-checked="true"] { background: #fbfaf3; }
+.quote[aria-checked="true"] .qno { color: var(--gold); }
+.quote[aria-checked="true"] .qtext { color: var(--wx-text); font-weight: 500; }
+
 .actions { display: flex; gap: 10px; padding: 20px 16px 0; }
 
 .actions button {
@@ -707,6 +740,8 @@ body {
 
 .actions button.plain { background: var(--wx-white); color: var(--wx-text);
   border: 1px solid var(--wx-line); }
+
+.actions button:disabled { background: #d6d6d6; color: #6e6e6e; cursor: default; }
 
 #cardWrap { padding: 16px; }
 

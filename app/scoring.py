@@ -79,11 +79,21 @@ PENALTY_VALUES: Mapping[str, int] = {
 
 
 class Ending(str, Enum):
-    """对局的三种终态。三者都必须走结局生成，不能直接弹结果。"""
+    """对局的终态：一道四档的阶梯，外加提前出局的被拉黑。
 
-    PERSUADED = "persuaded"      # 劝住
-    BLACKLISTED = "blacklisted"  # 被拉黑
-    TRANSFERRED = "transferred"  # 转账
+    阶梯量的是**他最后有多信你**，对玩家呈现为"你救回了多少钱"。
+    排序有一处反直觉（见 CONTEXT.md「结局」）：单看钱，拖住（一分没转）该排在
+    拦下（已转出一小笔）之上；仍然把拖住排在下面，因为"我再想想"多半是打发人的
+    话，不是让步——他真被说动的表现是改了行为，不是嘴上推迟。
+
+    五种终态都必须走结局生成，不能直接弹结果。
+    """
+
+    PERSUADED = "persuaded"      # 劝住：一分没转
+    INTERCEPTED = "intercepted"  # 拦下：只转出一小笔试水，绝大部分保住了
+    STALLED = "stalled"          # 拖住：把转账推迟，钱没动也没保住
+    TRANSFERRED = "transferred"  # 转账：全部转出
+    BLACKLISTED = "blacklisted"  # 被拉黑：提前终止，不入档
 
 
 class Mood(str, Enum):
@@ -116,6 +126,24 @@ def mood_for(trust: int) -> Mood:
     if trust < 65:
         return Mood.WAVERING
     return Mood.SOFTENING
+
+
+# ── 结局阶梯 ──────────────────────────────────────────────────────────────
+#
+# 12 轮打完仍未过劝住线时，落在哪一档，由他**最后停在哪个情绪档位**决定。
+# 这里刻意不引入任何新阈值：档位本来就是"他有多信你"的分层，阶梯量的是同一件事。
+#
+# · 松动 —— 他已经开始自己怀疑，最后只按老师说的转一小笔试水，剩下的按住了
+# · 动摇 —— 他没被说服，但也不急着现在就转；"我再想想"是打发你，不是让步
+# · 烦躁 / 戒备 —— 开局就在这一档，十二轮什么也没发生，钱照转
+#
+# 判分求值一行不动，改的只是终局那一次分档（docs/REDESIGN-TRAINER.md D3）。
+LADDER: Mapping[Mood, Ending] = {
+    Mood.SOFTENING: Ending.INTERCEPTED,
+    Mood.WAVERING: Ending.STALLED,
+    Mood.IRRITATED: Ending.TRANSFERRED,
+    Mood.GUARDED: Ending.TRANSFERRED,
+}
 
 
 # ── 钥匙 × 情绪档位 效力矩阵 ───────────────────────────────────────────────
@@ -335,7 +363,7 @@ def decide_ending(trust: int, round_: int) -> Optional[Ending]:
     if trust <= BLACKLIST_THRESHOLD:
         return Ending.BLACKLISTED
     if round_ >= MAX_ROUNDS:
-        return Ending.TRANSFERRED
+        return LADDER[mood_for(trust)]
     return None
 
 

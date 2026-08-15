@@ -10,9 +10,11 @@
 import pytest
 
 from app.scoring import (
+    MAX_ROUNDS,
     Ending,
     GameState,
     Mood,
+    decide_ending,
     evaluate_turn,
     mood_for,
     new_game,
@@ -350,8 +352,9 @@ def test_信任度始终落在合法区间(
         (4, 78, ["expose_contradiction"], Ending.PERSUADED),
         # 归零即被拉黑，对局提前终止
         (5, 2, ["scold"], Ending.BLACKLISTED),
-        # 第 12 轮结束仍未达标，他把钱转走了
+        # 第 12 轮结束仍未达标：落哪一档看他最后停在哪个档位
         (11, 40, [], Ending.TRANSFERRED),
+        (11, 70, [], Ending.INTERCEPTED),
         # 对局仍在进行
         (5, 40, [], None),
     ],
@@ -364,6 +367,24 @@ def test_结局判定(
     outcome = evaluate_turn(state, hit_keys=命中, grounded=True)
 
     assert outcome.ending is 预期结局
+
+
+@pytest.mark.parametrize(
+    ("信任度", "预期结局"),
+    [
+        # 阶梯不另立阈值：档位本来就是"他有多信你"的分层，量的是同一件事
+        (79, Ending.INTERCEPTED),   # 松动，只差最后一步
+        (65, Ending.INTERCEPTED),
+        (64, Ending.STALLED),       # 动摇：他不急着现在转，但也没被说服
+        (45, Ending.STALLED),
+        (44, Ending.TRANSFERRED),   # 烦躁：开局就在这一档，十二轮什么也没发生
+        (1, Ending.TRANSFERRED),
+    ],
+)
+def test_轮次耗尽时结局按情绪档位分四档(
+    信任度: int, 预期结局: Ending
+) -> None:
+    assert decide_ending(信任度, MAX_ROUNDS) is 预期结局
 
 
 @pytest.mark.parametrize(

@@ -37,16 +37,49 @@ const PENALTIES = {
   bare_assertion: { name: '空口断言', tip: '「这是诈骗」四个字他这三个月听了无数遍，早免疫了。' },
 };
 
-const ENDINGS = {
-  persuaded: { title: '他把钱留住了', sub: '三十万还在卡里' },
-  blacklisted: { title: '他把你拉黑了', sub: '消息再也发不出去' },
-  transferred: { title: '他还是转走了', sub: '三点整，三十万到账' },
-};
-
 // 转账金额与收款方在这儿写死：它们是剧本设定（app/gateway.py 的 SCAM_SCRIPT），
 // 不是判分参数，服务端也不下发。
-const AMOUNT = '¥300,000.00';
+const TOTAL = 300000;
+// 拦下那一档里仍有一小笔钱被转走。这是骗局的标准剧本——先小额取信——
+// 代价是玩家表现不错、结局仍有人损失。取真实。
+const TEST_TRANSFER = 20000;
 const PAYEE = '转账给 启航投顾-李';
+
+const money = (n) =>
+  '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// 结局是一道阶梯，不是胜负（CONTEXT.md「结局」）。四档量的是他最后有多信你，
+// 对玩家呈现为"你救回了多少钱"——金额是这件事在现实里的记法。
+// 排序的反直觉之处：拖住一分没转，仍排在已转出一小笔的拦下之下，
+// 因为"我再想想"多半是打发你的话，不是让步。
+const ENDINGS = {
+  persuaded: {
+    tier: '劝住', title: '他把钱留住了',
+    savedCopy: '三十万，一分没转',
+    receipt: 'void', amount: TOTAL,
+  },
+  intercepted: {
+    tier: '拦下', title: '他只转了两万',
+    savedCopy: '转出两万试水，保住二十八万',
+    receipt: 'sent', amount: TEST_TRANSFER,
+  },
+  stalled: {
+    tier: '拖住', title: '他说再想想',
+    savedCopy: '钱一分没动，也一分没保住',
+    receipt: 'hold', amount: TOTAL,
+  },
+  transferred: {
+    tier: '转账', title: '他还是转走了',
+    savedCopy: '三十万，三点整全部到账',
+    receipt: 'sent', amount: TOTAL,
+  },
+  // 被拉黑不入档：连凭证都没有，你不会知道他最后把钱转没转
+  blacklisted: {
+    tier: '被拉黑', title: '他把你拉黑了',
+    savedCopy: '你连他最后转没转都不会知道',
+    receipt: null, amount: TOTAL,
+  },
+};
 
 const ERRORS = {
   invalid_state: '这一局放得太久了，得重开一局',
@@ -71,8 +104,9 @@ const game = {
   threshold: 80,
   maxRounds: 12,
   remaining: 12,
-  turns: [],      // {round, utterance, reply, hits, grounded, delta, trust, before, pool}
-  ending: null,   // {kind, trust, line}
+  turns: [],      // {round, utterance, reply, lines, hits, grounded, delta, trust, before, pool}
+  ending: null,   // {kind, trust, lines}
+  quote: null,    // 分享卡上那句话 {round, text}
   busy: false,
   entered: false,
 };
@@ -108,7 +142,7 @@ async function* readEvents(resp) {
   }
 }
 
-// ── K 线（复盘与分享卡共用）──────────────────────────────────
+// ── K 线（复盘）─────────────────────────────────────────────
 // 一根蜡烛就是一轮：开＝上轮信任度，收＝本轮信任度，细横线＝这一轮判分给出的
 // 分数。横线与实体端点的落差，正是每轮的信任流失与蓄势池的存取。
 
@@ -191,6 +225,7 @@ function palette() {
     rise: v('--wx-rise'), fall: v('--wx-fall'), brand: v('--wx-brand'),
     sub: v('--wx-sub'), line: v('--wx-line'), text: v('--wx-text'),
     white: v('--wx-white'), gray: v('--wx-gray'), goal: '#c9a227',
+    bg: v('--wx-bg'), red: v('--wx-red'),
     sans: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
     mono: 'ui-monospace, Menlo, Consolas, monospace',
   };
@@ -417,6 +452,8 @@ async function playTurn(utterance) {
       round: round || game.turns.length + 1,
       utterance,
       reply: spoken.join(''),
+      // 逐句留着，不只留拼好的那一整段：分享卡要挑的是**其中一句**
+      lines: spoken.slice(),
       hits: score.hits,
       grounded: score.grounded,
       delta: score.delta,
@@ -457,26 +494,34 @@ function failTurn(code) {
   $('say').focus();
 }
 
+const RECEIPT_FOOT = {
+  sent: '15:00 已被对方接收',
+  void: '已取消转账',
+  hold: '还没点发送',
+};
+
 /** 转账凭证。他截了张图发过来——微信里人人都干过这事。
  *
- * 劝住与转走共用这一张卡，只翻一个位：橙的是已被接收，灰的是没点下去。
- * 整局游戏赌的就是这一位，所以它值得是这一屏上唯一一件重物。
+ * 四档结局共用这一张卡，翻的是同一个位：橙的是已被接收，灰的是没点下去。
+ * 拦下与转账都是橙的，差别只在金额——两万和三十万，一眼就是不同的结局。
+ * 拖住是灰的但金额没划掉：转账页面填好了停在那儿，他没点。
+ * 整局对局赌的就是这一位，所以它值得是这一屏上唯一一件重物。
  */
-function receipt(cancelled) {
+function receipt(state, amount) {
+  const text = money(amount);
   const el = document.createElement('div');
-  el.className = 'receipt' + (cancelled ? ' void' : '');
+  el.className = 'receipt' + (state === 'sent' ? '' : ' ' + state);
   el.innerHTML =
     '<div class="receipt-body">' +
       '<div class="receipt-icon" aria-hidden="true">¥</div>' +
       '<div><div class="receipt-amt"></div><div class="receipt-to"></div></div>' +
     '</div><div class="receipt-foot"></div>';
-  el.querySelector('.receipt-amt').textContent = AMOUNT;
+  el.querySelector('.receipt-amt').textContent = text;
   el.querySelector('.receipt-to').textContent = PAYEE;
-  el.querySelector('.receipt-foot').textContent =
-    cancelled ? '已取消转账' : '15:00 已被对方接收';
+  el.querySelector('.receipt-foot').textContent = RECEIPT_FOOT[state];
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label',
-    `转账凭证截图：${AMOUNT}，${PAYEE}，` + (cancelled ? '已取消转账' : '已被对方接收'));
+    `转账凭证截图：${text}，${PAYEE}，${RECEIPT_FOOT[state]}`);
   return el;
 }
 
@@ -504,7 +549,8 @@ async function finish() {
   await sleep(400);
 
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
-  if (kind === 'blacklisted') {
+  const meta = ENDINGS[kind] || ENDINGS.transferred;
+  if (!meta.receipt) {
     // 被拉黑之后微信显示的就是这张卡。开局那句「对方不是你的朋友」在这里合上了口：
     // 你一直是个陌生人，现在连话都递不进去了。
     const tip = document.createElement('p');
@@ -512,7 +558,7 @@ async function finish() {
     tip.textContent = '对方开启了朋友验证，你还不是他（她）朋友。';
     thread.appendChild(tip);
   } else {
-    photo(receipt(kind === 'persuaded'));
+    photo(receipt(meta.receipt, meta.amount));
   }
 
   const btn = document.createElement('button');
@@ -535,6 +581,8 @@ function verdictCopy() {
   const parts = [];
 
   if (kind === 'persuaded') parts.push(`你用了 ${game.turns.length} 轮把他劝了回来。`);
+  else if (kind === 'intercepted') parts.push('他只按老师说的转了两万试水，剩下的二十八万你按住了。');
+  else if (kind === 'stalled') parts.push('他把这事推到了明天——你争到的是时间，不是他的决定。');
   else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，他把你拉黑了。`);
   else parts.push('他还是把那三十万转出去了。');
 
@@ -556,9 +604,8 @@ function openReview() {
     (p) => game.turns.some((t) => t.hits.includes(p)));
   const best = game.turns.reduce(
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
-  const peak = game.turns.reduce((m, t) => Math.max(m, t.trust), game.trust);
   const kind = game.ending ? game.ending.kind : 'transferred';
-  const meta = ENDINGS[kind];
+  const meta = ENDINGS[kind] || ENDINGS.transferred;
 
   const view = document.createElement('section');
   view.className = 'review';
@@ -572,6 +619,7 @@ function openReview() {
     <div class="review-body">
       <div class="summary ${kind}">
         <div class="kind"></div>
+        <div class="saved"></div>
         <p class="copy"></p>
       </div>
 
@@ -598,6 +646,11 @@ function openReview() {
         <div class="panel" id="penaltyList"></div>
       </div>
 
+      <div class="group">
+        <div class="group-title">名场面 · 挑一句他说的话</div>
+        <div class="panel" id="quoteList" role="radiogroup" aria-label="名场面"></div>
+      </div>
+
       <div class="actions">
         <button id="makeCard">生成分享卡</button>
         <button class="plain" id="restart">再来一局</button>
@@ -606,7 +659,8 @@ function openReview() {
     </div>`;
 
   document.body.appendChild(view);
-  view.querySelector('.summary .kind').textContent = meta.title;
+  view.querySelector('.summary .kind').textContent = `${meta.tier} · ${meta.title}`;
+  view.querySelector('.summary .saved').textContent = meta.savedCopy;
   view.querySelector('.summary .copy').innerHTML = verdictCopy();
 
   // 直接量、直接画：读 clientWidth 本身就会强制布局，不必等下一帧
@@ -666,8 +720,10 @@ function openReview() {
     usedPenalties.forEach((p) => box.appendChild(tipCard(PENALTIES[p])));
   }
 
+  paintQuotes(view);
+
   view.querySelector('#restart').onclick = () => location.reload();
-  view.querySelector('#makeCard').onclick = () => makeCard(view, { peak });
+  view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
 }
 
@@ -681,6 +737,111 @@ function tipCard(meta) {
   p.textContent = meta.tip;
   card.append(title, p);
   return card;
+}
+
+// ── 名场面 ──────────────────────────────────────────────────
+//
+// 人们分享的不是自己的成绩，是 AI 说的那句话的截图。所以分享卡的主体是
+// **他说过的一句话**，成绩退到卡底一行小字。玩家自己挑那一句——
+// 哪句戳中了他，只有他知道，任何自动挑选都不如他准。
+
+const JARGON = [
+  '老师', '内部', '消息', '涨停', '翻倍', '行规', '散户', '机构', '补仓', '割肉',
+  '满仓', '加仓', '踏空', '解冻', '保证金', '跟单', '账户', '手续费', '出金',
+  '这波', '行情', '免责', '协议', '收益',
+];
+
+/** 按句切。后端已按句下发（ADR-0004），开场白与结局台词还得自己切一遍。 */
+function sentences(text) {
+  const out = [];
+  let cur = '';
+  for (const ch of text) {
+    cur += ch;
+    if ('。！？…'.includes(ch)) {
+      out.push(cur.trim());
+      cur = '';
+    }
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** 他这一局说过的所有句子，按时间序，去重。 */
+function hisLines() {
+  const raw = [];
+  sentences(game.opening).forEach((text) => raw.push({ round: 0, text }));
+  game.turns.forEach((t) =>
+    (t.lines || sentences(t.reply || '')).forEach((line) =>
+      sentences(line).forEach((text) => raw.push({ round: t.round, text }))));
+  ((game.ending && game.ending.lines) || []).forEach((line) =>
+    sentences(line).forEach((text) => raw.push({ round: null, text })));
+
+  const seen = new Set();
+  return raw.filter(({ text }) => {
+    // 太短的没有信息量，太长的在卡上就不是"一句话"了
+    if (text.length < 8 || text.length > 44 || seen.has(text)) return false;
+    seen.add(text);
+    return true;
+  });
+}
+
+/** 默认挑哪一句。挑不准也没关系——真正的选择权在下面那张列表上，
+ *  这个函数只负责让默认值不尴尬。 */
+function punch(text) {
+  let score = 20 - Math.abs(text.length - 20);        // 20 字上下最像一句能被截图的话
+  if (text.includes('你')) score += 6;                 // 冲着你来的话最有对峙感
+  if (JARGON.some((w) => text.includes(w))) score += 5; // 骗局黑话是行内人一眼认得出的那部分
+  if (/[，,]/.test(text)) score += 2;                  // 有转折的句子比平铺的一句有味道
+  return score;
+}
+
+function quoteLabel(quote) {
+  if (quote.round === 0) return '开场';
+  return quote.round === null ? '最后' : `第 ${quote.round} 轮`;
+}
+
+function paintQuotes(view) {
+  const box = view.querySelector('#quoteList');
+  const lines = hisLines();
+  if (!lines.length) {
+    // 兜底台词全程顶上时会走到这里。没有名场面就没有分享卡——
+    // 与其出一张只有成绩的卡，不如让按钮明说。
+    box.innerHTML = '<p class="empty">这一局他没留下能单独拎出来的话。</p>';
+    game.quote = null;
+    const btn = view.querySelector('#makeCard');
+    btn.disabled = true;
+    btn.textContent = '没有可上卡的话';
+    return;
+  }
+
+  const top = lines.slice().sort((a, b) => punch(b.text) - punch(a.text))[0];
+  game.quote = game.quote || top;
+
+  lines.forEach((quote) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'quote';
+    row.setAttribute('role', 'radio');
+
+    const no = document.createElement('span');
+    no.className = 'qno';
+    no.textContent = quoteLabel(quote);
+    const text = document.createElement('span');
+    text.className = 'qtext';
+    text.textContent = quote.text;
+    row.append(no, text);
+
+    const select = () => {
+      game.quote = quote;
+      box.querySelectorAll('.quote').forEach((el) =>
+        el.setAttribute('aria-checked', String(el === row)));
+      // 已经出过图就当场换一张，省得玩家再点一次"生成"
+      if (view.querySelector('#card')) makeCard(view);
+    };
+    row.setAttribute('aria-checked', String(quote.text === game.quote.text));
+    row.onclick = select;
+    box.appendChild(row);
+  });
 }
 
 // ── 分享卡 ──────────────────────────────────────────────────
@@ -708,29 +869,67 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
-function makeCard(view, stats) {
+/** 圆角矩形。ctx.roundRect 在旧一点的 iOS Safari 上还没有，自己描一遍。 */
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function tierColor(kind, c) {
+  if (kind === 'persuaded' || kind === 'intercepted') return c.brand;
+  if (kind === 'stalled') return c.gray;
+  return c.red;
+}
+
+/** 分享卡 = 他那句话的聊天截图。
+ *
+ * 上一版是一张成绩单（K 线 + 轮次 + 信任度峰值），而人们不发自己的成绩，
+ * 发的是 AI 说的话——一个同行看到「免责协议那是行规，你外行不懂」会心头一紧，
+ * 因为他上周刚听客户说过差不多的话。所以主体让给那句话，成绩退到卡底一行。
+ * K 线没有丢，它留在复盘里——那是给认真打的人和评审看的东西。
+ */
+function makeCard(view) {
   const W = 640;
-  const pad = 48;
-  const COPY_TOP = pad + 560;
-  const LINE_H = 38;
+  const pad = 44;
+  const AV = 60;              // 头像
+  const GAP = 16;             // 头像与气泡的间距
+  const BUB_PAD_X = 26;
+  const BUB_PAD_Y = 24;
+  const QUOTE_SIZE = 30;
+  const QUOTE_LH = 48;
   const c = palette();
   const kind = game.ending ? game.ending.kind : 'transferred';
-  const meta = ENDINGS[kind];
+  const meta = ENDINGS[kind] || ENDINGS.transferred;
+  const quote = game.quote;
+  if (!quote) return;
 
   const wrap = view.querySelector('#cardWrap');
   wrap.innerHTML = '<canvas id="card"></canvas>';
   const canvas = view.querySelector('#card');
 
-  // 先量结论那段话要占几行，再定卡片多高
-  const copy = verdictCopy().replace(/<\/?em>/g, '');
+  // 先量那句话要占几行，再定卡片多高——句子长短决定卡片高矮，不留空档
+  const bubbleX = pad + AV + GAP;
+  const bubbleMax = W - pad - bubbleX;
   const probe = canvas.getContext('2d');
-  probe.font = `400 21px ${c.sans}`;
-  const copyLines = wrapText(probe, copy, W - pad * 2);
-  const H = COPY_TOP + copyLines.length * LINE_H + 72;
+  probe.font = `600 ${QUOTE_SIZE}px ${c.sans}`;
+  const quoteLines = wrapText(probe, quote.text, bubbleMax - BUB_PAD_X * 2);
+  const bubbleW = Math.max(
+    ...quoteLines.map((l) => probe.measureText(l).width)) + BUB_PAD_X * 2;
+  const bubbleH = quoteLines.length * QUOTE_LH + BUB_PAD_Y * 2 - (QUOTE_LH - QUOTE_SIZE);
+
+  const BUB_TOP = pad + 46;
+  const FOOT_TOP = BUB_TOP + bubbleH + 132;
+  const H = FOOT_TOP + 82;   // 底部留白与左右的 pad 对齐，卡才不显得下坠
 
   const ctx = fitCanvas(canvas, W, H);
 
-  ctx.fillStyle = c.white;
+  // 底色用聊天背景的灰：整张卡就该看着像一张微信截图，而不像一张海报
+  ctx.fillStyle = c.bg;
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
@@ -739,54 +938,62 @@ function makeCard(view, stats) {
   ctx.font = `500 15px ${c.sans}`;
   ctx.fillText('AI 反诈劝阻', pad, pad);
 
-  ctx.fillStyle = kind === 'persuaded' ? c.brand : c.rise;
-  ctx.font = `600 52px ${c.sans}`;
-  ctx.fillText(meta.title, pad, pad + 40);
+  // 头像：和对话里那个是同一个（.av-chen）
+  ctx.fillStyle = '#6f8bb5';
+  roundRect(ctx, pad, BUB_TOP, AV, AV, 6);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `500 25px ${c.sans}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('陈', pad + AV / 2, BUB_TOP + AV / 2 + 1);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+
+  // 气泡：白底、5px 圆角、左上一个小尖角，和界面里的一模一样
+  ctx.fillStyle = c.white;
+  roundRect(ctx, bubbleX, BUB_TOP, bubbleW, bubbleH, 8);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(bubbleX, BUB_TOP + 22);
+  ctx.lineTo(bubbleX - 9, BUB_TOP + 30);
+  ctx.lineTo(bubbleX, BUB_TOP + 40);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = c.text;
+  ctx.font = `600 ${QUOTE_SIZE}px ${c.sans}`;
+  quoteLines.forEach((line, i) =>
+    ctx.fillText(line, bubbleX + BUB_PAD_X, BUB_TOP + BUB_PAD_Y + i * QUOTE_LH));
 
   ctx.fillStyle = c.sub;
-  ctx.font = `400 19px ${c.sans}`;
-  ctx.fillText(meta.sub, pad, pad + 110);
+  ctx.font = `400 16px ${c.sans}`;
+  ctx.fillText(`老陈 · ${quoteLabel(quote)}`, bubbleX, BUB_TOP + bubbleH + 14);
 
-  const figures = [
-    ['轮次', String(game.turns.length)],
-    ['信任度峰值', String(stats.peak)],
-    ['命中钥匙', new Set(game.turns.flatMap((t) => t.hits.filter((h) => KEYS[h]))).size + ' / 3'],
-  ];
-  figures.forEach(([label, value], i) => {
-    const x = pad + i * ((W - pad * 2) / 3);
-    ctx.fillStyle = c.sub;
-    ctx.font = `400 13px ${c.sans}`;
-    ctx.fillText(label, x, pad + 176);
-    ctx.fillStyle = c.text;
-    ctx.font = `600 32px ${c.mono}`;
-    ctx.fillText(value, x, pad + 196);
-  });
-
-  paintKline(ctx, { x: pad, y: pad + 258, w: W - pad * 2, h: 236 }, {
-    turns: game.turns,
-    threshold: game.threshold,
-    slots: Math.max(game.turns.length, 6),
-    palette: c,
-    axis: true,
-    labelSize: 13,
-    maxWidth: 30,
-  });
-
-  ctx.strokeStyle = c.line;
+  // 成绩退到这一行：结局那一档 + 你救回了多少钱。金额是这件事在现实里的记法。
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, pad + 524);
-  ctx.lineTo(W - pad, pad + 524);
+  ctx.moveTo(pad, BUB_TOP + bubbleH + 62.5);
+  ctx.lineTo(W - pad, BUB_TOP + bubbleH + 62.5);
   ctx.stroke();
 
-  ctx.fillStyle = '#4a4a4a';
-  ctx.font = `400 21px ${c.sans}`;
-  copyLines.forEach((line, i) => ctx.fillText(line, pad, COPY_TOP + i * LINE_H));
+  const tier = `${meta.tier} · ${meta.title}`;
+  ctx.fillStyle = tierColor(kind, c);
+  ctx.font = `600 27px ${c.sans}`;
+  ctx.fillText(tier, pad, BUB_TOP + bubbleH + 86);
+  ctx.fillStyle = c.gray;
+  ctx.font = `400 18px ${c.sans}`;
+  ctx.fillText(meta.savedCopy, pad, BUB_TOP + bubbleH + 126);
 
+  // 钩子放在右下角，正好接住下一步的"接话"入口
   ctx.fillStyle = c.sub;
   ctx.font = `400 14px ${c.sans}`;
-  if (game.contestId) ctx.fillText(`参赛编号 ${game.contestId}`, pad, H - 42);
+  if (game.contestId) ctx.fillText(`参赛编号 ${game.contestId}`, pad, FOOT_TOP + 40);
   ctx.textAlign = 'right';
-  ctx.fillText('十二轮，劝住一个人', W - pad, H - 42);
+  ctx.fillStyle = c.gray;
+  ctx.font = `500 17px ${c.sans}`;
+  ctx.fillText('这句话，你会怎么接？', W - pad, FOOT_TOP + 36);
 
   canvas.toBlob((blob) => {
     if (!blob) return;
@@ -795,7 +1002,7 @@ function makeCard(view, stats) {
     const a = document.createElement('a');
     a.className = 'savelink';
     a.href = URL.createObjectURL(blob);
-    a.download = `反诈劝阻-${meta.title}.png`;
+    a.download = `反诈劝阻-${meta.tier}.png`;
     a.textContent = '保存图片';
     p.append(a, document.createTextNode('，手机上也可以长按上图保存'));
     wrap.appendChild(p);
