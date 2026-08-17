@@ -73,6 +73,31 @@ FORMAL_MARKS = ("——",)
 # 所以玩家看不到；但它剥掉的次数正是模型出戏的频率，必须单独记。
 _STAGE = re.compile(r"[（(][^（()）]{0,20}[)）]")
 
+# 一整段里连着出现的英文。判据与安全层 `_not_his_words` 同源（拉丁字母够多且
+# 占比够高），但**量的对象不同**：安全层按句判、判完就丢，这里按轮判整段 raw，
+# 为的是把"模型确实吐了英文"这件事留在指标里，而不是被安全层一擦了之。
+#
+# 阈值比安全层松：安全层要在一句话上做取舍（宁可丢），这里只做统计，
+# 只要整段里出现连着 12 个以上拉丁字母的成分就算中招。
+_ENGLISH_RUN = re.compile(r"[A-Za-z][A-Za-z'\s,]{11,}")
+
+
+# 中文旁白的判据。**比安全层的词表宽**，这是故意的：安全层要为每一次拦截
+# 负责（拦错了就是吞掉老陈的真话），指标只负责数，宁可多数几个也别漏报。
+# 所以这里还收了第三人称叙述那一类——安全层不敢拦，指标必须看得见。
+_META = re.compile(
+    r"用户|助手|人物设定|人设|符合设定|提示词|系统提示|旁白|台词"
+    r"|老陈(会|这时候|的反应)|李经理(这句|刚刚|刚才)"
+)
+
+
+def _has_english_leak(raw: str) -> bool:
+    """整段里有没有成句的英文。A 股、K 线这类单词不算。"""
+    return any(
+        sum(1 for ch in m.group(0) if ch.isalpha()) >= 12
+        for m in _ENGLISH_RUN.finditer(raw)
+    )
+
 # 跑批容错。生产上客户端是 max_retries=0 的（演绎超时要走 L1 降级，
 # SDK 在那儿默默重试会把 6 秒预算翻倍），但跑批不一样：一次瞬时 5xx
 # 不该毁掉十几分钟、上千次调用的一整轮跑批。实测网关会偶发
@@ -136,6 +161,22 @@ class Report:
     cross_route_repeat: float
     formal_rate: float           # 命中书面语黑名单的句子占比
     stage_direction_rate: float  # 模型写了括号动作的轮次占比
+    # **思考过程用英文漏进台词的轮次占比。** 量的是 raw，不是过完安全层的句子——
+    # 安全层已经把它们丢掉了，只看下发内容永远是 0.0%，等于把这个病测没了。
+    #
+    # 它是关掉 thinking 的已知代价（§6.4），而 thinking 必须关。上一次基线里
+    # 959 轮中 15 轮、80 局中 6 局中招（十三局就有一局），玩家会看到
+    # 「I think the intended structure is that I write the assistant response…」。
+    # 提示词与安全层都改过了，但**这条跑批一次都没验过** —— 加这个指标就是为了验它。
+    english_leak_rate: float
+    # **中文旁白漏到玩家眼前的轮次占比。** 与上面那条的分工要看清楚：
+    # 英文那条量 raw（安全层全都拦住了，量下发内容永远是 0），这条**量下发内容**，
+    # 因为中文旁白安全层拦不干净——量的就是"玩家真会看到多少"。
+    #
+    # 2026-08-17 首次测得 2.0%（954 轮里 19 轮）。最坏的一轮里模型用
+    # 「用户」「助手」当角色标签，把整段对话两边都写了，一轮漏八句。
+    # 词表兜底 + 提示词改口之后要看这个数掉到哪儿。
+    meta_leak_rate: float
     sentences_per_turn: Tuple[float, float]  # 均值 / 标准差
     sentence_length: Tuple[float, float]
     top_formal: Tuple[Tuple[str, int], ...]
@@ -411,6 +452,10 @@ def summarize(replies: Sequence[Reply], runs_per_route: int) -> Report:
         formal_sentences += hit
 
     staged = sum(1 for reply in replies if _STAGE.search(reply.raw))
+    leaked = sum(1 for reply in replies if _has_english_leak(reply.raw))
+    meta = sum(
+        1 for reply in replies if any(_META.search(s) for s in reply.sentences)
+    )
     repeats = sorted(
         ((s, sum(1 for x in all_sentences if x == s)) for s in by_sentence),
         key=lambda kv: -kv[1],
@@ -426,6 +471,8 @@ def summarize(replies: Sequence[Reply], runs_per_route: int) -> Report:
         cross_route_repeat=cross / len(all_sentences) if all_sentences else 0.0,
         formal_rate=formal_sentences / len(all_sentences) if all_sentences else 0.0,
         stage_direction_rate=staged / len(replies) if replies else 0.0,
+        english_leak_rate=leaked / len(replies) if replies else 0.0,
+        meta_leak_rate=meta / len(replies) if replies else 0.0,
         sentences_per_turn=_mean_std([len(r.sentences) for r in replies]),
         sentence_length=_mean_std([len(s) for s in all_sentences]),
         top_formal=tuple(sorted(formal_hits.items(), key=lambda kv: -kv[1])[:8]),
@@ -483,6 +530,8 @@ def format_report(report: Report) -> str:
         f"  复述反问率（把对方的词弹回来）      {report.echo_question_rate:>7.1%}",
         f"  书面语命中率（按句）                {report.formal_rate:>7.1%}",
         f"  括号动作出戏率（按轮，安全层剥掉了）{report.stage_direction_rate:>7.1%}",
+        f"  英文思考外漏（按轮，安全层丢掉了）  {report.english_leak_rate:>7.1%}",
+        f"  中文旁白外漏（按轮，玩家真会看到） {report.meta_leak_rate:>8.1%}",
         "",
         "说话形状",
         f"  每轮几条消息    {sent_mean:>5.2f} ± {sent_std:.2f}",
@@ -621,6 +670,10 @@ def main() -> int:
                             "run": reply.run,
                             "round": reply.round,
                             "sentences": list(reply.sentences),
+                            # 原样也留一份：安全层丢掉的东西（英文外漏、括号动作）
+                            # 只在这里看得见。少了它，事后想复查一次跑批
+                            # 到底漏没漏英文，只能整批重跑
+                            "raw": reply.raw,
                         },
                         ensure_ascii=False,
                     )

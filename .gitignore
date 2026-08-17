@@ -28,3 +28,8 @@ run/
 
 # 本地 agent 配置
 .claude/
+
+# 跑批导出的台词（tools/act_eval.py --dump）。几百 KB 的模型输出，
+# 不进仓库——要比对基线就自己跑一次。
+baseline-lines.jsonl
+*-lines.jsonl
