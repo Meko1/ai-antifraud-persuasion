@@ -683,20 +683,41 @@ body {
 .panel { background: var(--wx-white); border-top: 1px solid var(--wx-line);
   border-bottom: 1px solid var(--wx-line); }
 
-.summary { padding: 22px 16px 20px; background: var(--wx-white); }
+.summary { padding: 24px 16px 20px; background: var(--wx-white); }
 
-/* 档位与金额贴在一起当一个整体读："转账 · 他还是转走了 / 三十万，全部到账"。
-   原来 22px 的标题压不住下面那段长文字，整块看着是平的，没有先后。 */
-.summary .kind { font-size: 26px; font-weight: 600; letter-spacing: -0.3px; }
-/* 阶梯四档在这里只分三种颜色：保住了钱的、只争到时间的、什么也没留下的。
+/* 档位退成一枚小徽章，金额上位当主角——借的是微信「账单详情」那个槽。
+   阶梯四档只分三种颜色：保住了钱的、只争到时间的、什么也没留下的。
    给四个档各配一个色会让这一块看着像评级表，而结局不是评级。 */
-.summary.persuaded .kind,
-.summary.intercepted .kind { color: var(--wx-brand); }
-.summary.stalled .kind { color: var(--wx-gray); }
-.summary.blacklisted .kind,
-.summary.transferred .kind { color: var(--wx-red); }
+.summary .tierpill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--wx-gray);
+  background: #f2f2f2;
+}
+.summary.persuaded .tierpill,
+.summary.intercepted .tierpill { color: #0a7d3f; background: #e6f5ec; }
+.summary.blacklisted .tierpill,
+.summary.transferred .tierpill { color: #b3332f; background: #fdecec; }
 
-.summary .saved { margin-top: 7px; font-size: 14px; color: var(--wx-gray); }
+/* 一个大数，压住整屏。三档结局它是 ¥0——那正是它该有的分量 */
+.summary .savedamt {
+  margin-top: 12px;
+  font-size: 38px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+.summary.persuaded .savedamt,
+.summary.intercepted .savedamt { color: #0a7d3f; }
+.summary.stalled .savedamt,
+.summary.blacklisted .savedamt,
+.summary.transferred .savedamt { color: var(--wx-text); }
+
+.summary .savedcap { margin-top: 4px; font-size: 12.5px; color: var(--wx-note); }
+.summary .saved { margin-top: 10px; font-size: 14px; color: var(--wx-gray); }
 
 /* 一条细线把"结果"和"讲评"隔开：上面是发生了什么，下面是为什么。
    原来两段挨着，读起来是一坨。 */

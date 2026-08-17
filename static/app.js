@@ -57,6 +57,22 @@ const PING = '陈叔，方便说句话吗？系统给我推了条提醒，说您
 const money = (n) =>
   '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// 复盘头部那个大数不带角分：转账凭证上要两位小数（那是单据），
+// 结算卡上不要（那是结果）。¥300,000.00 里的 .00 只会把字号占掉。
+const wholeMoney = (n) => '¥' + n.toLocaleString('zh-CN');
+
+/** 这一局替客户守住了多少钱。
+ *
+ * 只有劝住与拦下真的留住了钱；拖住、转账、被拉黑都是 0。
+ * **0 是这张卡上最该被看见的那个数** —— "钱一分没动，也一分没保住"
+ * 那句话说了半天，不如一个 ¥0 来得重。
+ */
+function savedAmount(kind) {
+  if (kind === 'persuaded') return TOTAL;
+  if (kind === 'intercepted') return TOTAL - TEST_TRANSFER;
+  return 0;
+}
+
 // 结局是一道阶梯，不是胜负（CONTEXT.md「结局」）。四档量的是他最后有多信你，
 // 对玩家呈现为"你救回了多少钱"——金额是这件事在现实里的记法。
 // 排序的反直觉之处：拖住一分没转，仍排在已转出一小笔的拦下之下，
@@ -167,6 +183,26 @@ function paintKline(ctx, box, opts) {
 
   ctx.save();
 
+  // 开局那条线。**加它是为了把图上那片空白变成信息。**
+  // 纵轴固定 0–100，而多数局子收在 40 以下，于是上面大半张图是空的，
+  // 看着像没画完。有了这条线，同一片空白立刻在说一件事：
+  // 你是把他往上推了，还是一路把他推下去了——一眼就看得出来。
+  if (opts.start != null) {
+    ctx.strokeStyle = c.line;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, Math.round(py(opts.start)) + 0.5);
+    ctx.lineTo(x + w, Math.round(py(opts.start)) + 0.5);
+    ctx.stroke();
+    if (opts.axis) {
+      ctx.fillStyle = c.note || c.gray;
+      ctx.font = `400 ${opts.labelSize || 10}px ${c.sans}`;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`开局 ${opts.start}`, x + w - 2, py(opts.start) - 3);
+    }
+  }
+
   ctx.strokeStyle = c.goal;
   ctx.setLineDash([3, 4]);
   ctx.lineWidth = 1;
@@ -239,6 +275,9 @@ function palette() {
     rise: v('--wx-rise'), fall: v('--wx-fall'), brand: v('--wx-brand'),
     sub: v('--wx-sub'), line: v('--wx-line'), text: v('--wx-text'),
     white: v('--wx-white'), gray: v('--wx-gray'), goal: '#c9a227',
+    // 画在图上的小字要能读：--wx-sub 对白底只有 2.12:1，
+    // 门槛是 4.5。图形色照旧鲜亮，文字色单独取深的那一份
+    note: v('--wx-note'),
     bg: v('--wx-bg'), red: v('--wx-red'),
     sans: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
     mono: 'ui-monospace, Menlo, Consolas, monospace',
@@ -708,8 +747,14 @@ function openReview() {
       <h1>复盘</h1>
     </header>
     <div class="review-body">
+      <!-- 借的是微信「账单详情」那个槽：一枚小徽章说这是什么，
+           一个大数说结果，下面一行小字说细节。**金额当主角**——
+           这件事在现实里的记法就是钱，而不是"档位名称"。
+           三档结局这个数是 ¥0，那正是它该有的分量。 -->
       <div class="summary ${kind}">
-        <div class="kind"></div>
+        <span class="tierpill"></span>
+        <div class="savedamt num"></div>
+        <div class="savedcap">守住的钱</div>
         <div class="saved"></div>
         <p class="copy"></p>
       </div>
@@ -777,7 +822,8 @@ function openReview() {
     </div>`;
 
   document.body.appendChild(view);
-  view.querySelector('.summary .kind').textContent = `${meta.tier} · ${meta.title}`;
+  view.querySelector('.summary .tierpill').textContent = `${meta.tier} · ${meta.title}`;
+  view.querySelector('.summary .savedamt').textContent = wholeMoney(savedAmount(kind));
   view.querySelector('.summary .saved').textContent = meta.savedCopy;
   view.querySelector('.summary .copy').innerHTML = verdictCopy();
 
@@ -1116,6 +1162,9 @@ function paintChart(view) {
     slots: Math.max(game.turns.length, 6),
     palette: palette(),
     axis: true,
+    // 第 1 轮判分之前的信任度，就是开局那个数。不另外记一份：
+    // 记两份迟早走散，而这一份本来就在逐轮数据里
+    start: game.turns.length ? game.turns[0].before : null,
   });
 }
 
