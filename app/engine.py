@@ -17,7 +17,7 @@ import logging
 
 from .classify import Classification, parse_classification
 from .fallback import ending_fallback, fallback_line
-from .safety import absorb_injection, screen_sentence
+from .safety import SAFE_FALLBACK, absorb_injection, screen_sentence
 from .scoring import MAX_ROUNDS, Ending, evaluate_turn, mood_for, under_pressure
 from .state_token import Session, TurnRecord, sign_session
 from .streaming import SentenceBuffer
@@ -92,13 +92,29 @@ class Event:
     data: Dict[str, Any] = field(default_factory=dict)
 
 
-def _screened(sentences: Iterable[str]) -> List[str]:
-    """过安全层，并丢掉被剥成空壳的句子（整句只是一句舞台指示）。"""
+def _screened(sentences: Iterable[str], seen: Optional[set] = None) -> List[str]:
+    """过安全层，并丢掉被剥成空壳的句子（整句只是一句舞台指示）。
+
+    `seen` 用来在**同一轮内**去重兜底台词。安全层是整句替换，一轮里若有三句
+    违规就会替出三句一模一样的话——实测真的发生过（模型吐了一段带链接的
+    训练语料样板话，三句全中）：
+
+        反正老师推的那只，我心里有数。
+        反正老师推的那只，我心里有数。
+        反正老师推的那只，我心里有数。
+
+    连发三条同样的消息，比留个空档还像坏了。第一条留下，后面的丢掉。
+    """
     out = []
     for sentence in sentences:
         text = screen_sentence(sentence)
-        if text is not None:
-            out.append(text)
+        if text is None:
+            continue
+        if text == SAFE_FALLBACK and seen is not None:
+            if SAFE_FALLBACK in seen:
+                continue
+            seen.add(SAFE_FALLBACK)
+        out.append(text)
     return out
 
 
@@ -109,7 +125,7 @@ def _split_screened(text: str) -> List[str]:
     对玩家来说，最后那几句和前面十二轮没有任何区别。
     """
     buffer = SentenceBuffer()
-    return _screened(buffer.feed(text) + buffer.flush())
+    return _screened(buffer.feed(text) + buffer.flush(), set())
 
 
 async def play_turn(
@@ -154,6 +170,8 @@ async def play_turn(
         # 演绎携带的是【上一轮结束时】的情绪档位——台词落后一轮正是从这里来的
         mood = mood_for(state.trust)
         buffer = SentenceBuffer()
+        # 同一轮内的兜底台词只发一条（见 _screened）
+        seen_fallback: set = set()
         try:
             try:
                 async for chunk in _act_with_deadline(
@@ -170,10 +188,10 @@ async def play_turn(
                     # 隐形的信任流失从这里变成一个玩家看得见的施压来源。
                     pressured=under_pressure(round_),
                 ):
-                    for text in _screened(buffer.feed(chunk)):
+                    for text in _screened(buffer.feed(chunk), seen_fallback):
                         spoken.append(text)
                         yield Event("sentence", {"text": text})
-                for text in _screened(buffer.flush()):
+                for text in _screened(buffer.flush(), seen_fallback):
                     spoken.append(text)
                     yield Event("sentence", {"text": text})
             except asyncio.TimeoutError:
@@ -223,6 +241,10 @@ async def play_turn(
             "hits": list(hit_keys),
             "grounded": grounded,
             "pool": outcome.state.pool,
+            # 信任流失与蓄势池释放。少了这两个，复盘上的账对不上：
+            # 「第 3 轮 23 分，第 4 轮 +18」，结果却是 39——玩家会去算 23+18=41
+            "drift": outcome.drift,
+            "released": outcome.released,
             "degraded": classification is None,
             # 剧情事件，不是判分反馈：前端在对话里渲染成一条旁白
             "pressure": outcome.pressured,

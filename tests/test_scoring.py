@@ -10,8 +10,11 @@
 import pytest
 
 from app.scoring import (
+    DRIFT,
     EFFICACY,
     MAX_ROUNDS,
+    PRESSURE_DRIFT,
+    WINDOW_MISSED_TRUST,
     Ending,
     GameState,
     Mood,
@@ -423,3 +426,37 @@ def test_同轮多把钥匙时不下发效力倍率() -> None:
     assert 一把.efficacy == EFFICACY["anchor_real_purpose"][Mood.IRRITATED]
     assert 两把.efficacy is None
     assert 两把.delta > 0, "分照加，只是倍率没法归到某一把头上"
+
+
+def test_信任流失与蓄势池释放都要下发() -> None:
+    """**不下发，复盘上的账就对不上。**
+
+    玩家看到「第 3 轮 23 分，第 4 轮 +18」，结果却是 39，他会去算 23+18=41。
+    差的那 2 分是信任流失，而它在界面上一个字都没有——这是真实收到的反馈。
+
+    更要紧的是信任流失就是这局的核心张力（他背后有人在往回拉）。
+    藏起来，等于把玩家在跟什么赛跑这件事也一起藏了。
+    """
+    平轮 = evaluate_turn(对局中(round=3), hit_keys=["socratic_question"], grounded=True)
+    催单轮 = evaluate_turn(对局中(round=2), hit_keys=[], grounded=False)
+
+    assert 平轮.drift == DRIFT
+    # 第 3 轮王老师催了一遍，多掉 3 分——这一下以前在复盘里完全看不见
+    assert 催单轮.pressured is True
+    assert 催单轮.drift == DRIFT + PRESSURE_DRIFT
+
+    # 账必须能对上：判分 + 流失 + 池子释放 = 信任度的净变化
+    for out, before in ((平轮, 40), (催单轮, 40)):
+        assert out.state.trust == before + out.delta + out.drift + out.released
+
+
+def test_错过追问窗口的扣分并进流失一起下发() -> None:
+    """对玩家来说它们是同一件事："这一轮没挣到分，还倒退了这么多"。
+
+    它为什么倒退，由 window_result 那一行单独解释，不必在数字上再拆一次。
+    """
+    out = evaluate_turn(对局中(window=1), hit_keys=[], grounded=False)
+
+    assert out.window_result == "missed"
+    assert out.drift == DRIFT + WINDOW_MISSED_TRUST
+    assert out.state.trust == 40 + out.delta + out.drift + out.released

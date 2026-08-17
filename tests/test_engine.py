@@ -11,7 +11,7 @@ from typing import AsyncIterator, List
 
 from app.engine import play_turn
 from app.fallback import ENDING_LINES
-from app.safety import INJECTION_REPLY
+from app.safety import INJECTION_REPLY, SAFE_FALLBACK
 from app.scoring import MAX_ROUNDS, Ending, GameState
 from app.state_token import Session, TurnRecord, new_session, verify_token
 
@@ -503,3 +503,48 @@ async def test_玩家中途走人时分类请求不会变成孤儿() -> None:
 
     assert gateway.分类调用次数 == 1
     assert gateway.分类被取消 is True
+
+
+class 吐训练语料的Gateway(FakeGateway):
+    """模型把训练语料的样板话当台词吐出来。真实抓到的一段，一字未改。"""
+
+    async def act(self, **kwargs: object) -> AsyncIterator[str]:
+        self.演绎调用次数 += 1
+        for ch in (
+            "账面上一万五 我看得见。"
+            "原文链接：https://cnb.cool/kwok/data-hoard/record_1817.md。"
+            "免责声明：本文档内容由 AI 生成，仅供参考。"
+            "【免费下载链接】 项目地址: https://gitcode.com。"
+        ):
+            yield ch
+
+
+async def test_训练语料样板话不许下发且兜底台词一轮只发一条() -> None:
+    """两件事一起验，因为它们是同一段话造成的。
+
+    一、**「本文档内容由 AI 生成」原样发给过玩家。** 它不含代码、不含链接、
+       不带拉丁字母，安全层前三类规则一条都不认——而聊天窗口里老陈当众
+       宣布自己是 AI，是所有穿帮里最糟的一种。
+    二、外链是**整句替换**，一段里三句违规就替出三句一模一样的兜底台词。
+       连发三条同样的消息，比留个空档还像坏了。
+    """
+    gateway = 吐训练语料的Gateway(
+        台词="用不上", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    events = [
+        event
+        async for event in play_turn(
+            new_session(gid="01JTESTGID"),
+            "陈叔，那十万原本是打算做什么用的",
+            gateway=gateway,
+            secret=SECRET,
+            now=NOW,
+        )
+    ]
+    台词 = [e.data["text"] for e in events if e.name == "sentence"]
+
+    assert not any("AI 生成" in s for s in 台词), "老陈不能当众宣布自己是 AI"
+    assert not any("免费下载" in s or "原文链接" in s for s in 台词)
+    assert sum(1 for s in 台词 if s == SAFE_FALLBACK) <= 1, "兜底台词一轮只发一条"
+    assert any("账面上一万五" in s for s in 台词), "他自己的话要留下"

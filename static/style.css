@@ -660,10 +660,11 @@ body {
 .panel { background: var(--wx-white); border-top: 1px solid var(--wx-line);
   border-bottom: 1px solid var(--wx-line); }
 
-.summary { padding: 18px 16px; background: var(--wx-white);
-  border-bottom: 1px solid var(--wx-line); }
+.summary { padding: 22px 16px 20px; background: var(--wx-white); }
 
-.summary .kind { font-size: 22px; font-weight: 600; }
+/* 档位与金额贴在一起当一个整体读："转账 · 他还是转走了 / 三十万，全部到账"。
+   原来 22px 的标题压不住下面那段长文字，整块看着是平的，没有先后。 */
+.summary .kind { font-size: 26px; font-weight: 600; letter-spacing: -0.3px; }
 /* 阶梯四档在这里只分三种颜色：保住了钱的、只争到时间的、什么也没留下的。
    给四个档各配一个色会让这一块看着像评级表，而结局不是评级。 */
 .summary.persuaded .kind,
@@ -672,10 +673,33 @@ body {
 .summary.blacklisted .kind,
 .summary.transferred .kind { color: var(--wx-red); }
 
-.summary .saved { margin-top: 6px; font-size: 13.5px; color: var(--wx-gray); }
+.summary .saved { margin-top: 7px; font-size: 14px; color: var(--wx-gray); }
 
-.summary .copy { margin: 10px 0 0; font-size: 14.5px; line-height: 1.9; color: #4a4a4a; }
+/* 一条细线把"结果"和"讲评"隔开：上面是发生了什么，下面是为什么。
+   原来两段挨着，读起来是一坨。 */
+.summary .copy { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--wx-line);
+  font-size: 14.5px; line-height: 1.9; color: #4a4a4a; }
 .summary .copy em { font-style: normal; font-weight: 600; color: var(--wx-text); }
+
+/* 三个数的横条。借的是微信"支付/账单"里那种一行三栏——玩家一眼要拿到的
+   是结果，不是我们对判分方法的辩解。 */
+.statstrip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--wx-white);
+  border-bottom: 1px solid var(--wx-line);
+}
+.stat { padding: 16px 10px 15px; text-align: center; }
+.stat + .stat { box-shadow: inset 1px 0 0 var(--wx-line); }
+.stat b {
+  display: block;
+  font-size: 25px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.stat b.nil { color: var(--wx-sub); font-weight: 400; }
+.stat i { display: block; margin-top: 5px; font-size: 11.5px; font-style: normal; color: var(--wx-gray); }
 
 #chart { display: block; width: 100%; height: 176px; padding: 12px 8px 4px; }
 
@@ -725,11 +749,36 @@ body {
 .round .window.good { color: var(--gold); }
 .round .window.bad { color: var(--wx-fall); }
 
-.howscored { margin: 0; padding: 13px 16px; font-size: 13px; line-height: 1.9;
+/* 脚注体。它以前顶在最上面占了一屏，现在退到最底下、去掉白底 */
+.howscored { margin: 22px 0 0; padding: 0 16px; font-size: 12.5px; line-height: 1.9;
   color: #6b6b6b; }
 .howscored b { color: var(--wx-text); }
-.round .score { text-align: right; font-size: 14px; font-weight: 600; white-space: nowrap; }
-.round .score .after { display: block; font-size: 11px; font-weight: 400; color: var(--wx-sub); }
+/* 一轮的账，三段竖着摊开：挣了多少 / 掉了多少 / 剩多少。
+   原来只有"挣了多少"和"剩多少"两段，中间那段是隐形的——于是
+   「23 分 → +18 → 39」在玩家眼里是一道算错的题（少的那 2 分是信任流失）。 */
+.round .ledger {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.round .ledger .gain { font-size: 14px; font-weight: 600; color: var(--wx-sub); }
+.round .ledger .gain.up { color: var(--wx-rise); }
+.round .ledger .gain.down { color: var(--wx-fall); }
+/* 流失永远是往下的，用跌色但不加粗：它是背景音，不是玩家干的事 */
+.round .ledger .loss { font-size: 11.5px; color: var(--wx-fall); opacity: 0.75; }
+.round .ledger .pool { font-size: 11.5px; color: var(--gold); }
+.round .ledger .after {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--wx-text);
+  padding-top: 2px;
+  border-top: 1px solid var(--wx-line);
+  min-width: 2.2em;
+  text-align: right;
+}
 
 .tip { padding: 13px 16px; }
 .tip + .tip { box-shadow: inset 0 1px 0 var(--wx-line); }

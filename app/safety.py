@@ -210,6 +210,29 @@ _LATIN_MIN_RATIO = 0.25
 #    第三人称叙述（「李经理这句有点戳人，火气是真的上来了」）。正则要认它，
 #    就得去猜"这是叙述还是他自己在说话"，而"我老陈这辈子攒这点钱容易么"
 #    是真话——收紧到能拦住它，就一定会误伤真话。那一类交给提示词治根。
+#
+# 四、**训练语料的样板话**。2026-08-17 第二次跑批抓到，比上面三类都危险：
+#
+#      原文链接：https://cnb.cool/…/record_1817.md
+#      免责声明：本文档内容由 AI 生成，仅供参考。如需用于正式用途，
+#      请结合多方信息源核实，并咨询相关领域专业人士。
+#      【免费下载链接】 项目地址: https://gitcode.com
+#
+#    链接那两句被外链规则换成了兜底台词，**中间那句「本文档内容由 AI 生成」
+#    却原样发给了玩家**——聊天窗口里老陈当众宣布自己是 AI，没有比这更糟的穿帮。
+#    它不含代码、不含链接、不带拉丁字母，前三类规则一条都不认。
+#
+#    而且它会自我传染：漏出去的句子进 history，下一轮模型接着抄，
+#    实测 climb#14 那一局第 3、5、7 轮连着犯。
+#
+#    「免责**声明**」与骗局剧本里的「免责**协议**」只差一个字，别写宽了——
+#    "免责协议那是行规"是老陈的台词，拦掉它游戏就少了一块。
+_BOILERPLATE = re.compile(
+    r"免责声明|本文档|本文内容|由\s*AI\s*生成|人工智能生成|仅供参考"
+    r"|项目地址|下载链接|原文链接|相关领域专业人士|多方信息源",
+    re.IGNORECASE,
+)
+
 _META_WORDS = re.compile(
     r"用户|助手|人物设定|人设|符合设定|提示词|系统提示|扮演|旁白|台词"
 )
@@ -218,7 +241,7 @@ _META_WORDS = re.compile(
 def _not_his_words(sentence: str) -> bool:
     if _ROLE_LABEL.match(sentence):
         return True
-    if _META_WORDS.search(sentence):
+    if _META_WORDS.search(sentence) or _BOILERPLATE.search(sentence):
         return True
     latin = sum(1 for ch in sentence if ch.isascii() and ch.isalpha())
     return latin >= _LATIN_MIN_CHARS and latin / len(sentence) >= _LATIN_MIN_RATIO

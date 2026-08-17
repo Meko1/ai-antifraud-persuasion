@@ -245,6 +245,17 @@ class TurnOutcome:
     # 而评分系统捕捉不到这种回避。追问窗口捕捉的正是它。
     window_result: Optional[str] = None
     window_opened: bool = False
+    # 本轮实际扣掉的信任流失（负数，已含王老师催单那 3 分与地板保护）。
+    #
+    # **必须下发，否则复盘上的数字看着像算错了。** 玩家看到「第 3 轮 23 分，
+    # 第 4 轮 +18」，然后结果是 39——他会去算 23+18=41，对不上。差的那 2 分
+    # 就是信任流失，而它在界面上一个字都没有。
+    #
+    # 更要紧的是：信任流失是这局的核心张力（"他背后有人在往回拉"），
+    # 藏起来等于把玩家在跟什么赛跑这件事也藏了。
+    drift: int = 0
+    # 本轮从蓄势池释放出来的分（正数）。它同样会让"判分 + 流失"对不上账。
+    released: int = 0
 
 
 def new_game() -> GameState:
@@ -328,6 +339,7 @@ def evaluate_turn(
     trust = state.trust + delta + drift + missed
 
     pool = state.pool
+    released = 0
     if round_ <= EARLY_ROUNDS and trust > EARLY_CAP:
         pool = min(POOL_CAP, pool + trust - EARLY_CAP)
         trust = EARLY_CAP
@@ -363,6 +375,11 @@ def evaluate_turn(
         efficacy=efficacy,
         window_result=window_result,
         window_opened=window_opened,
+        # 错过追问窗口那 6 分归到流失里一起下发：对玩家来说它们是同一件事
+        # ——"这一轮我没挣到分，还倒退了这么多"。它为什么倒退，由 window_result
+        # 那一行单独解释，不必在数字上再拆一次。
+        drift=drift + missed,
+        released=released,
     )
 
 

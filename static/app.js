@@ -362,17 +362,35 @@ function tag(id) {
   return el;
 }
 
-function hitTags(hits, grounded) {
-  const out = hits.map(tag);
-  if (hits.some((h) => KEYS[h])) {
+/** 一轮没命中任何东西时，说点有用的。
+ *
+ * **原来这里只有一句「没使上劲」，八轮里七轮都是它。** 那等于告诉玩家
+ * "你错了，但我不打算说错在哪"——而这恰恰是同类产品最被诟病的地方。
+ * 我们手上其实有三条信号可以分辨，一条都没用过：
+ *
+ * · 判成扎根却没命中钥匙 → 他接住了对方的话，但停在那儿没往下问
+ * · 一句话短到撑不起一轮 → 「嗯呢」「你先忙」，那不是劝，是应付
+ * · 其余 → 确实没往三把钥匙上走
+ *
+ * 三句都指向下一步该怎么改，而「没使上劲」一句都不指。
+ */
+function missNote(t) {
+  if (t.grounded) return '接住了他的话，但没往下问';
+  if ((t.utterance || '').replace(/\s/g, '').length <= 8) return '太短了，撑不起一轮';
+  return '三把钥匙一把都没沾上';
+}
+
+function hitTags(t) {
+  const out = t.hits.map(tag);
+  if (t.hits.some((h) => KEYS[h])) {
     const g = document.createElement('span');
     g.className = 'tag';
-    g.textContent = grounded ? '扎根' : '未扎根，效力打折';
+    g.textContent = t.grounded ? '扎根' : '未扎根，效力打折';
     out.push(g);
-  } else if (!hits.length) {
+  } else if (!t.hits.length) {
     const n = document.createElement('span');
     n.className = 'tag';
-    n.textContent = '没使上劲';
+    n.textContent = missNote(t);
     out.push(n);
   }
   return out;
@@ -506,6 +524,11 @@ async function playTurn(utterance) {
       windowResult: score.window_result,
       windowOpened: score.window_opened,
       delta: score.delta,
+      // 信任流失与蓄势池释放。复盘要用它们把账摊开——少了这两个数，
+      // 「23 分 → +18 → 39」在玩家眼里就是一道算错的题
+      drift: score.drift,
+      released: score.released,
+      pressure: score.pressure,
       trust: score.trust,
       before: game.trust,
       pool: score.pool,
@@ -693,25 +716,25 @@ function openReview() {
         <p class="copy"></p>
       </div>
 
-      <div class="group">
-        <div class="group-title">这些分是怎么来的</div>
-        <div class="panel">
-          <p class="howscored">下面每一分都是<b>程序按规则表算的，不是模型打的</b>。
-          同一句话在他不同的情绪档位上值不同的分——这套参数跑过两万局蒙特卡洛校准，
-          换句话说，你这一局的分数是可复现的。</p>
-        </div>
+      <!-- 三个数放在最上面。原来这一屏最先给出的是一整段"我们的分是怎么算的"
+           说明文——那是辩解，不是结果。玩家打完最想知道的是：他最后信我多少、
+           我打了几轮、哪一句最管用。说明文退到最底下。 -->
+      <div class="statstrip">
+        <div class="stat"><b id="sTrust"></b><i>最终信任度</i></div>
+        <div class="stat"><b id="sRounds"></b><i>用了几轮</i></div>
+        <div class="stat"><b id="sBest"></b><i>最有力的一句</i></div>
       </div>
 
       <div class="group">
-        <div class="group-title">信任度</div>
+        <div class="group-title">信任度怎么走的</div>
         <div class="panel">
           <canvas id="chart"></canvas>
-          <p class="legend">一根蜡烛是一轮，红涨绿跌，实体是这一轮信任度的起落。细横线是判分给出的分数——它与实体端点的落差，就是每轮的信任流失，以及开局封顶时存进蓄势池、第 4 轮起逐轮释放的那部分。</p>
+          <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分给出的分——它和实体端点的落差就是每轮的信任流失。</p>
         </div>
       </div>
 
       <div class="group">
-        <div class="group-title">逐轮</div>
+        <div class="group-title">逐轮 · 挣了多少 / 掉了多少 / 剩多少</div>
         <div class="panel" id="roundsList"></div>
       </div>
 
@@ -740,12 +763,31 @@ function openReview() {
         <button class="plain" id="restart">再来一局</button>
       </div>
       <div id="cardWrap"></div>
+
+      <!-- 它是脚注，不是开场白。放在最后，玩家想知道"这分靠不靠谱"时才读到 -->
+      <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>。
+      同一句话在他不同的情绪档位上值不同的分，这套参数跑过两万局蒙特卡洛校准——
+      换句话说，你这一局的分数是可复现的。</p>
     </div>`;
 
   document.body.appendChild(view);
   view.querySelector('.summary .kind').textContent = `${meta.tier} · ${meta.title}`;
   view.querySelector('.summary .saved').textContent = meta.savedCopy;
   view.querySelector('.summary .copy').innerHTML = verdictCopy();
+
+  // 三栏在 375px 上只放得下四五个字。「劝住线 80」不重复说——
+  // K 线上那条金色虚线已经标着它，写两遍反而把这一行挤成两行
+  view.querySelector('#sTrust').textContent = String(game.trust);
+  view.querySelector('#sRounds').textContent = String(game.turns.length);
+  const bestStat = view.querySelector('#sBest');
+  if (best && best.delta > 0) {
+    bestStat.textContent = `+${best.delta}`;
+    bestStat.nextElementSibling.textContent = `第 ${best.round} 轮最有力`;
+  } else {
+    bestStat.textContent = '—';
+    bestStat.classList.add('nil');
+    bestStat.nextElementSibling.textContent = '没有一句推动他';
+  }
 
   paintChart(view);
 
@@ -764,24 +806,22 @@ function openReview() {
     said.textContent = t.utterance;
     const tags = document.createElement('div');
     tags.className = 'tags';
-    hitTags(t.hits, t.grounded).forEach((x) => tags.appendChild(x));
+    hitTags(t).forEach((x) => tags.appendChild(x));
     body.append(said, tags);
     const when = timingNote(t);
     if (when) body.append(when);
     const win = windowNote(t);
     if (win) body.append(win);
+    // 催单那一轮多掉 3 分。不写出来，玩家只会看到流失那一列忽然从 -2 变成 -5，
+    // 而 title 提示在手机上根本摸不到
+    if (t.pressure) {
+      const push = document.createElement('div');
+      push.className = 'window';
+      push.textContent = '王老师这一轮又在群里催了一遍 · 多掉 3 分';
+      body.append(push);
+    }
 
-    const score = document.createElement('div');
-    score.className = 'score num';
-    score.style.color = t.delta > 0 ? 'var(--wx-rise)'
-      : t.delta < 0 ? 'var(--wx-fall)' : 'var(--wx-sub)';
-    score.textContent = t.delta > 0 ? `+${t.delta}` : String(t.delta);
-    const after = document.createElement('span');
-    after.className = 'after';
-    after.textContent = `→ ${t.trust}`;
-    score.appendChild(after);
-
-    row.append(no, body, score);
+    row.append(no, body, scoreLedger(t));
     list.appendChild(row);
   });
 
@@ -804,6 +844,49 @@ function openReview() {
   view.querySelector('#restart').onclick = () => location.reload();
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
+}
+
+/** 一轮的账，摊开写。
+ *
+ * **原来这里只有两个数：判分和结果。** 于是复盘上是这样的：
+ * 第 3 轮 23 分 → 第 4 轮 +18 → 39。玩家会去算 23+18=41，对不上，
+ * 然后合理地怀疑判分是不是错了。差的那 2 分是每轮无条件的信任流失，
+ * 而它在界面上一个字都没有——机制建了三个月，玩家一次都没见过它。
+ *
+ * 现在三段都写出来：挣了多少 / 掉了多少 / 剩多少。掉的那一列还要说明白
+ * 为什么是 5 不是 2（王老师催单）——那正是「他背后有人在往回拉」这件事
+ * 唯一一次在数字上现身。
+ */
+function scoreLedger(t) {
+  const box = document.createElement('div');
+  box.className = 'ledger num';
+
+  const gain = document.createElement('span');
+  gain.className = 'gain' + (t.delta > 0 ? ' up' : t.delta < 0 ? ' down' : '');
+  gain.textContent = t.delta > 0 ? `+${t.delta}` : String(t.delta);
+  box.appendChild(gain);
+
+  // drift 是后加的字段。老令牌里没有它，别让一局旧对局在复盘上崩掉
+  if (typeof t.drift === 'number' && t.drift) {
+    const loss = document.createElement('span');
+    loss.className = 'loss';
+    loss.textContent = String(t.drift);
+    loss.title = t.pressure ? '每轮的信任流失，加上王老师这一轮又催了一遍' : '每轮的信任流失';
+    box.appendChild(loss);
+  }
+  if (t.released) {
+    const pool = document.createElement('span');
+    pool.className = 'pool';
+    pool.textContent = `+${t.released}`;
+    pool.title = '开局封顶时存进蓄势池的分，这一轮释放出来了';
+    box.appendChild(pool);
+  }
+
+  const after = document.createElement('span');
+  after.className = 'after';
+  after.textContent = String(t.trust);
+  box.appendChild(after);
+  return box;
 }
 
 /** 「别人打成什么样」。
