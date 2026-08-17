@@ -691,8 +691,6 @@ function verdictCopy() {
 }
 
 function openReview() {
-  const missedKeys = Object.keys(KEYS).filter(
-    (k) => !game.turns.some((t) => t.hits.includes(k)));
   const usedPenalties = Object.keys(PENALTIES).filter(
     (p) => game.turns.some((t) => t.hits.includes(p)));
   const best = game.turns.reduce(
@@ -733,14 +731,22 @@ function openReview() {
         </div>
       </div>
 
+      <!-- 三把钥匙的维度条。**同类产品（AI 陪练那一类）人人都有维度评分，
+           而我们原先只在「没用上的钥匙」里列了个清单**——明明判分引擎按
+           三把钥匙 × 四个情绪档位算了一整局，玩家却看不到自己在每一把上
+           站在哪儿。这一节把它摊开：用了几次、挣了多少分、时机对不对。
+
+           调研里最硬的一条（Key Lime 对 PUBG 后置屏的 N=12 研究）：
+           **玩家不会为了看懂一个指标去别处找解释，看不懂就直接忽略。**
+           所以每一行自带一句人话，不靠页面底部那段说明。 -->
+      <div class="group">
+        <div class="group-title">三把钥匙 · 你这一局用得怎么样</div>
+        <div class="panel" id="keyBars"></div>
+      </div>
+
       <div class="group">
         <div class="group-title">逐轮 · 挣了多少 / 掉了多少 / 剩多少</div>
         <div class="panel" id="roundsList"></div>
-      </div>
-
-      <div class="group" id="missedWrap">
-        <div class="group-title">没用上的钥匙</div>
-        <div class="panel" id="missedList"></div>
       </div>
 
       <div class="group" id="penaltyWrap" hidden>
@@ -825,12 +831,7 @@ function openReview() {
     list.appendChild(row);
   });
 
-  const missed = view.querySelector('#missedList');
-  if (!missedKeys.length) {
-    missed.innerHTML = '<p class="empty">三把钥匙你都用到了。</p>';
-  } else {
-    missedKeys.forEach((k) => missed.appendChild(tipCard(KEYS[k])));
-  }
+  paintKeyBars(view);
 
   if (usedPenalties.length) {
     view.querySelector('#penaltyWrap').hidden = false;
@@ -844,6 +845,83 @@ function openReview() {
   view.querySelector('#restart').onclick = () => location.reload();
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
+}
+
+/** 三把钥匙的维度条。
+ *
+ * **这一节是补一条真实的产品差距。** 同类的 AI 陪练产品人人都有"维度评分"，
+ * 而我们原先只有一张「没用上的钥匙」清单——判分引擎明明按三把钥匙 × 四个
+ * 情绪档位算了一整局，玩家却看不到自己在每一把上站在哪儿。
+ *
+ * 每一行给三样东西，都从这一局的真实数据里算，不编：
+ *   · 用了几次（钝化就是从这儿来的：同一把钥匙用第三次只剩一半效力）
+ *   · 这把钥匙一共挣了多少分
+ *   · 时机对不对（效力倍率的均值——**这是全作品唯一一处竞品没有的判据**）
+ *
+ * 没用过的那几把不留白，给出它的一句话说明——那正是下一局该试的东西。
+ */
+function paintKeyBars(view) {
+  const box = view.querySelector('#keyBars');
+  const rows = Object.keys(KEYS).map((k) => {
+    const turns = game.turns.filter((t) => t.hits.includes(k));
+    const gained = turns.reduce((s, t) => s + Math.max(0, t.delta), 0);
+    const effs = turns.map((t) => t.efficacy).filter((e) => e != null);
+    return {
+      k,
+      used: turns.length,
+      gained,
+      eff: effs.length ? effs.reduce((a, b) => a + b, 0) / effs.length : null,
+      rounds: turns.map((t) => t.round),
+    };
+  });
+  // 挣得多的排前面。没用过的沉底——它们是"下一局试试这个"，不是成绩
+  rows.sort((a, b) => b.gained - a.gained || b.used - a.used);
+
+  const top = Math.max(1, ...rows.map((r) => r.gained));
+
+  rows.forEach((r) => {
+    const meta = KEYS[r.k];
+    const row = document.createElement('div');
+    row.className = 'keyrow' + (r.used ? '' : ' unused');
+
+    const head = document.createElement('div');
+    head.className = 'keyhead';
+    const name = document.createElement('span');
+    name.className = 'keyname';
+    name.textContent = meta.name;
+    const num = document.createElement('span');
+    num.className = 'keynum num';
+    num.textContent = r.used ? `+${r.gained}` : '没用过';
+    head.append(name, num);
+
+    const bar = document.createElement('div');
+    bar.className = 'keybar';
+    const fill = document.createElement('i');
+    // 条长按"这一局挣得最多的那把"归一。绝对分值没有天花板可言，
+    // 拿一个想象出来的满分去除，条会长期趴在左边，什么也说明不了
+    fill.style.width = r.gained ? Math.max(6, (r.gained / top) * 100) + '%' : '0%';
+    bar.appendChild(fill);
+
+    const note = document.createElement('div');
+    note.className = 'keynote';
+    if (!r.used) {
+      note.textContent = meta.tip;
+    } else {
+      const parts = [`第 ${r.rounds.join('、')} 轮用了 ${r.used} 次`];
+      if (r.eff != null) {
+        const e = r.eff.toFixed(1);
+        parts.push(
+          r.eff >= 1.2 ? `平均 ${e}× · 时机抓得准`
+            : r.eff < 0.7 ? `平均 ${e}× · 用早了，这一招得等他晃起来`
+            : `平均 ${e}×`);
+      }
+      if (r.used >= 3) parts.push('用到第三次效力只剩一半');
+      note.textContent = parts.join(' · ');
+    }
+
+    row.append(head, bar, note);
+    box.appendChild(row);
+  });
 }
 
 /** 一轮的账，摊开写。
