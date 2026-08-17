@@ -597,6 +597,12 @@ body {
   border-top: 1px solid #d8d8d8;
 }
 
+/* **少了这一条，`hidden` 属性对它完全无效**——浏览器给 [hidden] 的
+   `display:none` 来自 UA 样式表，优先级压不过上面这个类选择器的 `display:flex`。
+   于是 `composer.hidden = true` 在三处都没生效：对局结束、令牌过期、令牌重放。
+   最后一屏上因此一直挂着一个禁用的输入框，里面可能还留着一句没发出去的话。 */
+.composer[hidden] { display: none; }
+
 .composer input {
   flex: 1;
   min-width: 0;

@@ -156,7 +156,7 @@ def screen_sentence(sentence: str) -> Optional[str]:
     返回 None 表示整句丢弃（剥掉旁白后什么都不剩），调用方应跳过它；
     命中安全规则则整句替换成兜底台词，不报错、不中断、不留空白。
     """
-    stripped = strip_stage_directions(sentence)
+    stripped = strip_leading_junk(strip_stage_directions(sentence))
     if not stripped or not _has_content(stripped):
         return None
     # 顺序不能反：**违规优先于"不是他的话"**。外链、微信号这类是最高危的，
@@ -255,6 +255,25 @@ _HAS_CONTENT = re.compile(r"[\w一-鿿]")
 
 def _has_content(sentence: str) -> bool:
     return bool(_HAS_CONTENT.search(sentence))
+
+
+# 角色标签被切碎之后剩下的那一个字母。真机实测：
+#
+#     d我自己账上的钱挪一下都要来问，我又不是欠你们钱
+#
+# 聊天窗口里冒出个孤零零的 d，玩家一眼就知道这东西是机器吐的。
+# `_ROLE_LABEL` 要求连着两个字母，单个字母它抓不到；而不能简单地按
+# "开头是字母就丢"处理——**「A股这两天跌得厉害」是老陈的真话**。
+#
+# 判据落在**后面那个汉字**上：跟在字母后面的若是股/线/日这类构词字，
+# 那是行话（A股、K线、T日），留着；是别的字，那个字母就是垃圾，抹掉。
+# 抹掉而不是丢整句：这句话本身是他说的，不该因为多了个字母就整句消失。
+_TERM_TAIL = "股线日型轮"
+_LEADING_JUNK = re.compile(rf"^\s*[A-Za-z]\s*(?=[一-鿿])(?![{_TERM_TAIL}])")
+
+
+def strip_leading_junk(sentence: str) -> str:
+    return _LEADING_JUNK.sub("", sentence)
 
 
 def strip_stage_directions(sentence: str) -> str:
