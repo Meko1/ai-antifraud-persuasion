@@ -9,3 +9,8 @@ httpx==0.28.1
 # 旁路统计用（§10.2）。纯 Python 实现，不触发 CentOS 7.9 上的现场编译；
 # 没装或连不上都不影响启动与对局，app/stats.py 对缺包做了降级。
 redis==5.2.1
+# Anthropic Messages 协议（内网网关上的 claude-opus-5 只认这套）。
+# 与 uvicorn[standard] 那条戒律不冲突：它的两个二进制依赖 jiter / pydantic_core
+# 都有 manylinux2014 轮子（glibc 2.17 = CentOS 7.9），装的时候不会现场编译。
+# 走公网 DeepSeek 时用不到它，app/llm.py 的 build_client 是延迟导入的。
+anthropic==0.122.0

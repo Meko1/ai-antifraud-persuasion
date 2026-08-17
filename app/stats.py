@@ -18,7 +18,7 @@ import logging
 from typing import Any, Dict, Iterable, Optional, Set
 
 from .config import settings
-from .scoring import KEY_VALUES, PENALTY_VALUES
+from .scoring import KEY_VALUES, PENALTY_VALUES, Ending
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,9 @@ class Stats:
                     "count": endings.get(kind, 0),
                     "share": _ratio(endings.get(kind, 0), finished),
                 }
-                for kind in ("persuaded", "blacklisted", "transferred")
+                # 枚举顺序即阶梯顺序，看板照着排就是对的；
+                # 写死一份清单的话，加一档结局就会在这里悄悄漏掉
+                for kind in (e.value for e in Ending)
             },
             # 分母是轮数而非局数：一局里同一把钥匙可以用很多次，
             # 除以局数会得出大于 1 的"命中率"

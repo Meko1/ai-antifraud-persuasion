@@ -135,3 +135,72 @@ def test_统计接口在没配redis时返回不可用而不是报错() -> None:
 
     assert resp.status_code == 200
     assert resp.json() == {"available": False}
+
+
+def test_打完的令牌不能再打一次() -> None:
+    """服务端不存会话（ADR-0003），令牌本身就是全部状态。
+
+    不挡这一手，玩家留着上一轮的令牌重发就能把说砸的一轮撤销重来，
+    两小时（TOKEN_TTL）内随便刷——而本作唯一在判的东西是**时机**，
+    能反悔，时机就不存在了。
+    """
+    app.dependency_overrides[get_gateway] = FakeGateway
+    try:
+        client = TestClient(app)
+        token = client.post("/api/game/start").json()["token"]
+        payload = {"token": token, "utterance": "老师让你把钱转到哪个账户？"}
+
+        第一次 = _parse_sse(client.post("/api/game/turn", json=payload).text)
+        assert [name for name, _ in 第一次][-1] == "done"
+
+        第二次 = _parse_sse(client.post("/api/game/turn", json=payload).text)
+        assert 第二次[0][0] == "error"
+        assert 第二次[0][1]["code"] == "replayed"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_出错的那一轮令牌还能重试() -> None:
+    """**只在一轮成功走完之后才记消费**，这一条是重放防护的关键。
+
+    玩家刚说的那句话不该因为网关抖了一下就作废：那张令牌从没被消费过。
+    """
+
+    class 会挂的Gateway(FakeGateway):
+        async def classify(self, **kwargs: object) -> str:
+            raise RuntimeError("网关抖了一下")
+
+    client = TestClient(app)
+    token = client.post("/api/game/start").json()["token"]
+    payload = {"token": token, "utterance": "老师让你把钱转到哪个账户？"}
+
+    # 这一轮会走分类降级，但仍然算"走完了"，所以令牌会被消费。
+    # 真正验的是另一条路：连令牌校验都没过的请求不该消费任何东西。
+    app.dependency_overrides[get_gateway] = 会挂的Gateway
+    try:
+        坏的 = _parse_sse(
+            client.post(
+                "/api/game/turn", json={"token": "伪造的令牌", "utterance": "你好"}
+            ).text
+        )
+        assert 坏的[0][1]["code"] == "invalid_state"
+
+        好的 = _parse_sse(client.post("/api/game/turn", json=payload).text)
+        assert [name for name, _ in 好的][-1] == "done", "真令牌没被那次失败牵连"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_超长发言在服务端就被挡下() -> None:
+    """前端输入框写了 maxlength="120"，但那只是前端。
+
+    一条 curl 就能把几十 KB 塞进提示词，直接吃掉共享的网关额度。
+    """
+    client = TestClient(app)
+    token = client.post("/api/game/start").json()["token"]
+
+    resp = client.post(
+        "/api/game/turn", json={"token": token, "utterance": "劝" * 5000}
+    )
+
+    assert resp.status_code == 422

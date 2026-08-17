@@ -1,8 +1,10 @@
 """服务入口。
 
 平台硬约束：对外 Web 服务固定监听 21818，`http://ip:21818/` 必须能直接打开。
-本文件目前只承载"部署链路跑通"所需的最小内容：健康检查、静态首页、SSE 流式验证。
-对局引擎（12 轮状态机 / 结构化判分 / 输出安全层）在后续迭代中接入。
+
+承载：开局、一轮对局（SSE）、健康检查、全局统计、静态首页。
+对局引擎在 `app/engine.py`，判分在 `app/scoring.py`，本文件只做 HTTP 层的事——
+校验令牌、挡住重放、把事件流转成 SSE、顺手旁听统计。
 """
 
 from __future__ import annotations
@@ -12,17 +14,18 @@ import json
 import logging
 import time
 import uuid
+from collections import OrderedDict
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import APP_ID, APP_VERSION
 from .config import BASE_DIR, settings
 from .engine import play_turn
-from .fallback import opening_line
+from .persona import opening_for
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
 from .scoring import MAX_ROUNDS, WIN_THRESHOLD, mood_for
@@ -62,9 +65,11 @@ async def game_start() -> JSONResponse:
 
     开场白取自预生成缓存，不调模型——首屏因此不受网关排队影响。
     """
-    line = opening_line()
+    # 开场白与人格变体同源：开场自称什么，后面十二轮就得是什么
+    gid = uuid.uuid4().hex
+    line = opening_for(gid)
     # 开场白必须进 session：它是第 1 轮唯一可供"扎根"的对话内容
-    session = new_session(gid=uuid.uuid4().hex, opening=line)
+    session = new_session(gid=gid, opening=line)
     stats.record_start()
     return JSONResponse(
         {
@@ -93,9 +98,48 @@ def get_gateway() -> ModelGateway:
     return _gateway
 
 
+# 玩家一句话的上限。前端输入框写了 maxlength="120"，但那只是前端——
+# 一条 curl 就能把几十 KB 塞进提示词，直接吃掉共享的网关额度。
+# 给到 200 是留出前端限制之外的余量，不是放宽玩法。
+MAX_UTTERANCE_CHARS = 200
+
+# 令牌上限。它随 history 增长（12 轮的发言与台词都在里面），实测满局约 7 KB。
+MAX_TOKEN_CHARS = 32768
+
+
 class TurnRequest(BaseModel):
-    token: str
-    utterance: str
+    token: str = Field(max_length=MAX_TOKEN_CHARS)
+    utterance: str = Field(max_length=MAX_UTTERANCE_CHARS)
+
+
+# ── 重放防护 ──────────────────────────────────────────────────────────────
+#
+# 服务端不存会话（ADR-0003），令牌本身就是全部状态——于是玩家留着上一轮的
+# 令牌重发，就能把说砸的那一轮撤销重来，两小时（TOKEN_TTL）内随便刷。
+# 而本作唯一在判的东西是**时机**：能反悔，时机就不存在了。
+#
+# **只在一轮成功走完之后才记**，这一条是关键：失败重试用的是一张从没被消费过
+# 的令牌，不受影响；被挡下的只有已经打完的那张。
+#
+# 局限写在明处：单进程内存，多 worker 或重启后失效。它挡的是"顺手撤销"，
+# 不是"铁了心作弊"——后者要挡就得推翻 ADR-0003，不值这个价。
+_CONSUMED_LIMIT = 4096
+_consumed: "OrderedDict[str, None]" = OrderedDict()
+
+
+def _fingerprint(token: str) -> str:
+    """令牌的签名部分。它已经是 payload 的 HMAC，够做唯一标识，也不必存正文。"""
+    return token.rpartition(".")[2]
+
+
+def _already_played(token: str) -> bool:
+    return _fingerprint(token) in _consumed
+
+
+def _mark_played(token: str) -> None:
+    _consumed[_fingerprint(token)] = None
+    while len(_consumed) > _CONSUMED_LIMIT:
+        _consumed.popitem(last=False)
 
 
 @app.post("/api/game/turn")
@@ -126,6 +170,11 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
         yield _sse("error", {"code": "invalid_state"})
         return
 
+    if _already_played(body.token):
+        logger.info("拒绝重放令牌：这一轮已经打过了")
+        yield _sse("error", {"code": "replayed"})
+        return
+
     try:
         async for event in play_turn(
             session, body.utterance, gateway=gateway, secret=settings.state_signing_secret, now=now
@@ -137,6 +186,9 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
             elif event.name == "ending":
                 stats.record_ending(event.data.get("kind", ""))
             yield _sse(event.name, event.data)
+        # 走完整轮才记消费。中途出错的那一张令牌必须还能重试——
+        # 玩家刚说的那句话不该因为网关抖了一下就作废。
+        _mark_played(body.token)
     except LLMError as exc:
         logger.warning("网关不可用: %s", exc)
         yield _sse("error", {"code": "upstream_unavailable"})

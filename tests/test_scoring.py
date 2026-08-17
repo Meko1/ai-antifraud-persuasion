@@ -10,9 +10,12 @@
 import pytest
 
 from app.scoring import (
+    EFFICACY,
+    MAX_ROUNDS,
     Ending,
     GameState,
     Mood,
+    decide_ending,
     evaluate_turn,
     mood_for,
     new_game,
@@ -234,7 +237,7 @@ def test_未命中任何钥匙时只吃信任流失() -> None:
 
 
 @pytest.mark.parametrize("轮次", [3, 6, 9, 12])
-def test_李老师每三轮在群里催一遍(轮次: int) -> None:
+def test_王老师每三轮在群里催一遍(轮次: int) -> None:
     """流失原本是隐形的，玩家看不见也不知道自己在跟什么赛跑。
 
     每 3 轮让它在剧情里现身一次——同一个事实，判分、台词、对话旁白三处都看得见。
@@ -350,8 +353,9 @@ def test_信任度始终落在合法区间(
         (4, 78, ["expose_contradiction"], Ending.PERSUADED),
         # 归零即被拉黑，对局提前终止
         (5, 2, ["scold"], Ending.BLACKLISTED),
-        # 第 12 轮结束仍未达标，他把钱转走了
+        # 第 12 轮结束仍未达标：落哪一档看他最后停在哪个档位
         (11, 40, [], Ending.TRANSFERRED),
+        (11, 70, [], Ending.INTERCEPTED),
         # 对局仍在进行
         (5, 40, [], None),
     ],
@@ -364,6 +368,24 @@ def test_结局判定(
     outcome = evaluate_turn(state, hit_keys=命中, grounded=True)
 
     assert outcome.ending is 预期结局
+
+
+@pytest.mark.parametrize(
+    ("信任度", "预期结局"),
+    [
+        # 阶梯不另立阈值：档位本来就是"他有多信你"的分层，量的是同一件事
+        (79, Ending.INTERCEPTED),   # 松动，只差最后一步
+        (65, Ending.INTERCEPTED),
+        (64, Ending.STALLED),       # 动摇：他不急着现在转，但也没被说服
+        (45, Ending.STALLED),
+        (44, Ending.TRANSFERRED),   # 烦躁：开局就在这一档，十二轮什么也没发生
+        (1, Ending.TRANSFERRED),
+    ],
+)
+def test_轮次耗尽时结局按情绪档位分四档(
+    信任度: int, 预期结局: Ending
+) -> None:
+    assert decide_ending(信任度, MAX_ROUNDS) is 预期结局
 
 
 @pytest.mark.parametrize(
@@ -382,3 +404,22 @@ def test_结局判定(
 )
 def test_情绪档位由信任度映射(信任度: int, 预期档位: Mood) -> None:
     assert mood_for(信任度) is 预期档位
+
+
+def test_同轮多把钥匙时不下发效力倍率() -> None:
+    """"这一招值多少倍"必须有唯一答案，没有就别说。
+
+    分类器的消歧规则限定每轮最多记一把钥匙，所以这是护栏而非常规路径。
+    原先取的是循环里最后一把——模型不听话多标一把时，复盘会理直气壮地
+    显示一个错的倍率。少说一行好过说错一行。
+    """
+    state = new_game()
+
+    一把 = evaluate_turn(state, hit_keys=["anchor_real_purpose"], grounded=True)
+    两把 = evaluate_turn(
+        state, hit_keys=["anchor_real_purpose", "expose_contradiction"], grounded=True
+    )
+
+    assert 一把.efficacy == EFFICACY["anchor_real_purpose"][Mood.IRRITATED]
+    assert 两把.efficacy is None
+    assert 两把.delta > 0, "分照加，只是倍率没法归到某一把头上"

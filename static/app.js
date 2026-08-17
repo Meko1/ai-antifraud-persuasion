@@ -1,5 +1,8 @@
 /* AI 反诈劝阻 · 前端
  *
+ * 你＝老陈的投资顾问（局内他叫你李经理），他＝你的客户。首页那一屏是**他的
+ * 手机**（冷开场），点开你发给他的那条未读，才切到你这一侧的企业微信。
+ *
  * 服务端不存会话：每轮请求都要带上一轮返回的 token（ADR-0003）。
  * SSE 事件顺序恒为 meta → sentence* → score → ending? → state → done，
  * score 刻意排在台词播完之后——信任度那一跳要等他把话说完才发生。
@@ -37,16 +40,57 @@ const PENALTIES = {
   bare_assertion: { name: '空口断言', tip: '「这是诈骗」四个字他这三个月听了无数遍，早免疫了。' },
 };
 
-const ENDINGS = {
-  persuaded: { title: '他把钱留住了', sub: '三十万还在卡里' },
-  blacklisted: { title: '他把你拉黑了', sub: '消息再也发不出去' },
-  transferred: { title: '他还是转走了', sub: '三点整，三十万到账' },
-};
-
 // 转账金额与收款方在这儿写死：它们是剧本设定（app/gateway.py 的 SCAM_SCRIPT），
 // 不是判分参数，服务端也不下发。
-const AMOUNT = '¥300,000.00';
-const PAYEE = '转账给 启航投顾-李';
+const TOTAL = 300000;
+// 拦下那一档里仍有一小笔钱被转走。这是骗局的标准剧本——先小额取信——
+// 代价是玩家表现不错、结局仍有人损失。取真实。
+const TEST_TRANSFER = 20000;
+const PAYEE = '转账给 启航财经-王';
+
+// 你先发的那一条。它同时出现在冷开场的会话列表里（老陈手机上的那条未读），
+// 和聊天窗口的第一条——**老陈的开场白是在回它**，少了它他就是在回应空气。
+// 内容只能有一条信息：账户转出去一笔。启航财经、王老师、三十万、三点，
+// 开局你一概不知道（CONTEXT.md「对局」）。
+const PING = '陈叔，方便说句话吗？我看到您账户今天转出去一笔。';
+
+const money = (n) =>
+  '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// 结局是一道阶梯，不是胜负（CONTEXT.md「结局」）。四档量的是他最后有多信你，
+// 对玩家呈现为"你救回了多少钱"——金额是这件事在现实里的记法。
+// 排序的反直觉之处：拖住一分没转，仍排在已转出一小笔的拦下之下，
+// 因为"我再想想"多半是打发你的话，不是让步。
+const ENDINGS = {
+  persuaded: {
+    tier: '劝住', title: '他把钱留住了',
+    savedCopy: '三十万，一分没转',
+    receipt: 'void', amount: TOTAL,
+  },
+  intercepted: {
+    tier: '拦下', title: '他只转了两万',
+    savedCopy: '转出两万试水，保住二十八万',
+    receipt: 'sent', amount: TEST_TRANSFER,
+  },
+  stalled: {
+    tier: '拖住', title: '他说再想想',
+    savedCopy: '钱一分没动，也一分没保住',
+    receipt: 'hold', amount: TOTAL,
+  },
+  transferred: {
+    tier: '转账', title: '他还是转走了',
+    savedCopy: '三十万，三点整全部到账',
+    receipt: 'sent', amount: TOTAL,
+  },
+  // 被拉黑不入档：连凭证都没有，你不会知道他最后把钱转没转
+  // 陌生人被拉黑只是出局；**客户**把投顾拉黑，是关系断了、他照转不误、
+  // 而你连看都看不到。同一档，在新设定下重得多。
+  blacklisted: {
+    tier: '被拉黑', title: '客户把你拉黑了',
+    savedCopy: '他照样会转，而你连看都看不到了',
+    receipt: null, amount: TOTAL,
+  },
+};
 
 const ERRORS = {
   invalid_state: '这一局放得太久了，得重开一局',
@@ -54,6 +98,9 @@ const ERRORS = {
   rate_limited: '这会儿人有点多，等两秒再说',
   internal: '出了点岔子，再说一次试试',
   network: '网络断了，这句没发出去',
+  // 服务端挡下了一张已经打完的令牌。正常玩不会碰到——碰到多半是这一轮的
+  // 结果没能回到手上（网络在中途断了），而服务端那边已经算完了。
+  replayed: '这一轮已经算过了，页面和他那边对不上，得重开一局',
 };
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -71,8 +118,9 @@ const game = {
   threshold: 80,
   maxRounds: 12,
   remaining: 12,
-  turns: [],      // {round, utterance, reply, hits, grounded, delta, trust, before, pool}
-  ending: null,   // {kind, trust, line}
+  turns: [],      // {round, utterance, reply, lines, hits, grounded, delta, trust, before, pool}
+  ending: null,   // {kind, trust, lines}
+  quote: null,    // 分享卡上那句话 {round, text}
   busy: false,
   entered: false,
 };
@@ -108,7 +156,7 @@ async function* readEvents(resp) {
   }
 }
 
-// ── K 线（复盘与分享卡共用）──────────────────────────────────
+// ── K 线（复盘）─────────────────────────────────────────────
 // 一根蜡烛就是一轮：开＝上轮信任度，收＝本轮信任度，细横线＝这一轮判分给出的
 // 分数。横线与实体端点的落差，正是每轮的信任流失与蓄势池的存取。
 
@@ -191,6 +239,7 @@ function palette() {
     rise: v('--wx-rise'), fall: v('--wx-fall'), brand: v('--wx-brand'),
     sub: v('--wx-sub'), line: v('--wx-line'), text: v('--wx-text'),
     white: v('--wx-white'), gray: v('--wx-gray'), goal: '#c9a227',
+    bg: v('--wx-bg'), red: v('--wx-red'),
     sans: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
     mono: 'ui-monospace, Menlo, Consolas, monospace',
   };
@@ -256,15 +305,27 @@ function typingRow() {
 function paced(anchor) {
   let chain = Promise.resolve();
   let count = 0;
+  const rows = [];
   return {
     push(text) {
       chain = chain.then(async () => {
         if (count++) await sleep(260 + Math.random() * 160);
-        thread.insertBefore(msgRow('them', text), anchor);
+        const row = msgRow('them', text);
+        rows.push(row);
+        thread.insertBefore(row, anchor);
         toBottom();
       });
     },
     drain: () => chain,
+    /** 这一轮作废时把已经播出去的气泡收回来。
+     *
+     * 少了它，出错的那一轮会留下一段"他确实回过话"的聊天记录，而服务端根本
+     * 没记这一轮（令牌没推进）。玩家再说一句，老陈完全不记得刚才那段——
+     * 聊天记录与复盘（game.turns 是它唯一的数据源）当场分叉。 */
+    rollback() {
+      rows.forEach((row) => row.remove());
+      rows.length = 0;
+    },
   };
 }
 
@@ -317,7 +378,7 @@ function hitTags(hits, grounded) {
   return out;
 }
 
-/** 剧情旁白。李老师在群里催的那一下走这个位置——
+/** 剧情旁白。王老师在群里催的那一下走这个位置——
  *  它不是判分反馈，是一个看得见的施压来源。 */
 function narrate(text) {
   sysnote([text]).classList.add('push');
@@ -357,9 +418,23 @@ async function playTurn(utterance) {
   $('send').disabled = true;
   $('say').disabled = true;
 
-  say('me', utterance);
+  // 这一轮作废时要原样退回去。服务端的令牌不会推进，界面也就一步都不能留。
+  const prevRemaining = game.remaining;
+  const mine = msgRow('me', utterance);
+  thread.appendChild(mine);
+  toBottom();
   const typing = typingRow();
   const queue = paced(typing);
+
+  const rollback = () => {
+    queue.rollback();
+    mine.remove();
+    game.remaining = prevRemaining;
+    $('remaining').textContent = String(prevRemaining);
+    // 话还给他，省得重打一遍
+    const input = $('say');
+    if (!input.value) input.value = utterance;
+  };
 
   let resp;
   try {
@@ -370,11 +445,13 @@ async function playTurn(utterance) {
     });
   } catch (e) {
     typing.remove();
+    rollback();
     return failTurn('network');
   }
 
   if (!resp.ok || !resp.body) {
     typing.remove();
+    rollback();
     return failTurn('internal');
   }
 
@@ -410,15 +487,24 @@ async function playTurn(utterance) {
   await queue.drain();
   typing.remove();
 
-  if (failed) return failTurn(failed);
+  if (failed) {
+    rollback();
+    return failTurn(failed);
+  }
 
   if (score) {
     game.turns.push({
       round: round || game.turns.length + 1,
       utterance,
       reply: spoken.join(''),
+      // 逐句留着，不只留拼好的那一整段：分享卡要挑的是**其中一句**
+      lines: spoken.slice(),
       hits: score.hits,
       grounded: score.grounded,
+      judgedMood: score.judged_mood,
+      efficacy: score.efficacy,
+      windowResult: score.window_result,
+      windowOpened: score.window_opened,
       delta: score.delta,
       trust: score.trust,
       before: game.trust,
@@ -429,7 +515,7 @@ async function playTurn(utterance) {
     // 判分卡不在对局中出现：标签与分数一律留到复盘。
     // 边打边给答案等于把攻略印在屏幕上——玩家两轮就学会照着清单刷分，
     // 从此不再读人。要读的东西只有一样：他说的话。
-    if (score.pressure) narrate('李老师又在群里催了一遍');
+    if (score.pressure) narrate('王老师又在群里催了一遍');
   }
 
   if (game.ending) return finish();
@@ -444,12 +530,14 @@ function failTurn(code) {
   sysnote([ERRORS[code] || ERRORS.internal], true);
   game.busy = false;
 
-  if (code === 'invalid_state') {
+  // 这两种都没法接着打：令牌要么过期了，要么已经被消费掉。给一条出路，
+  // 别让玩家对着一个再也发不出去的输入框反复试。
+  if (code === 'invalid_state' || code === 'replayed') {
     $('composer').hidden = true;
     const again = document.createElement('button');
     again.textContent = '重开一局';
     again.onclick = () => location.reload();
-    sysnote(['这一局放得太久了', again], true);
+    sysnote([code === 'replayed' ? '这一局没法接着打了' : '这一局放得太久了', again], true);
     return;
   }
   $('send').disabled = false;
@@ -457,26 +545,34 @@ function failTurn(code) {
   $('say').focus();
 }
 
+const RECEIPT_FOOT = {
+  sent: '15:00 已被对方接收',
+  void: '已取消转账',
+  hold: '还没点发送',
+};
+
 /** 转账凭证。他截了张图发过来——微信里人人都干过这事。
  *
- * 劝住与转走共用这一张卡，只翻一个位：橙的是已被接收，灰的是没点下去。
- * 整局游戏赌的就是这一位，所以它值得是这一屏上唯一一件重物。
+ * 四档结局共用这一张卡，翻的是同一个位：橙的是已被接收，灰的是没点下去。
+ * 拦下与转账都是橙的，差别只在金额——两万和三十万，一眼就是不同的结局。
+ * 拖住是灰的但金额没划掉：转账页面填好了停在那儿，他没点。
+ * 整局对局赌的就是这一位，所以它值得是这一屏上唯一一件重物。
  */
-function receipt(cancelled) {
+function receipt(state, amount) {
+  const text = money(amount);
   const el = document.createElement('div');
-  el.className = 'receipt' + (cancelled ? ' void' : '');
+  el.className = 'receipt' + (state === 'sent' ? '' : ' ' + state);
   el.innerHTML =
     '<div class="receipt-body">' +
       '<div class="receipt-icon" aria-hidden="true">¥</div>' +
       '<div><div class="receipt-amt"></div><div class="receipt-to"></div></div>' +
     '</div><div class="receipt-foot"></div>';
-  el.querySelector('.receipt-amt').textContent = AMOUNT;
+  el.querySelector('.receipt-amt').textContent = text;
   el.querySelector('.receipt-to').textContent = PAYEE;
-  el.querySelector('.receipt-foot').textContent =
-    cancelled ? '已取消转账' : '15:00 已被对方接收';
+  el.querySelector('.receipt-foot').textContent = RECEIPT_FOOT[state];
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label',
-    `转账凭证截图：${AMOUNT}，${PAYEE}，` + (cancelled ? '已取消转账' : '已被对方接收'));
+    `转账凭证截图：${text}，${PAYEE}，${RECEIPT_FOOT[state]}`);
   return el;
 }
 
@@ -504,15 +600,17 @@ async function finish() {
   await sleep(400);
 
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
-  if (kind === 'blacklisted') {
-    // 被拉黑之后微信显示的就是这张卡。开局那句「对方不是你的朋友」在这里合上了口：
-    // 你一直是个陌生人，现在连话都递不进去了。
+  const meta = ENDINGS[kind] || ENDINGS.transferred;
+  if (!meta.receipt) {
+    // 被拒收之后聊天窗口显示的就是这一条。开局那句「对方是你的客户」在这里
+    // 合上了口：他还是你的客户，你还得对他负责，只是话再也递不进去了。
+    // 而那条存档提示仍然挂在上面——你连没说出口的话都留了痕。
     const tip = document.createElement('p');
     tip.className = 'strangertip';
-    tip.textContent = '对方开启了朋友验证，你还不是他（她）朋友。';
+    tip.textContent = '消息已发出，但被对方拒收了。';
     thread.appendChild(tip);
   } else {
-    photo(receipt(kind === 'persuaded'));
+    photo(receipt(meta.receipt, meta.amount));
   }
 
   const btn = document.createElement('button');
@@ -535,14 +633,34 @@ function verdictCopy() {
   const parts = [];
 
   if (kind === 'persuaded') parts.push(`你用了 ${game.turns.length} 轮把他劝了回来。`);
-  else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，他把你拉黑了。`);
+  else if (kind === 'intercepted') parts.push('他只按老师说的转了两万试水，剩下的二十八万你按住了。');
+  else if (kind === 'stalled') parts.push('他把这事推到了明天——你争到的是时间，不是他的决定。');
+  else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，他把你拉黑了——这条线断了，你再也看不到他的动静。`);
   else parts.push('他还是把那三十万转出去了。');
 
   if (best && best.delta > 0) {
     parts.push(
       `全场最有力的一句在第 <em>${best.round}</em> 轮——你说「${best.utterance}」，` +
       `信任度那一下涨了 ${best.delta}。`);
-    if (kind !== 'persuaded') parts.push('你差的不是方向，是没在他松动的那一刻乘胜追击。');
+    // **这句话以前是无条件说的**——只要没劝住就说"你没乘胜追击"，
+    // 哪怕玩家每一次窗口都追上了。追问窗口这个机制本来就是为了让这句话
+    // 变成真的（TECH-DESIGN §3.4），现在才真正接上线：错过了才说。
+    const missed = game.turns.filter((x) => x.windowResult === 'missed');
+    const caught = game.turns.filter((x) => x.windowResult === 'hit');
+    if (missed.length) {
+      // 报的是**开窗**那一轮，不是关窗那一轮：他晃起来是在开窗时，
+      // 错过的那一轮只是口子合上的时刻。两个轮次差着两轮，说错了玩家会对不上号
+      const opened = game.turns
+        .filter((x) => x.windowOpened && x.round < missed[0].round)
+        .pop();
+      parts.push(
+        `你差的不是方向——第 <em>${(opened || missed[0]).round}</em> 轮他晃到了新的一档，` +
+        `接下来两轮本来是机会，你没接住，第 ${missed[0].round} 轮他重新硬了回去。`);
+    } else if (caught.length && kind !== 'persuaded') {
+      parts.push(
+        `他松动的那几次你都接住了（第 ${caught.map((x) => x.round).join('、')} 轮），` +
+        `差的是最后一公里——越接近松口，同一句话推动他的幅度越小。`);
+    }
   } else {
     parts.push('全场没有一句真正推动过他。下一局试着先问问，那笔钱原本是准备干什么用的。');
   }
@@ -556,9 +674,8 @@ function openReview() {
     (p) => game.turns.some((t) => t.hits.includes(p)));
   const best = game.turns.reduce(
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
-  const peak = game.turns.reduce((m, t) => Math.max(m, t.trust), game.trust);
   const kind = game.ending ? game.ending.kind : 'transferred';
-  const meta = ENDINGS[kind];
+  const meta = ENDINGS[kind] || ENDINGS.transferred;
 
   const view = document.createElement('section');
   view.className = 'review';
@@ -572,7 +689,17 @@ function openReview() {
     <div class="review-body">
       <div class="summary ${kind}">
         <div class="kind"></div>
+        <div class="saved"></div>
         <p class="copy"></p>
+      </div>
+
+      <div class="group">
+        <div class="group-title">这些分是怎么来的</div>
+        <div class="panel">
+          <p class="howscored">下面每一分都是<b>程序按规则表算的，不是模型打的</b>。
+          同一句话在他不同的情绪档位上值不同的分——这套参数跑过两万局蒙特卡洛校准，
+          换句话说，你这一局的分数是可复现的。</p>
+        </div>
       </div>
 
       <div class="group">
@@ -598,6 +725,16 @@ function openReview() {
         <div class="panel" id="penaltyList"></div>
       </div>
 
+      <div class="group" id="statsWrap" hidden>
+        <div class="group-title">别人打成什么样</div>
+        <div class="panel" id="statsList"></div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">名场面 · 挑一句他说的话</div>
+        <div class="panel" id="quoteList" role="radiogroup" aria-label="名场面"></div>
+      </div>
+
       <div class="actions">
         <button id="makeCard">生成分享卡</button>
         <button class="plain" id="restart">再来一局</button>
@@ -606,20 +743,11 @@ function openReview() {
     </div>`;
 
   document.body.appendChild(view);
-  view.querySelector('.summary .kind').textContent = meta.title;
+  view.querySelector('.summary .kind').textContent = `${meta.tier} · ${meta.title}`;
+  view.querySelector('.summary .saved').textContent = meta.savedCopy;
   view.querySelector('.summary .copy').innerHTML = verdictCopy();
 
-  // 直接量、直接画：读 clientWidth 本身就会强制布局，不必等下一帧
-  const chart = view.querySelector('#chart');
-  const w = chart.clientWidth;
-  const h = chart.clientHeight;
-  paintKline(fitCanvas(chart, w, h), { x: 10, y: 12, w: w - 20, h: h - 26 }, {
-    turns: game.turns,
-    threshold: game.threshold,
-    slots: Math.max(game.turns.length, 6),
-    palette: palette(),
-    axis: true,
-  });
+  paintChart(view);
 
   const list = view.querySelector('#roundsList');
   game.turns.forEach((t) => {
@@ -638,6 +766,10 @@ function openReview() {
     tags.className = 'tags';
     hitTags(t.hits, t.grounded).forEach((x) => tags.appendChild(x));
     body.append(said, tags);
+    const when = timingNote(t);
+    if (when) body.append(when);
+    const win = windowNote(t);
+    if (win) body.append(win);
 
     const score = document.createElement('div');
     score.className = 'score num';
@@ -666,9 +798,164 @@ function openReview() {
     usedPenalties.forEach((p) => box.appendChild(tipCard(PENALTIES[p])));
   }
 
+  paintQuotes(view);
+  paintStats(view, kind);
+
   view.querySelector('#restart').onclick = () => location.reload();
-  view.querySelector('#makeCard').onclick = () => makeCard(view, { peak });
+  view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
+}
+
+/** 「别人打成什么样」。
+ *
+ * `app/stats.py` 与 `/api/stats` 早就写好了，前端一次都没调用过——同类产品
+ * 公认的四个失败模式里，"量的是对话，不是能不能上岗"就漏在这儿。一个人打完
+ * 只知道自己这一局，接上之后才知道自己站在哪：你这一档占多少、三把钥匙里
+ * 哪一把是大家都想不起来用的。
+ *
+ * **全程是旁路**：Redis 没配、接口挂了、还没人玩过，这一节整块不出现，
+ * 复盘的其余部分一个字都不受影响。绝不让一个纯展示功能拖累最后一屏。
+ */
+async function paintStats(view, kind) {
+  let data;
+  try {
+    data = await (await fetch('/api/stats')).json();
+  } catch (e) {
+    return;
+  }
+  if (!data || !data.available || !data.turns) return;
+
+  const rows = [];
+  const mine = game.turns.length;
+
+  const share = data.endings && data.endings[kind];
+  if (share && share.share) {
+    rows.push([
+      `你落在「${(ENDINGS[kind] || ENDINGS.transferred).title}」`,
+      `${Math.round(share.share * 100)}% 的人也停在这一档`,
+    ]);
+  }
+
+  // 分母两边都是"轮"：全局用总轮数，你这局用你打过的轮数。
+  // 换成局数会得出大于 1 的"命中率"——一局里同一把钥匙可以用很多次。
+  Object.keys(KEYS).forEach((k) => {
+    const g = data.keys && data.keys[k];
+    if (!g) return;
+    const 我的 = game.turns.filter((t) => t.hits.includes(k)).length;
+    rows.push([
+      KEYS[k].name,
+      `大家 ${Math.round(g.rate * 100)}% 的发言用到 · 你 ${mine ? Math.round((我的 / mine) * 100) : 0}%`,
+    ]);
+  });
+
+  // 小雨那条铺垫不在这儿重复说：上面「踩过的坑」里的空口断言卡片已经写了
+  // 「这四个字他这三个月听了无数遍」。这一行只负责给一个数。
+  const 空口 = data.keys && data.keys.bare_assertion;
+  if (空口 && 空口.rate) {
+    rows.push([
+      '空口说“这是诈骗”',
+      `${Math.round(空口.rate * 100)}% 的发言还在这么劝`,
+    ]);
+  }
+
+  if (!rows.length) return;
+
+  const box = view.querySelector('#statsList');
+  rows.forEach(([name, note]) => {
+    const row = document.createElement('div');
+    row.className = 'statrow';
+    const n = document.createElement('div');
+    n.className = 'statname';
+    n.textContent = name;
+    const v = document.createElement('div');
+    v.className = 'statnote';
+    v.textContent = note;
+    row.append(n, v);
+    box.appendChild(row);
+  });
+
+  const foot = document.createElement('p');
+  foot.className = 'empty';
+  foot.textContent = `统计自 ${data.games} 局、${data.turns} 轮对话`;
+  box.appendChild(foot);
+
+  view.querySelector('#statsWrap').hidden = false;
+}
+
+/** 时机那一行。**这是全作品唯一一处竞品没有的判据**——金融 AI 陪练判
+ *  "回答准确度、语速、音量"，销售 roleplay 判"方法论有没有照做"，
+ *  没有一家判"你这一招用得是不是时候"。而效力矩阵判的正是这个：
+ *  同一把钥匙，他戒备时用和他动摇时用，差四倍多。
+ *
+ *  倍率由服务端下发（判分参数只此一份，前端不抄那张表）。
+ */
+function timingNote(t) {
+  if (t.efficacy == null) return null;
+  const mood = MOODS[t.judgedMood] || t.judgedMood;
+  const el = document.createElement('div');
+  el.className = 'timing' + (t.efficacy >= 1.2 ? ' good' : t.efficacy < 0.7 ? ' bad' : '');
+  const verdict = t.efficacy >= 1.2 ? ' 正是时候'
+    : t.efficacy < 0.7 ? ' 用早了，这一招得等他晃起来' : '';
+  el.textContent = `他当时${mood} · 这一招值 ${t.efficacy}×${verdict}`;
+  return el;
+}
+
+// 追问窗口那一行。同类产品公认的一个洞是"评分捕捉不到回避行为"——
+// 受训者在安全话题上过度展开，一碰到真正的痛点就退回安全区，而评分只看
+// 话术完整度，反而给了正面激励。追问窗口捕捉的正是它：他晃起来的那两轮
+// 你有没有跟上。以前这条只在引擎里算，玩家一眼都看不到。
+const WINDOW_NOTE = {
+  hit: { text: '他正晃着，你接住了 · 这一招额外加成', cls: 'good' },
+  missed: { text: '两轮的口子空掉了，他重新硬了回去 · 扣 6 分', cls: 'bad' },
+  open: { text: '口子还开着，还剩一轮', cls: '' },
+};
+
+function windowNote(t) {
+  const parts = [];
+  const w = WINDOW_NOTE[t.windowResult];
+  if (w) parts.push([w.text, w.cls]);
+  if (t.windowOpened) parts.push(['他第一次晃到这一档 · 接下来两轮是机会', 'good']);
+  if (!parts.length) return null;
+  const box = document.createElement('div');
+  parts.forEach(([text, cls]) => {
+    const el = document.createElement('div');
+    el.className = 'window' + (cls ? ' ' + cls : '');
+    el.textContent = text;
+    box.appendChild(el);
+  });
+  return box;
+}
+
+/** 画那根 K 线。
+ *
+ * **不赌布局时序。** 原来这里直接读 `clientWidth` 就画，注释写着"读它本身
+ * 就会强制布局，不必等下一帧"——那句话在这条路径上不成立：`.review` 刚被
+ * 塞进 body、还带着一个 slidein 动画，实测量到的是 **16px**（`width:100%`
+ * 落在一个还没有宽度的容器上，再加左右各 8px 内边距）。画布按 16px 画完，
+ * CSS 再把它拉到全宽，K 线就糊成一片。
+ *
+ * 而且它是**间歇性**的——同一段代码有时对有时不对，这种视觉 bug 最坏：
+ * 平时看不出来，路演当天糊给评审看。
+ *
+ * 所以量到不合理的宽度就等下一帧重画，而不是相信第一次的结果。
+ */
+function paintChart(view) {
+  const chart = view.querySelector('#chart');
+  if (!chart) return;
+  const w = chart.clientWidth;
+  const h = chart.clientHeight;
+  // 一根蜡烛最窄 3px、最多 12 轮，再加边距——比这还窄只可能是没量准
+  if (w < 100 || h < 40) {
+    requestAnimationFrame(() => paintChart(view));
+    return;
+  }
+  paintKline(fitCanvas(chart, w, h), { x: 10, y: 12, w: w - 20, h: h - 26 }, {
+    turns: game.turns,
+    threshold: game.threshold,
+    slots: Math.max(game.turns.length, 6),
+    palette: palette(),
+    axis: true,
+  });
 }
 
 function tipCard(meta) {
@@ -681,6 +968,111 @@ function tipCard(meta) {
   p.textContent = meta.tip;
   card.append(title, p);
   return card;
+}
+
+// ── 名场面 ──────────────────────────────────────────────────
+//
+// 人们分享的不是自己的成绩，是 AI 说的那句话的截图。所以分享卡的主体是
+// **他说过的一句话**，成绩退到卡底一行小字。玩家自己挑那一句——
+// 哪句戳中了他，只有他知道，任何自动挑选都不如他准。
+
+const JARGON = [
+  '老师', '内部', '消息', '涨停', '翻倍', '行规', '散户', '机构', '补仓', '割肉',
+  '满仓', '加仓', '踏空', '解冻', '保证金', '跟单', '账户', '手续费', '出金',
+  '这波', '行情', '免责', '协议', '收益',
+];
+
+/** 按句切。后端已按句下发（ADR-0004），开场白与结局台词还得自己切一遍。 */
+function sentences(text) {
+  const out = [];
+  let cur = '';
+  for (const ch of text) {
+    cur += ch;
+    if ('。！？…'.includes(ch)) {
+      out.push(cur.trim());
+      cur = '';
+    }
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** 他这一局说过的所有句子，按时间序，去重。 */
+function hisLines() {
+  const raw = [];
+  sentences(game.opening).forEach((text) => raw.push({ round: 0, text }));
+  game.turns.forEach((t) =>
+    (t.lines || sentences(t.reply || '')).forEach((line) =>
+      sentences(line).forEach((text) => raw.push({ round: t.round, text }))));
+  ((game.ending && game.ending.lines) || []).forEach((line) =>
+    sentences(line).forEach((text) => raw.push({ round: null, text })));
+
+  const seen = new Set();
+  return raw.filter(({ text }) => {
+    // 太短的没有信息量，太长的在卡上就不是"一句话"了
+    if (text.length < 8 || text.length > 44 || seen.has(text)) return false;
+    seen.add(text);
+    return true;
+  });
+}
+
+/** 默认挑哪一句。挑不准也没关系——真正的选择权在下面那张列表上，
+ *  这个函数只负责让默认值不尴尬。 */
+function punch(text) {
+  let score = 20 - Math.abs(text.length - 20);        // 20 字上下最像一句能被截图的话
+  if (text.includes('你')) score += 6;                 // 冲着你来的话最有对峙感
+  if (JARGON.some((w) => text.includes(w))) score += 5; // 骗局黑话是行内人一眼认得出的那部分
+  if (/[，,]/.test(text)) score += 2;                  // 有转折的句子比平铺的一句有味道
+  return score;
+}
+
+function quoteLabel(quote) {
+  if (quote.round === 0) return '开场';
+  return quote.round === null ? '最后' : `第 ${quote.round} 轮`;
+}
+
+function paintQuotes(view) {
+  const box = view.querySelector('#quoteList');
+  const lines = hisLines();
+  if (!lines.length) {
+    // 兜底台词全程顶上时会走到这里。没有名场面就没有分享卡——
+    // 与其出一张只有成绩的卡，不如让按钮明说。
+    box.innerHTML = '<p class="empty">这一局他没留下能单独拎出来的话。</p>';
+    game.quote = null;
+    const btn = view.querySelector('#makeCard');
+    btn.disabled = true;
+    btn.textContent = '没有可上卡的话';
+    return;
+  }
+
+  const top = lines.slice().sort((a, b) => punch(b.text) - punch(a.text))[0];
+  game.quote = game.quote || top;
+
+  lines.forEach((quote) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'quote';
+    row.setAttribute('role', 'radio');
+
+    const no = document.createElement('span');
+    no.className = 'qno';
+    no.textContent = quoteLabel(quote);
+    const text = document.createElement('span');
+    text.className = 'qtext';
+    text.textContent = quote.text;
+    row.append(no, text);
+
+    const select = () => {
+      game.quote = quote;
+      box.querySelectorAll('.quote').forEach((el) =>
+        el.setAttribute('aria-checked', String(el === row)));
+      // 已经出过图就当场换一张，省得玩家再点一次"生成"
+      if (view.querySelector('#card')) makeCard(view);
+    };
+    row.setAttribute('aria-checked', String(quote.text === game.quote.text));
+    row.onclick = select;
+    box.appendChild(row);
+  });
 }
 
 // ── 分享卡 ──────────────────────────────────────────────────
@@ -708,29 +1100,67 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
-function makeCard(view, stats) {
+/** 圆角矩形。ctx.roundRect 在旧一点的 iOS Safari 上还没有，自己描一遍。 */
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function tierColor(kind, c) {
+  if (kind === 'persuaded' || kind === 'intercepted') return c.brand;
+  if (kind === 'stalled') return c.gray;
+  return c.red;
+}
+
+/** 分享卡 = 他那句话的聊天截图。
+ *
+ * 上一版是一张成绩单（K 线 + 轮次 + 信任度峰值），而人们不发自己的成绩，
+ * 发的是 AI 说的话——一个同行看到「免责协议那是行规，你外行不懂」会心头一紧，
+ * 因为他上周刚听客户说过差不多的话。所以主体让给那句话，成绩退到卡底一行。
+ * K 线没有丢，它留在复盘里——那是给认真打的人和评审看的东西。
+ */
+function makeCard(view) {
   const W = 640;
-  const pad = 48;
-  const COPY_TOP = pad + 560;
-  const LINE_H = 38;
+  const pad = 44;
+  const AV = 60;              // 头像
+  const GAP = 16;             // 头像与气泡的间距
+  const BUB_PAD_X = 26;
+  const BUB_PAD_Y = 24;
+  const QUOTE_SIZE = 30;
+  const QUOTE_LH = 48;
   const c = palette();
   const kind = game.ending ? game.ending.kind : 'transferred';
-  const meta = ENDINGS[kind];
+  const meta = ENDINGS[kind] || ENDINGS.transferred;
+  const quote = game.quote;
+  if (!quote) return;
 
   const wrap = view.querySelector('#cardWrap');
   wrap.innerHTML = '<canvas id="card"></canvas>';
   const canvas = view.querySelector('#card');
 
-  // 先量结论那段话要占几行，再定卡片多高
-  const copy = verdictCopy().replace(/<\/?em>/g, '');
+  // 先量那句话要占几行，再定卡片多高——句子长短决定卡片高矮，不留空档
+  const bubbleX = pad + AV + GAP;
+  const bubbleMax = W - pad - bubbleX;
   const probe = canvas.getContext('2d');
-  probe.font = `400 21px ${c.sans}`;
-  const copyLines = wrapText(probe, copy, W - pad * 2);
-  const H = COPY_TOP + copyLines.length * LINE_H + 72;
+  probe.font = `600 ${QUOTE_SIZE}px ${c.sans}`;
+  const quoteLines = wrapText(probe, quote.text, bubbleMax - BUB_PAD_X * 2);
+  const bubbleW = Math.max(
+    ...quoteLines.map((l) => probe.measureText(l).width)) + BUB_PAD_X * 2;
+  const bubbleH = quoteLines.length * QUOTE_LH + BUB_PAD_Y * 2 - (QUOTE_LH - QUOTE_SIZE);
+
+  const BUB_TOP = pad + 46;
+  const FOOT_TOP = BUB_TOP + bubbleH + 132;
+  const H = FOOT_TOP + 82;   // 底部留白与左右的 pad 对齐，卡才不显得下坠
 
   const ctx = fitCanvas(canvas, W, H);
 
-  ctx.fillStyle = c.white;
+  // 底色用聊天背景的灰：整张卡就该看着像一张微信截图，而不像一张海报
+  ctx.fillStyle = c.bg;
   ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
@@ -739,54 +1169,62 @@ function makeCard(view, stats) {
   ctx.font = `500 15px ${c.sans}`;
   ctx.fillText('AI 反诈劝阻', pad, pad);
 
-  ctx.fillStyle = kind === 'persuaded' ? c.brand : c.rise;
-  ctx.font = `600 52px ${c.sans}`;
-  ctx.fillText(meta.title, pad, pad + 40);
+  // 头像：和对话里那个是同一个（.av-chen）
+  ctx.fillStyle = '#6f8bb5';
+  roundRect(ctx, pad, BUB_TOP, AV, AV, 6);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.font = `500 25px ${c.sans}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('陈', pad + AV / 2, BUB_TOP + AV / 2 + 1);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+
+  // 气泡：白底、5px 圆角、左上一个小尖角，和界面里的一模一样
+  ctx.fillStyle = c.white;
+  roundRect(ctx, bubbleX, BUB_TOP, bubbleW, bubbleH, 8);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(bubbleX, BUB_TOP + 22);
+  ctx.lineTo(bubbleX - 9, BUB_TOP + 30);
+  ctx.lineTo(bubbleX, BUB_TOP + 40);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = c.text;
+  ctx.font = `600 ${QUOTE_SIZE}px ${c.sans}`;
+  quoteLines.forEach((line, i) =>
+    ctx.fillText(line, bubbleX + BUB_PAD_X, BUB_TOP + BUB_PAD_Y + i * QUOTE_LH));
 
   ctx.fillStyle = c.sub;
-  ctx.font = `400 19px ${c.sans}`;
-  ctx.fillText(meta.sub, pad, pad + 110);
+  ctx.font = `400 16px ${c.sans}`;
+  ctx.fillText(`老陈 · ${quoteLabel(quote)}`, bubbleX, BUB_TOP + bubbleH + 14);
 
-  const figures = [
-    ['轮次', String(game.turns.length)],
-    ['信任度峰值', String(stats.peak)],
-    ['命中钥匙', new Set(game.turns.flatMap((t) => t.hits.filter((h) => KEYS[h]))).size + ' / 3'],
-  ];
-  figures.forEach(([label, value], i) => {
-    const x = pad + i * ((W - pad * 2) / 3);
-    ctx.fillStyle = c.sub;
-    ctx.font = `400 13px ${c.sans}`;
-    ctx.fillText(label, x, pad + 176);
-    ctx.fillStyle = c.text;
-    ctx.font = `600 32px ${c.mono}`;
-    ctx.fillText(value, x, pad + 196);
-  });
-
-  paintKline(ctx, { x: pad, y: pad + 258, w: W - pad * 2, h: 236 }, {
-    turns: game.turns,
-    threshold: game.threshold,
-    slots: Math.max(game.turns.length, 6),
-    palette: c,
-    axis: true,
-    labelSize: 13,
-    maxWidth: 30,
-  });
-
-  ctx.strokeStyle = c.line;
+  // 成绩退到这一行：结局那一档 + 你救回了多少钱。金额是这件事在现实里的记法。
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, pad + 524);
-  ctx.lineTo(W - pad, pad + 524);
+  ctx.moveTo(pad, BUB_TOP + bubbleH + 62.5);
+  ctx.lineTo(W - pad, BUB_TOP + bubbleH + 62.5);
   ctx.stroke();
 
-  ctx.fillStyle = '#4a4a4a';
-  ctx.font = `400 21px ${c.sans}`;
-  copyLines.forEach((line, i) => ctx.fillText(line, pad, COPY_TOP + i * LINE_H));
+  const tier = `${meta.tier} · ${meta.title}`;
+  ctx.fillStyle = tierColor(kind, c);
+  ctx.font = `600 27px ${c.sans}`;
+  ctx.fillText(tier, pad, BUB_TOP + bubbleH + 86);
+  ctx.fillStyle = c.gray;
+  ctx.font = `400 18px ${c.sans}`;
+  ctx.fillText(meta.savedCopy, pad, BUB_TOP + bubbleH + 126);
 
+  // 钩子放在右下角，正好接住下一步的"接话"入口
   ctx.fillStyle = c.sub;
   ctx.font = `400 14px ${c.sans}`;
-  if (game.contestId) ctx.fillText(`参赛编号 ${game.contestId}`, pad, H - 42);
+  if (game.contestId) ctx.fillText(`参赛编号 ${game.contestId}`, pad, FOOT_TOP + 40);
   ctx.textAlign = 'right';
-  ctx.fillText('十二轮，劝住一个人', W - pad, H - 42);
+  ctx.fillStyle = c.gray;
+  ctx.font = `500 17px ${c.sans}`;
+  ctx.fillText('你的客户这么说，你怎么接？', W - pad, FOOT_TOP + 36);
 
   canvas.toBlob((blob) => {
     if (!blob) return;
@@ -795,7 +1233,7 @@ function makeCard(view, stats) {
     const a = document.createElement('a');
     a.className = 'savelink';
     a.href = URL.createObjectURL(blob);
-    a.download = `反诈劝阻-${meta.title}.png`;
+    a.download = `反诈劝阻-${meta.tier}.png`;
     a.textContent = '保存图片';
     p.append(a, document.createTextNode('，手机上也可以长按上图保存'));
     wrap.appendChild(p);
@@ -842,6 +1280,7 @@ async function enterGame() {
   $('remaining').textContent = String(game.remaining);
   paintMood(game.mood);
   divider('下午 2:47');
+  say('me', PING);
   say('them', game.opening);
   $('say').focus();
 }

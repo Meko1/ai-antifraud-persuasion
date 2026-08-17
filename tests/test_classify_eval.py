@@ -38,7 +38,7 @@ def case(
     return Case(
         id=id_,
         tag=tag,
-        context="老陈：李老师带我做了三波，都赚了。",
+        context="老陈：王老师带我做了三波，都赚了。",
         utterance="（测试用）",
         hits=frozenset(hits),
         grounded=grounded,
