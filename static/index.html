@@ -3,17 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="十二轮对话，劝住一个正准备把三十万转给荐股骗局的人。">
+<meta name="description" content="你的客户正要把三十万转给荐股骗局。十二轮对话，你怎么开口。">
 <title>AI 反诈劝阻</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
-<!-- 首页 = 会话列表。这类骗局本来就发生在聊天软件里，把入口做成一条未读消息，
-     玩家一上来就站在事发现场。
-     六条会话不是布景：每一条各交代一件事——他在哪个群、已经转过一次钱、
-     家里等着这笔钱、女儿劝过而且劝失败了、官方也提醒过而他划掉了。
-     开局要说的话全在这一屏上，一句旁白都不用写。 -->
+<!-- 冷开场 = **老陈的手机**。这一屏你在局内看不到，它是给玩家的交底。
+     六条会话不是布景：每一条各交代一件事——你（李经理）在找他、他在哪个群、
+     已经转过一次钱、家里等着这笔钱、女儿劝过而且劝失败了、官方提醒被他划掉了。
+     开局要说的话全在这一屏上，一句旁白都不用写。
+
+     第一条 2026-08-15 从"老陈"换成了"李经理"。原先那条把老陈列成联系人，
+     可招行写着"您尾号8823"、小雨叫"爸"——这明明是老陈的手机，却又让老陈
+     给自己发消息。改一条，六条就全自洽了：你点的那条未读，正是他终于点开
+     你消息的那一刻，点完切到你这一侧。 -->
 <section class="screen on" id="home">
   <header class="navbar">
     <h1>微信<span class="nav-count">(1)</span></h1>
@@ -22,15 +26,15 @@
   <div class="searchbar"><span class="search-input">搜索</span></div>
 
   <ul class="chatlist">
-    <li class="chatrow" id="openChen" tabindex="0" role="button" aria-label="打开与老陈的对话，1 条未读">
-      <span class="avatar av-chen" aria-hidden="true">陈</span>
+    <li class="chatrow" id="openChen" tabindex="0" role="button" aria-label="他点开了你的消息，开始对话">
+      <span class="avatar av-li" aria-hidden="true">李</span>
       <span class="row-main">
         <span class="row-top">
-          <span class="row-name">老陈</span>
+          <span class="row-name">李经理 · 投资顾问</span>
           <span class="row-time">14:47</span>
         </span>
         <span class="row-bottom">
-          <span class="row-preview">我这三十万都凑齐了，就等着下午开盘。</span>
+          <span class="row-preview">陈叔，方便说句话吗？我看到您账户今天转出去一笔。</span>
           <span class="badge">1</span>
         </span>
       </span>
@@ -43,11 +47,11 @@
       </span>
       <span class="row-main">
         <span class="row-top">
-          <span class="row-name">启航投顾 · 内部交流群</span>
+          <span class="row-name">启航财经 · 内部交流群</span>
           <span class="row-time">14:44</span>
         </span>
         <span class="row-bottom">
-          <span class="row-preview">李老师：三点前统一操作，别掉队</span>
+          <span class="row-preview">王老师：三点前统一操作，别掉队</span>
           <span class="mutebell" aria-label="消息免打扰"></span>
         </span>
       </span>
@@ -88,7 +92,7 @@
           <span class="row-time">昨天</span>
         </span>
         <span class="row-bottom">
-          <span class="row-preview">爸，我查过那个启航投顾了，工商上根本查不到这家公司，你听我一次行不行</span>
+          <span class="row-preview">爸，我查过那个启航财经了，工商上根本查不到这家公司，你听我一次行不行</span>
         </span>
       </span>
     </li>
@@ -107,7 +111,9 @@
     </li>
   </ul>
 
-  <p class="home-note">他下午三点前要把三十万转出去。<br>你有十二轮对话。</p>
+  <p class="home-note">这是老陈的手机。他下午三点前要把三十万转出去。<br>
+    你是给他开户的投资顾问，风控刚提醒你：他账户转走了五万。<br>
+    <b>点开你发的那条，他终于看见了。</b></p>
 
   <!-- 底部标签栏不接任何功能，它是布景的最后一块：少了它，这一屏的下缘就空着，
        整个界面看着像没做完，而不像一台手机。 -->
@@ -165,8 +171,11 @@
     <span class="st-rounds">还剩 <b class="num" id="remaining">12</b> 轮</span>
   </div>
 
+  <!-- 这一侧是企业微信：说话的是投资顾问，不是陌生人。借的还是微信那条
+       系统提示的槽位，但它现在同时干两件事——交代关系（他是你的客户），
+       以及把"只能问，不能荐"变成看得见的约束：你说的每一句都在存档里。 -->
   <main class="thread" id="thread" aria-live="polite" aria-label="对话">
-    <p class="strangertip">对方不是你的朋友，你们同在群聊「启航投顾 · 内部交流群」</p>
+    <p class="strangertip">对方是你的客户。本会话已按监管要求存档。</p>
   </main>
 
   <form class="composer" id="composer" autocomplete="off">

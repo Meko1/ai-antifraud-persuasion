@@ -240,6 +240,15 @@ def _ratio(ok: int, total: int) -> float:
 # ── 跑批 ───────────────────────────────────────────────────────────────────
 
 
+# 网关会偶发瞬时 5xx（实测 `upstream connect error`）。生产上客户端不重试
+# ——那是刻意的，演绎超时要走 L1 降级——但跑批不能因为一次抖动整批作废。
+#
+# 重试**只针对网络故障**，不针对解析失败：解析失败是模型真的没按格式输出，
+# 在生产里等于该轮记 0 分，必须照实计入错误率（见 summarize 的注释）。
+CLASSIFY_RETRIES = 2
+RETRY_BACKOFF = 2.0
+
+
 async def run(
     cases: Sequence[Case], gateway: object, *, concurrency: int = 4
 ) -> List[Tuple[Case, Optional[Classification]]]:
@@ -251,11 +260,20 @@ async def run(
     gate = asyncio.Semaphore(concurrency)
 
     async def one(case: Case) -> Tuple[Case, Optional[Classification]]:
-        async with gate:
-            raw = await gateway.classify(  # type: ignore[attr-defined]
-                utterance=case.utterance, history=(), opening=case.context
-            )
-        return case, parse_classification(raw)
+        for attempt in range(CLASSIFY_RETRIES + 1):
+            try:
+                async with gate:
+                    raw = await gateway.classify(  # type: ignore[attr-defined]
+                        utterance=case.utterance, history=(), opening=case.context
+                    )
+                return case, parse_classification(raw)
+            except Exception as exc:  # noqa: BLE001 - 瞬时故障不该中断跑批
+                if attempt == CLASSIFY_RETRIES:
+                    print(f"  ! {case.id} 调用失败，计为未解析：{type(exc).__name__}",
+                          flush=True)
+                    return case, None
+                await asyncio.sleep(RETRY_BACKOFF * (attempt + 1))
+        return case, None
 
     return list(await asyncio.gather(*(one(c) for c in cases)))
 

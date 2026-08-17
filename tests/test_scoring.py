@@ -10,6 +10,7 @@
 import pytest
 
 from app.scoring import (
+    EFFICACY,
     MAX_ROUNDS,
     Ending,
     GameState,
@@ -236,7 +237,7 @@ def test_未命中任何钥匙时只吃信任流失() -> None:
 
 
 @pytest.mark.parametrize("轮次", [3, 6, 9, 12])
-def test_李老师每三轮在群里催一遍(轮次: int) -> None:
+def test_王老师每三轮在群里催一遍(轮次: int) -> None:
     """流失原本是隐形的，玩家看不见也不知道自己在跟什么赛跑。
 
     每 3 轮让它在剧情里现身一次——同一个事实，判分、台词、对话旁白三处都看得见。
@@ -403,3 +404,22 @@ def test_轮次耗尽时结局按情绪档位分四档(
 )
 def test_情绪档位由信任度映射(信任度: int, 预期档位: Mood) -> None:
     assert mood_for(信任度) is 预期档位
+
+
+def test_同轮多把钥匙时不下发效力倍率() -> None:
+    """"这一招值多少倍"必须有唯一答案，没有就别说。
+
+    分类器的消歧规则限定每轮最多记一把钥匙，所以这是护栏而非常规路径。
+    原先取的是循环里最后一把——模型不听话多标一把时，复盘会理直气壮地
+    显示一个错的倍率。少说一行好过说错一行。
+    """
+    state = new_game()
+
+    一把 = evaluate_turn(state, hit_keys=["anchor_real_purpose"], grounded=True)
+    两把 = evaluate_turn(
+        state, hit_keys=["anchor_real_purpose", "expose_contradiction"], grounded=True
+    )
+
+    assert 一把.efficacy == EFFICACY["anchor_real_purpose"][Mood.IRRITATED]
+    assert 两把.efficacy is None
+    assert 两把.delta > 0, "分照加，只是倍率没法归到某一把头上"

@@ -1,5 +1,8 @@
 /* AI 反诈劝阻 · 前端
  *
+ * 你＝老陈的投资顾问（局内他叫你李经理），他＝你的客户。首页那一屏是**他的
+ * 手机**（冷开场），点开你发给他的那条未读，才切到你这一侧的企业微信。
+ *
  * 服务端不存会话：每轮请求都要带上一轮返回的 token（ADR-0003）。
  * SSE 事件顺序恒为 meta → sentence* → score → ending? → state → done，
  * score 刻意排在台词播完之后——信任度那一跳要等他把话说完才发生。
@@ -43,7 +46,13 @@ const TOTAL = 300000;
 // 拦下那一档里仍有一小笔钱被转走。这是骗局的标准剧本——先小额取信——
 // 代价是玩家表现不错、结局仍有人损失。取真实。
 const TEST_TRANSFER = 20000;
-const PAYEE = '转账给 启航投顾-李';
+const PAYEE = '转账给 启航财经-王';
+
+// 你先发的那一条。它同时出现在冷开场的会话列表里（老陈手机上的那条未读），
+// 和聊天窗口的第一条——**老陈的开场白是在回它**，少了它他就是在回应空气。
+// 内容只能有一条信息：账户转出去一笔。启航财经、王老师、三十万、三点，
+// 开局你一概不知道（CONTEXT.md「对局」）。
+const PING = '陈叔，方便说句话吗？我看到您账户今天转出去一笔。';
 
 const money = (n) =>
   '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -74,9 +83,11 @@ const ENDINGS = {
     receipt: 'sent', amount: TOTAL,
   },
   // 被拉黑不入档：连凭证都没有，你不会知道他最后把钱转没转
+  // 陌生人被拉黑只是出局；**客户**把投顾拉黑，是关系断了、他照转不误、
+  // 而你连看都看不到。同一档，在新设定下重得多。
   blacklisted: {
-    tier: '被拉黑', title: '他把你拉黑了',
-    savedCopy: '你连他最后转没转都不会知道',
+    tier: '被拉黑', title: '客户把你拉黑了',
+    savedCopy: '他照样会转，而你连看都看不到了',
     receipt: null, amount: TOTAL,
   },
 };
@@ -87,6 +98,9 @@ const ERRORS = {
   rate_limited: '这会儿人有点多，等两秒再说',
   internal: '出了点岔子，再说一次试试',
   network: '网络断了，这句没发出去',
+  // 服务端挡下了一张已经打完的令牌。正常玩不会碰到——碰到多半是这一轮的
+  // 结果没能回到手上（网络在中途断了），而服务端那边已经算完了。
+  replayed: '这一轮已经算过了，页面和他那边对不上，得重开一局',
 };
 
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -291,15 +305,27 @@ function typingRow() {
 function paced(anchor) {
   let chain = Promise.resolve();
   let count = 0;
+  const rows = [];
   return {
     push(text) {
       chain = chain.then(async () => {
         if (count++) await sleep(260 + Math.random() * 160);
-        thread.insertBefore(msgRow('them', text), anchor);
+        const row = msgRow('them', text);
+        rows.push(row);
+        thread.insertBefore(row, anchor);
         toBottom();
       });
     },
     drain: () => chain,
+    /** 这一轮作废时把已经播出去的气泡收回来。
+     *
+     * 少了它，出错的那一轮会留下一段"他确实回过话"的聊天记录，而服务端根本
+     * 没记这一轮（令牌没推进）。玩家再说一句，老陈完全不记得刚才那段——
+     * 聊天记录与复盘（game.turns 是它唯一的数据源）当场分叉。 */
+    rollback() {
+      rows.forEach((row) => row.remove());
+      rows.length = 0;
+    },
   };
 }
 
@@ -352,7 +378,7 @@ function hitTags(hits, grounded) {
   return out;
 }
 
-/** 剧情旁白。李老师在群里催的那一下走这个位置——
+/** 剧情旁白。王老师在群里催的那一下走这个位置——
  *  它不是判分反馈，是一个看得见的施压来源。 */
 function narrate(text) {
   sysnote([text]).classList.add('push');
@@ -392,9 +418,23 @@ async function playTurn(utterance) {
   $('send').disabled = true;
   $('say').disabled = true;
 
-  say('me', utterance);
+  // 这一轮作废时要原样退回去。服务端的令牌不会推进，界面也就一步都不能留。
+  const prevRemaining = game.remaining;
+  const mine = msgRow('me', utterance);
+  thread.appendChild(mine);
+  toBottom();
   const typing = typingRow();
   const queue = paced(typing);
+
+  const rollback = () => {
+    queue.rollback();
+    mine.remove();
+    game.remaining = prevRemaining;
+    $('remaining').textContent = String(prevRemaining);
+    // 话还给他，省得重打一遍
+    const input = $('say');
+    if (!input.value) input.value = utterance;
+  };
 
   let resp;
   try {
@@ -405,11 +445,13 @@ async function playTurn(utterance) {
     });
   } catch (e) {
     typing.remove();
+    rollback();
     return failTurn('network');
   }
 
   if (!resp.ok || !resp.body) {
     typing.remove();
+    rollback();
     return failTurn('internal');
   }
 
@@ -445,7 +487,10 @@ async function playTurn(utterance) {
   await queue.drain();
   typing.remove();
 
-  if (failed) return failTurn(failed);
+  if (failed) {
+    rollback();
+    return failTurn(failed);
+  }
 
   if (score) {
     game.turns.push({
@@ -456,6 +501,10 @@ async function playTurn(utterance) {
       lines: spoken.slice(),
       hits: score.hits,
       grounded: score.grounded,
+      judgedMood: score.judged_mood,
+      efficacy: score.efficacy,
+      windowResult: score.window_result,
+      windowOpened: score.window_opened,
       delta: score.delta,
       trust: score.trust,
       before: game.trust,
@@ -466,7 +515,7 @@ async function playTurn(utterance) {
     // 判分卡不在对局中出现：标签与分数一律留到复盘。
     // 边打边给答案等于把攻略印在屏幕上——玩家两轮就学会照着清单刷分，
     // 从此不再读人。要读的东西只有一样：他说的话。
-    if (score.pressure) narrate('李老师又在群里催了一遍');
+    if (score.pressure) narrate('王老师又在群里催了一遍');
   }
 
   if (game.ending) return finish();
@@ -481,12 +530,14 @@ function failTurn(code) {
   sysnote([ERRORS[code] || ERRORS.internal], true);
   game.busy = false;
 
-  if (code === 'invalid_state') {
+  // 这两种都没法接着打：令牌要么过期了，要么已经被消费掉。给一条出路，
+  // 别让玩家对着一个再也发不出去的输入框反复试。
+  if (code === 'invalid_state' || code === 'replayed') {
     $('composer').hidden = true;
     const again = document.createElement('button');
     again.textContent = '重开一局';
     again.onclick = () => location.reload();
-    sysnote(['这一局放得太久了', again], true);
+    sysnote([code === 'replayed' ? '这一局没法接着打了' : '这一局放得太久了', again], true);
     return;
   }
   $('send').disabled = false;
@@ -551,11 +602,12 @@ async function finish() {
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
   const meta = ENDINGS[kind] || ENDINGS.transferred;
   if (!meta.receipt) {
-    // 被拉黑之后微信显示的就是这张卡。开局那句「对方不是你的朋友」在这里合上了口：
-    // 你一直是个陌生人，现在连话都递不进去了。
+    // 被拒收之后聊天窗口显示的就是这一条。开局那句「对方是你的客户」在这里
+    // 合上了口：他还是你的客户，你还得对他负责，只是话再也递不进去了。
+    // 而那条存档提示仍然挂在上面——你连没说出口的话都留了痕。
     const tip = document.createElement('p');
     tip.className = 'strangertip';
-    tip.textContent = '对方开启了朋友验证，你还不是他（她）朋友。';
+    tip.textContent = '消息已发出，但被对方拒收了。';
     thread.appendChild(tip);
   } else {
     photo(receipt(meta.receipt, meta.amount));
@@ -583,14 +635,32 @@ function verdictCopy() {
   if (kind === 'persuaded') parts.push(`你用了 ${game.turns.length} 轮把他劝了回来。`);
   else if (kind === 'intercepted') parts.push('他只按老师说的转了两万试水，剩下的二十八万你按住了。');
   else if (kind === 'stalled') parts.push('他把这事推到了明天——你争到的是时间，不是他的决定。');
-  else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，他把你拉黑了。`);
+  else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，他把你拉黑了——这条线断了，你再也看不到他的动静。`);
   else parts.push('他还是把那三十万转出去了。');
 
   if (best && best.delta > 0) {
     parts.push(
       `全场最有力的一句在第 <em>${best.round}</em> 轮——你说「${best.utterance}」，` +
       `信任度那一下涨了 ${best.delta}。`);
-    if (kind !== 'persuaded') parts.push('你差的不是方向，是没在他松动的那一刻乘胜追击。');
+    // **这句话以前是无条件说的**——只要没劝住就说"你没乘胜追击"，
+    // 哪怕玩家每一次窗口都追上了。追问窗口这个机制本来就是为了让这句话
+    // 变成真的（TECH-DESIGN §3.4），现在才真正接上线：错过了才说。
+    const missed = game.turns.filter((x) => x.windowResult === 'missed');
+    const caught = game.turns.filter((x) => x.windowResult === 'hit');
+    if (missed.length) {
+      // 报的是**开窗**那一轮，不是关窗那一轮：他晃起来是在开窗时，
+      // 错过的那一轮只是口子合上的时刻。两个轮次差着两轮，说错了玩家会对不上号
+      const opened = game.turns
+        .filter((x) => x.windowOpened && x.round < missed[0].round)
+        .pop();
+      parts.push(
+        `你差的不是方向——第 <em>${(opened || missed[0]).round}</em> 轮他晃到了新的一档，` +
+        `接下来两轮本来是机会，你没接住，第 ${missed[0].round} 轮他重新硬了回去。`);
+    } else if (caught.length && kind !== 'persuaded') {
+      parts.push(
+        `他松动的那几次你都接住了（第 ${caught.map((x) => x.round).join('、')} 轮），` +
+        `差的是最后一公里——越接近松口，同一句话推动他的幅度越小。`);
+    }
   } else {
     parts.push('全场没有一句真正推动过他。下一局试着先问问，那笔钱原本是准备干什么用的。');
   }
@@ -624,6 +694,15 @@ function openReview() {
       </div>
 
       <div class="group">
+        <div class="group-title">这些分是怎么来的</div>
+        <div class="panel">
+          <p class="howscored">下面每一分都是<b>程序按规则表算的，不是模型打的</b>。
+          同一句话在他不同的情绪档位上值不同的分——这套参数跑过两万局蒙特卡洛校准，
+          换句话说，你这一局的分数是可复现的。</p>
+        </div>
+      </div>
+
+      <div class="group">
         <div class="group-title">信任度</div>
         <div class="panel">
           <canvas id="chart"></canvas>
@@ -646,6 +725,11 @@ function openReview() {
         <div class="panel" id="penaltyList"></div>
       </div>
 
+      <div class="group" id="statsWrap" hidden>
+        <div class="group-title">别人打成什么样</div>
+        <div class="panel" id="statsList"></div>
+      </div>
+
       <div class="group">
         <div class="group-title">名场面 · 挑一句他说的话</div>
         <div class="panel" id="quoteList" role="radiogroup" aria-label="名场面"></div>
@@ -663,17 +747,7 @@ function openReview() {
   view.querySelector('.summary .saved').textContent = meta.savedCopy;
   view.querySelector('.summary .copy').innerHTML = verdictCopy();
 
-  // 直接量、直接画：读 clientWidth 本身就会强制布局，不必等下一帧
-  const chart = view.querySelector('#chart');
-  const w = chart.clientWidth;
-  const h = chart.clientHeight;
-  paintKline(fitCanvas(chart, w, h), { x: 10, y: 12, w: w - 20, h: h - 26 }, {
-    turns: game.turns,
-    threshold: game.threshold,
-    slots: Math.max(game.turns.length, 6),
-    palette: palette(),
-    axis: true,
-  });
+  paintChart(view);
 
   const list = view.querySelector('#roundsList');
   game.turns.forEach((t) => {
@@ -692,6 +766,10 @@ function openReview() {
     tags.className = 'tags';
     hitTags(t.hits, t.grounded).forEach((x) => tags.appendChild(x));
     body.append(said, tags);
+    const when = timingNote(t);
+    if (when) body.append(when);
+    const win = windowNote(t);
+    if (win) body.append(win);
 
     const score = document.createElement('div');
     score.className = 'score num';
@@ -721,10 +799,163 @@ function openReview() {
   }
 
   paintQuotes(view);
+  paintStats(view, kind);
 
   view.querySelector('#restart').onclick = () => location.reload();
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
+}
+
+/** 「别人打成什么样」。
+ *
+ * `app/stats.py` 与 `/api/stats` 早就写好了，前端一次都没调用过——同类产品
+ * 公认的四个失败模式里，"量的是对话，不是能不能上岗"就漏在这儿。一个人打完
+ * 只知道自己这一局，接上之后才知道自己站在哪：你这一档占多少、三把钥匙里
+ * 哪一把是大家都想不起来用的。
+ *
+ * **全程是旁路**：Redis 没配、接口挂了、还没人玩过，这一节整块不出现，
+ * 复盘的其余部分一个字都不受影响。绝不让一个纯展示功能拖累最后一屏。
+ */
+async function paintStats(view, kind) {
+  let data;
+  try {
+    data = await (await fetch('/api/stats')).json();
+  } catch (e) {
+    return;
+  }
+  if (!data || !data.available || !data.turns) return;
+
+  const rows = [];
+  const mine = game.turns.length;
+
+  const share = data.endings && data.endings[kind];
+  if (share && share.share) {
+    rows.push([
+      `你落在「${(ENDINGS[kind] || ENDINGS.transferred).title}」`,
+      `${Math.round(share.share * 100)}% 的人也停在这一档`,
+    ]);
+  }
+
+  // 分母两边都是"轮"：全局用总轮数，你这局用你打过的轮数。
+  // 换成局数会得出大于 1 的"命中率"——一局里同一把钥匙可以用很多次。
+  Object.keys(KEYS).forEach((k) => {
+    const g = data.keys && data.keys[k];
+    if (!g) return;
+    const 我的 = game.turns.filter((t) => t.hits.includes(k)).length;
+    rows.push([
+      KEYS[k].name,
+      `大家 ${Math.round(g.rate * 100)}% 的发言用到 · 你 ${mine ? Math.round((我的 / mine) * 100) : 0}%`,
+    ]);
+  });
+
+  // 小雨那条铺垫不在这儿重复说：上面「踩过的坑」里的空口断言卡片已经写了
+  // 「这四个字他这三个月听了无数遍」。这一行只负责给一个数。
+  const 空口 = data.keys && data.keys.bare_assertion;
+  if (空口 && 空口.rate) {
+    rows.push([
+      '空口说“这是诈骗”',
+      `${Math.round(空口.rate * 100)}% 的发言还在这么劝`,
+    ]);
+  }
+
+  if (!rows.length) return;
+
+  const box = view.querySelector('#statsList');
+  rows.forEach(([name, note]) => {
+    const row = document.createElement('div');
+    row.className = 'statrow';
+    const n = document.createElement('div');
+    n.className = 'statname';
+    n.textContent = name;
+    const v = document.createElement('div');
+    v.className = 'statnote';
+    v.textContent = note;
+    row.append(n, v);
+    box.appendChild(row);
+  });
+
+  const foot = document.createElement('p');
+  foot.className = 'empty';
+  foot.textContent = `统计自 ${data.games} 局、${data.turns} 轮对话`;
+  box.appendChild(foot);
+
+  view.querySelector('#statsWrap').hidden = false;
+}
+
+/** 时机那一行。**这是全作品唯一一处竞品没有的判据**——金融 AI 陪练判
+ *  "回答准确度、语速、音量"，销售 roleplay 判"方法论有没有照做"，
+ *  没有一家判"你这一招用得是不是时候"。而效力矩阵判的正是这个：
+ *  同一把钥匙，他戒备时用和他动摇时用，差四倍多。
+ *
+ *  倍率由服务端下发（判分参数只此一份，前端不抄那张表）。
+ */
+function timingNote(t) {
+  if (t.efficacy == null) return null;
+  const mood = MOODS[t.judgedMood] || t.judgedMood;
+  const el = document.createElement('div');
+  el.className = 'timing' + (t.efficacy >= 1.2 ? ' good' : t.efficacy < 0.7 ? ' bad' : '');
+  const verdict = t.efficacy >= 1.2 ? ' 正是时候'
+    : t.efficacy < 0.7 ? ' 用早了，这一招得等他晃起来' : '';
+  el.textContent = `他当时${mood} · 这一招值 ${t.efficacy}×${verdict}`;
+  return el;
+}
+
+// 追问窗口那一行。同类产品公认的一个洞是"评分捕捉不到回避行为"——
+// 受训者在安全话题上过度展开，一碰到真正的痛点就退回安全区，而评分只看
+// 话术完整度，反而给了正面激励。追问窗口捕捉的正是它：他晃起来的那两轮
+// 你有没有跟上。以前这条只在引擎里算，玩家一眼都看不到。
+const WINDOW_NOTE = {
+  hit: { text: '他正晃着，你接住了 · 这一招额外加成', cls: 'good' },
+  missed: { text: '两轮的口子空掉了，他重新硬了回去 · 扣 6 分', cls: 'bad' },
+  open: { text: '口子还开着，还剩一轮', cls: '' },
+};
+
+function windowNote(t) {
+  const parts = [];
+  const w = WINDOW_NOTE[t.windowResult];
+  if (w) parts.push([w.text, w.cls]);
+  if (t.windowOpened) parts.push(['他第一次晃到这一档 · 接下来两轮是机会', 'good']);
+  if (!parts.length) return null;
+  const box = document.createElement('div');
+  parts.forEach(([text, cls]) => {
+    const el = document.createElement('div');
+    el.className = 'window' + (cls ? ' ' + cls : '');
+    el.textContent = text;
+    box.appendChild(el);
+  });
+  return box;
+}
+
+/** 画那根 K 线。
+ *
+ * **不赌布局时序。** 原来这里直接读 `clientWidth` 就画，注释写着"读它本身
+ * 就会强制布局，不必等下一帧"——那句话在这条路径上不成立：`.review` 刚被
+ * 塞进 body、还带着一个 slidein 动画，实测量到的是 **16px**（`width:100%`
+ * 落在一个还没有宽度的容器上，再加左右各 8px 内边距）。画布按 16px 画完，
+ * CSS 再把它拉到全宽，K 线就糊成一片。
+ *
+ * 而且它是**间歇性**的——同一段代码有时对有时不对，这种视觉 bug 最坏：
+ * 平时看不出来，路演当天糊给评审看。
+ *
+ * 所以量到不合理的宽度就等下一帧重画，而不是相信第一次的结果。
+ */
+function paintChart(view) {
+  const chart = view.querySelector('#chart');
+  if (!chart) return;
+  const w = chart.clientWidth;
+  const h = chart.clientHeight;
+  // 一根蜡烛最窄 3px、最多 12 轮，再加边距——比这还窄只可能是没量准
+  if (w < 100 || h < 40) {
+    requestAnimationFrame(() => paintChart(view));
+    return;
+  }
+  paintKline(fitCanvas(chart, w, h), { x: 10, y: 12, w: w - 20, h: h - 26 }, {
+    turns: game.turns,
+    threshold: game.threshold,
+    slots: Math.max(game.turns.length, 6),
+    palette: palette(),
+    axis: true,
+  });
 }
 
 function tipCard(meta) {
@@ -993,7 +1224,7 @@ function makeCard(view) {
   ctx.textAlign = 'right';
   ctx.fillStyle = c.gray;
   ctx.font = `500 17px ${c.sans}`;
-  ctx.fillText('这句话，你会怎么接？', W - pad, FOOT_TOP + 36);
+  ctx.fillText('你的客户这么说，你怎么接？', W - pad, FOOT_TOP + 36);
 
   canvas.toBlob((blob) => {
     if (!blob) return;
@@ -1049,6 +1280,7 @@ async function enterGame() {
   $('remaining').textContent = String(game.remaining);
   paintMood(game.mood);
   divider('下午 2:47');
+  say('me', PING);
   say('them', game.opening);
   $('say').focus();
 }

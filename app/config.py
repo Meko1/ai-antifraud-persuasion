@@ -30,6 +30,9 @@ class LLMSettings:
     api_key: str
     model: str
     timeout_seconds: float
+    # 走哪套协议：openai（ChatCompletions）或 anthropic（Messages）。
+    # 不从 base_url 里猜——猜错的代价是上线当天报一个看不懂的 400。
+    protocol: str = "openai"
 
     @property
     def configured(self) -> bool:
@@ -80,6 +83,7 @@ def load_settings() -> Settings:
             api_key=os.getenv(f"{prefix}_LLM_API_KEY", ""),
             model=os.getenv(f"{prefix}_LLM_MODEL", ""),
             timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "30")),
+            protocol=os.getenv(f"{prefix}_LLM_PROTOCOL", "openai").strip().lower(),
         ),
     )
 

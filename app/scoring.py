@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Mapping, Optional, Sequence
+from typing import List, Mapping, Optional, Sequence
 
 TRUST_INIT = 32
 TRUST_MIN = 0
@@ -28,7 +28,7 @@ BLACKLIST_THRESHOLD = 0
 DRIFT = -2
 DRIFT_FLOOR = 14
 
-# 李老师的反向施压。流失是隐形的，玩家看不见也不知道自己在跟什么赛跑；
+# 王老师的反向施压。流失是隐形的，玩家看不见也不知道自己在跟什么赛跑；
 # 每 3 轮让它在剧情里现身一次——群里又催了一遍，该轮额外多掉 3 分。
 # 这不是新增难度，是把一个已经存在的数值搬到台面上。
 PRESSURE_EVERY = 3
@@ -220,9 +220,31 @@ class TurnOutcome:
     state: GameState
     delta: int
     ending: Optional[Ending] = None
-    # 本轮李老师是否在群里又催了一遍。前端把它渲染成一条剧情旁白，
+    # 本轮王老师是否在群里又催了一遍。前端把它渲染成一条剧情旁白，
     # 演绎提示词也据此加压——同一个事实，三个地方看得见。
     pressured: bool = False
+    # **判分用的那一档**，不是判完之后的那一档。两者差一轮（ADR-0002），
+    # 而复盘要解释"这一招为什么只值这么点"，必须用判分用的那个。
+    judged_mood: Mood = Mood.IRRITATED
+    # 这一招在那一档的效力倍率（效力矩阵那张表里的一格）。没命中钥匙时为 None。
+    #
+    # 下发它是为了把**本作最独特的一条**亮给玩家看：同一把钥匙在不同时机
+    # 值不同的分。竞品（金融 AI 陪练、销售 roleplay）判的都是"你说得标不标准"，
+    # 没有一家判"你这一招用得是不是时候"——而这正是我们唯一在判的东西。
+    # 倍率由服务端算好下发，前端不抄那张表（判分参数只此一份）。
+    efficacy: Optional[float] = None
+    # 追问窗口这一轮的去向："hit" 追上了 / "missed" 空耗到底 / "open" 还在倒计时 / None 没有窗口。
+    # 以及本轮是否**新开**了一个窗口（他第一次晃到更高一档）。
+    #
+    # 下发它们是为了让复盘那句「你差的不是方向，是没在他松动的那一刻乘胜追击」
+    # **只在真的错过时才说**。在此之前那句话的触发条件是"只要没劝住"，
+    # 于是每次都追上的玩家也会被这么说一遍——机制早就建好了，线一直没接上。
+    #
+    # 这条同时补的是同类产品公认的一个洞：评分只看话术完整度时，
+    # 受训者会在安全话题上过度展开，一碰到真正的痛点就退回安全区，
+    # 而评分系统捕捉不到这种回避。追问窗口捕捉的正是它。
+    window_result: Optional[str] = None
+    window_opened: bool = False
 
 
 def new_game() -> GameState:
@@ -230,7 +252,7 @@ def new_game() -> GameState:
 
 
 def under_pressure(round_: int) -> bool:
-    """第 round_ 轮李老师是否又催了一遍。
+    """第 round_ 轮王老师是否又催了一遍。
 
     演绎提示词要在判分之前就知道这件事，判分自己也要用——所以判据只此一份。
     """
@@ -254,16 +276,24 @@ def evaluate_turn(
     used = dict(state.used)
     raw = 0.0
     hit_key = False
+    efficacies: List[float] = []
     for key in hit_keys:
         if key not in KEY_VALUES:
             continue
         hit_key = True
+        efficacies.append(EFFICACY[key][mood])
         blunt = BLUNT[min(used.get(key, 0), len(BLUNT) - 1)]
         raw += (
             KEY_VALUES[key] * blunt * ground_factor
             * EFFICACY[key][mood] * guard_factor * window_factor * resist_factor
         )
         used[key] = used.get(key, 0) + 1
+
+    # 只在恰好命中一把钥匙时下发倍率。分类器的消歧规则限定每轮最多记一把
+    # （CLASSIFY_SYSTEM_PROMPT 规则 1），所以这是常规路径；模型不听话多标了
+    # 一把时，"这一招值多少倍"就没有唯一答案——原先取的是循环里最后一把，
+    # 复盘会理直气壮地显示一个错的倍率。少说一行好过说错一行。
+    efficacy = efficacies[0] if len(efficacies) == 1 else None
 
     # 失误不受任何调节：钝化是给钥匙的优待，不是给失误的赦免
     for penalty in hit_keys:
@@ -278,6 +308,9 @@ def evaluate_turn(
 
     # 错过窗口不只是掉分，他还会重新竖起防备
     window, missed = _settle_window(state.window, hit_key)
+    window_result = None
+    if state.window > 0:
+        window_result = "hit" if hit_key else ("missed" if missed else "open")
     guard += GUARD_MISTIMED if missed else 0
     guard += GUARD_PENALTY * sum(1 for k in hit_keys if k in PENALTY_VALUES)
     if "expose_contradiction" in hit_keys and mood in (Mood.GUARDED, Mood.IRRITATED):
@@ -307,8 +340,10 @@ def evaluate_turn(
 
     # 他第一次晃到从没到过的那一档，口子就开了
     peak = max(state.peak, trust)
+    window_opened = False
     if window == 0 and _crossed_up(state.peak, trust):
         window = WINDOW_ROUNDS
+        window_opened = True
 
     return TurnOutcome(
         state=replace(
@@ -324,6 +359,10 @@ def evaluate_turn(
         delta=delta,
         ending=decide_ending(trust, round_),
         pressured=pressured,
+        judged_mood=mood,
+        efficacy=efficacy,
+        window_result=window_result,
+        window_opened=window_opened,
     )
 
 

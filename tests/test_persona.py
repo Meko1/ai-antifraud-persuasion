@@ -1,0 +1,96 @@
+"""人格变体。
+
+变体是台词质量的上游：它决定两个玩家看到的是不是同一个老陈。
+这里守三件事——**派生是确定的**、**骨架没被碰**、**例句本身够格当例句**。
+
+第三件最容易被忽略：few-shot 是提示词里最强的约束，例句里出现一个"您"，
+就是在手把手教模型说客服腔。所以例句要用与跑批同一份书面语黑名单去查。
+"""
+
+import pytest
+
+from app.persona import PERSONAS, Persona, opening_for, persona_for
+from app.safety import screen_sentence
+from tools.act_eval import FORMAL_MARKS, FORMAL_WORDS
+
+# 骨架。每一条在界面上都有对应物，变体碰了就当场穿帮——
+# 清单与 app/persona.py 模块注释里那张表是同一份。
+所有台词 = [
+    line
+    for p in PERSONAS
+    for line in (p.facts, p.habits, *p.samples, *p.openings)
+]
+
+# 与"跟了三个月""干了二十年"打架的说法。首页那六条会话与四十条兜底台词
+# 都建立在这两个数字上，改一个字，穿帮的不是这一句，是整整一屏。
+冲突说法 = ("两个月", "四个月", "五个月", "半年", "一年多", "十年", "十五年")
+
+
+def test_同一局永远是同一个老陈() -> None:
+    """派生必须是确定的：服务端不存变体，每轮都要靠 gid 重新算出来。
+
+    这一条塌了的症状很好认——他的口头禅每轮换一次，比 AI 味更糟。
+    """
+    for gid in ("abc123", "0" * 32, "长的中文 gid 也得行"):
+        assert {persona_for(gid).id for _ in range(20)} == {persona_for(gid).id}
+
+
+def test_八个变体都摊得到人() -> None:
+    """哈希取模的分布。某个变体一局都摊不到，等于白写了一份人设。"""
+    counts = {p.id: 0 for p in PERSONAS}
+    for i in range(4000):
+        counts[persona_for(f"gid-{i}").id] += 1
+
+    assert min(counts.values()) > 4000 / len(PERSONAS) * 0.8, counts
+
+
+def test_开场白与变体同源() -> None:
+    """开场自称电工、后面变成钳工，第一句就穿帮。"""
+    for i in range(200):
+        gid = f"gid-{i}"
+        assert opening_for(gid) in persona_for(gid).openings
+
+
+@pytest.mark.parametrize("变体", PERSONAS, ids=lambda p: p.id)
+def test_变体不碰故事骨架(变体: Persona) -> None:
+    # 兜底台词库里写死了"我做了二十年工"，变体改了工龄，四十条当场作废
+    assert "二十年" in 变体.facts, "每个变体都得是干了二十年的人"
+
+    # 查冲突说法之前先把"二十年"本身抠掉：否则"十年"这个子串会误伤它
+    text = "".join(
+        (变体.facts, 变体.habits, *变体.samples, *变体.openings)
+    ).replace("二十年", "")
+    for 说法 in 冲突说法:
+        assert 说法 not in text, f"{说法} 与骨架里的三个月／二十年打架"
+
+
+@pytest.mark.parametrize("变体", PERSONAS, ids=lambda p: p.id)
+def test_例句与开场白自身就是安全的(变体: Persona) -> None:
+    """开场白绕过输出安全层直接下发（与兜底台词同理），因此必须写得本身就安全。
+
+    例句虽然只进提示词，但模型会照着说——一句带了公司名的例句，
+    等于在教它去踩安全层。
+    """
+    for line in (*变体.samples, *变体.openings):
+        assert screen_sentence(line) == line, f"这句过不了安全层：{line}"
+
+
+@pytest.mark.parametrize("变体", PERSONAS, ids=lambda p: p.id)
+def test_例句里没有书面语(变体: Persona) -> None:
+    """few-shot 是最强的约束，例句里的每一个词都会被学走。"""
+    for line in (*变体.samples, *变体.openings):
+        for word in (*FORMAL_WORDS, *FORMAL_MARKS):
+            assert word not in line, f"例句里出现了书面语「{word}」：{line}"
+
+
+@pytest.mark.parametrize("变体", PERSONAS, ids=lambda p: p.id)
+def test_例句短得像微信上打出来的(变体: Persona) -> None:
+    """他在用微信打字。一句四十个字的例句，教出来的就是四十个字的老陈。"""
+    assert len(变体.samples) >= 3, "少于三句撑不起一个调子"
+    assert len(变体.openings) >= 3
+    for line in (*变体.samples, *变体.openings):
+        assert len(line) <= 40, f"这句太长了，不像打字打出来的：{line}"
+
+
+def test_变体标识不重复() -> None:
+    assert len({p.id for p in PERSONAS}) == len(PERSONAS)

@@ -1,11 +1,14 @@
 """大模型调用层（OpenAI 兼容协议）。
 
-这里只提供最小可用的 probe / chat / stream。真正的对局逻辑（结构化 JSON 输出、
-状态机判分、输出安全层）在后续迭代中接入，接口形状先固定下来。
+对外只有三个操作：probe / chat / stream。**stream 产出的是文本增量，不是原始
+SSE 分块**——协议细节到此为止，上层不该知道 `choices[0].delta.content` 长什么样。
+这一条在接入 Anthropic Messages 协议时才真正兑现：两种协议的事件结构毫无共同点，
+但网关一行都不用改（见 app/anthropic_client.py）。
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, AsyncIterator, Dict, List, Optional
 
@@ -120,9 +123,35 @@ class LLMClient:
                         chunk = line[5:].strip()
                         if not chunk or chunk == "[DONE]":
                             continue
-                        yield chunk
+                        delta = _extract_delta(chunk)
+                        if delta:
+                            yield delta
         except httpx.HTTPError as exc:
             raise LLMError(f"流式调用失败: {type(exc).__name__}: {exc}") from exc
 
 
-llm_client = LLMClient()
+def _extract_delta(raw: str) -> str:
+    """从一块流式响应里取出文本增量。结构异常一律当成空块跳过。"""
+    try:
+        payload = json.loads(raw)
+        return payload["choices"][0]["delta"].get("content") or ""
+    except (ValueError, KeyError, IndexError, TypeError):
+        return ""
+
+
+def build_client(cfg: Optional[LLMSettings] = None) -> Any:
+    """按协议选客户端。两种协议共用 probe / chat / stream 三个方法。
+
+    延迟导入 anthropic：走 OpenAI 协议的部署（公网 DeepSeek 那条路）不该被
+    一个用不上的依赖卡住启动。ADR-0005 说不做自动故障切换——协议同理，
+    切换是一次显式的配置动作，不是运行时的猜测。
+    """
+    cfg = cfg or settings.llm
+    if cfg.protocol == "anthropic":
+        from .anthropic_client import AnthropicClient
+
+        return AnthropicClient(cfg)
+    return LLMClient(cfg)
+
+
+llm_client = build_client()

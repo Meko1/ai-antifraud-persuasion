@@ -6,7 +6,9 @@
  * 等于站在事发现场，一眼就知道每个东西是干什么的，不用学。
  *
  * 借位而非新造：判分卡走微信「系统提示」那个槽（显示"你撤回了一条消息"的地方），
- * 对局状态走「群公告条」那个槽，结局走「转账卡片」和「消息被拒收」那两个槽。
+ * 对局状态走「群公告条」那个槽，结局走「转账卡片」和「消息被拒收」那两个槽，
+ * 「本会话已按监管要求存档」走的是企业微信外部联系人那条提示的槽——
+ * 它同时交代了关系（他是你的客户）和约束（你说的每句话都在存档里）。
  *
  * 只有一处颜色不属于微信：--gold，专供游戏层（劝住线、全场最有力的一轮）。
  * 留一个外来色，是为了让"这是一局游戏"和"这是一次真实对话"能被一眼分开。
@@ -163,8 +165,8 @@ body {
   background: var(--wx-line);
 }
 
-/* 只有老陈那条能点。其余六分之五不做灰化——已读的会话本来就不是灰的，
-   把它们调暗会立刻露出"这是布景"。红点自己会说话。 */
+/* 只有你发给他的那条能点——点它＝他终于点开了你的消息。其余五条不做灰化：
+   已读的会话本来就不是灰的，把它们调暗会立刻露出"这是布景"。红点自己会说话。 */
 #openChen { cursor: pointer; }
 #openChen:hover { background: #f0f0f0; }
 #openChen:active { background: #e4e4e4; }
@@ -183,6 +185,8 @@ body {
 }
 
 .av-chen { background: #6f8bb5; }
+/* 李经理＝你。冷开场那一屏上唯一属于"你"的东西，用一个更正式的蓝跟他家里人区分 */
+.av-li { background: #3f5a80; }
 .av-bank { background: #c0392b; }
 .av-wife { background: #b7845c; }
 .av-daughter { background: #7d9f7a; }
@@ -691,6 +695,39 @@ body {
 .round.pivot .no { color: var(--gold); }
 .round .said { font-size: 14.5px; line-height: 1.55; }
 .round .tags { margin-top: 5px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* 时机。竞品判"说得标不标准"，这一行判"用得是不是时候"——
+   全作品唯一一处别人没有的判据，值得单独占一行而不是挤进标签里 */
+.round .timing { margin-top: 5px; font-size: 12px; color: var(--wx-sub); }
+.round .timing.good { color: var(--gold); }
+.round .timing.bad { color: var(--wx-fall); }
+
+/* 别人打成什么样。借的还是逐轮那一行的排法（左名右注），只是没有分数那一列——
+   它讲的是"你站在哪"，不是"你这一句值多少"，不该长得像一条判分。 */
+/* flex + wrap，不用 grid 的 1fr auto：右边那条注在窄屏上会挤爆左边的名字
+   （实测 375px 下「空口说“这是诈骗”」被拦腰折断，注文压了上去）。
+   换成可换行的 flex 之后，放不下就整条掉到下一行，仍然右对齐。 */
+.statrow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 11px 16px;
+  align-items: baseline;
+}
+.statrow + .statrow { box-shadow: inset 0 1px 0 var(--wx-line); }
+.statname { font-size: 14px; }
+.statnote { font-size: 12px; color: var(--wx-sub); text-align: right; margin-left: auto; }
+
+/* 追问窗口。它捕捉的是"该推进时退回安全区"——同类产品的评分捕捉不到这种
+   回避行为，反而因为对话时长给正面激励。用金色是因为它属于游戏层。 */
+.round .window { margin-top: 4px; font-size: 12px; color: var(--wx-sub); }
+.round .window.good { color: var(--gold); }
+.round .window.bad { color: var(--wx-fall); }
+
+.howscored { margin: 0; padding: 13px 16px; font-size: 13px; line-height: 1.9;
+  color: #6b6b6b; }
+.howscored b { color: var(--wx-text); }
 .round .score { text-align: right; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .round .score .after { display: block; font-size: 11px; font-weight: 400; color: var(--wx-sub); }
 
