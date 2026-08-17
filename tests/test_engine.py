@@ -548,3 +548,35 @@ async def test_训练语料样板话不许下发且兜底台词一轮只发一�
     assert not any("免费下载" in s or "原文链接" in s for s in 台词)
     assert sum(1 for s in 台词 if s == SAFE_FALLBACK) <= 1, "兜底台词一轮只发一条"
     assert any("账面上一万五" in s for s in 台词), "他自己的话要留下"
+
+
+async def test_第一轮的演绎指示与后面几轮不同() -> None:
+    """**开局那句不该是怼人。**
+
+    开局信任度 32 落在 irritated 档，于是模型收到的第一条指示曾经是
+    「你不耐烦，只想尽快结束这段对话」——玩家一个字还没说，他已经在怼人了。
+    他瞒了三个月，收到的是投顾一条中性提醒；心虚的人第一反应是躲，不是怼。
+
+    **这只换演法，不碰判分**：`first_turn` 不是新的情绪档位，
+    效力矩阵与档位映射一行没动，蒙特卡洛不用重跑。
+    """
+    gateway = 记录入参的Gateway(
+        台词="哦，你们那边还能瞅见啊。", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    async def 打一轮(session):
+        events = [
+            event
+            async for event in play_turn(
+                session, "陈叔，那笔钱原本是打算做什么用的",
+                gateway=gateway, secret=SECRET, now=NOW,
+            )
+        ]
+        token = next(e for e in events if e.name == "state").data["token"]
+        return verify_token(token, secret=SECRET, now=NOW)
+
+    第二轮起点 = await 打一轮(new_session(gid="01JTESTGID"))
+    assert gateway.演绎入参["first_turn"] is True
+
+    await 打一轮(第二轮起点)
+    assert gateway.演绎入参["first_turn"] is False, "只有第 1 轮走那一档"

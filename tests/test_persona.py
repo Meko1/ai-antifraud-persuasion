@@ -94,3 +94,32 @@ def test_例句短得像微信上打出来的(变体: Persona) -> None:
 
 def test_变体标识不重复() -> None:
     assert len({p.id for p in PERSONAS}) == len(PERSONAS)
+
+
+@pytest.mark.parametrize("变体", PERSONAS, ids=lambda p: p.id)
+def test_开场白不能一上来就怼人(变体: Persona) -> None:
+    """**心虚的人第一反应是躲，不是怼。**
+
+    上一版二十四条无一例外是"我这儿正忙着呢""你是不是又翻我账户咧"，
+    加上开局信任度落在 irritated 档，玩家一个字还没说，老陈已经在怼人了。
+    他瞒了三个月，收到的是投顾一条中性提醒；而且他还得靠这个账户。
+
+    这里只钉最硬的那几个词——语气这种事测不了，但"上来就赶人走"能测。
+    """
+    赶人 = ("正忙", "忙着", "快说", "长话短说", "少管", "别管", "翻我账户", "不方便")
+    for line in 变体.openings:
+        for 词 in 赶人:
+            assert 词 not in line, f"[{变体.id}] 开场白一上来就赶人：{line}"
+
+
+@pytest.mark.parametrize("变体", PERSONAS, ids=lambda p: p.id)
+def test_开场白要给玩家留个抓手(变体: Persona) -> None:
+    """开场白是**第 1 轮唯一能"扎根"的内容**。
+
+    "我这儿正忙着呢"什么抓手都不给——玩家第一句无论说什么都会被判未扎根。
+    现在每个变体至少有一条露出心虚（他没想到账户那边看得见），
+    玩家接得住这一句，第一轮才有分可拿。
+    """
+    心虚 = ("看得到", "看得见", "瞅见", "瞅着", "看见", "提醒", "报备", "盯着")
+    assert any(any(w in line for w in 心虚) for line in 变体.openings), \
+        f"[{变体.id}] 三条开场白没有一条给玩家留下可接的话"

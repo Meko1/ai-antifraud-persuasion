@@ -187,6 +187,9 @@ async def play_turn(
                     # 该轮王老师又催了一遍：判分要多扣 3 分，台词也得跟着紧张起来。
                     # 隐形的信任流失从这里变成一个玩家看得见的施压来源。
                     pressured=under_pressure(round_),
+                    # 第一句单独一档：心虚地客气，不是一上来就怼。
+                    # 只换演法，判分那边一个参数都没动
+                    first_turn=round_ == 1,
                 ):
                     for text in _screened(buffer.feed(chunk), seen_fallback):
                         spoken.append(text)
