@@ -52,7 +52,7 @@ const PAYEE = '转账给 启航财经-王';
 // 和聊天窗口的第一条——**老陈的开场白是在回它**，少了它他就是在回应空气。
 // 内容只能有一条信息：账户转出去一笔。启航财经、王老师、三十万、三点，
 // 开局你一概不知道（CONTEXT.md「对局」）。
-const PING = '陈叔，方便说句话吗？我看到您账户今天转出去一笔。';
+const PING = '陈叔，方便说句话吗？系统给我推了条提醒，说您账户今天转出去一笔。';
 
 const money = (n) =>
   '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

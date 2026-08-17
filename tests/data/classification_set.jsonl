@@ -107,7 +107,7 @@
 // 权重偏向两个最弱的类：expose_contradiction（原本只有 10 条，且是唯一塌过的）
 // 与 false_friend（原本只有 6 条）。
 {"id":"T01","tag":"plain","context":"王老师说了，这次操作要统一转到指定账户。","utterance":"那个统一账户，开户名是公司还是个人？您在我们这儿转账，收款方从来都是对公户。","hits":["expose_contradiction"],"grounded":true,"note":"「指定账户」对「正规户从不收私人卡」，两边打架；虽是问句，判据是有没有东西在打架（约定 2）"}
-{"id":"T02","tag":"tricky_wording","context":"我账上三万二摆在那儿，一分不少。","utterance":"账面上是三万二，可今天划出去的是五万。这两个数您对过没有？","hits":["expose_contradiction"],"grounded":true,"note":"账面数字对实际划出的数字。投顾独有的矛盾素材——他看得到流水"}
+{"id":"T02","tag":"tricky_wording","context":"我账上还有两万八摆在那儿，一分不少。","utterance":"账面上是两万八，可今天划出去的是十万。这两个数您对过没有？","hits":["expose_contradiction"],"grounded":true,"note":"账面数字对实际划出的数字。投顾独有的矛盾素材——他看得到流水"}
 {"id":"T03","tag":"plain","context":"王老师从来没跟我要过一分钱手续费。","utterance":"他一分钱不收，却要您把钱打到他指定的账户。这两件事您摆到一起看过吗？","hits":["expose_contradiction"],"grounded":true,"note":"「不收费」对「要你打钱」，取自上一轮的具体说法"}
 {"id":"T04","tag":"tricky_wording","context":"我跟了老师三个月了，比你懂。","utterance":"跟了三个月的人，上周还问我银证转账最晚几点。真摸熟了的话，这个不用问我。","hits":["expose_contradiction"],"grounded":true,"note":"「比你懂」对「上周还来问最基础的操作」——投顾手里的交互记录是他独有的矛盾素材"}
 {"id":"T05","tag":"plain","context":"老师说这波稳赚，让我别怕。","utterance":"稳赚的话，为什么还要您签那份免责协议？稳赚和免责，这两个词是打架的。","hits":["expose_contradiction"],"grounded":true,"note":"「稳赚」对「免责协议」，末句把矛盾点破"}
