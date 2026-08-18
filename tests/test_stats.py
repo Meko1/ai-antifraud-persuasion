@@ -12,7 +12,14 @@ from typing import Any, Dict, List
 import pytest
 
 from app import stats as stats_module
-from app.stats import KEY_ENDINGS, KEY_GAMES, KEY_HITS, KEY_TURNS, Stats
+from app.stats import (
+    KEY_ENDINGS,
+    KEY_GAMES,
+    KEY_HITS,
+    KEY_TURNS,
+    Stats,
+    force_db0,
+)
 
 
 class FakePipeline:
@@ -181,6 +188,13 @@ def test_快照给出结局占比与全部闭集标签() -> None:
     assert set(snap["keys"]) == {
         "anchor_real_purpose", "socratic_question", "expose_contradiction",
         "scold", "preach", "bare_assertion",
+        # 合规红线（8-17 补）。看板上少了它们，就答不出投票期最想知道的
+        # 那个数：有多少人在劝阻的时候顺口荐了股
+        "unlicensed_advice", "guaranteed_return",
+        # 另外半套专业动作（8-17 补）。这几个的占比是这套统计最有意思的一栏：
+        # 它量的是**有多少人根本想不到去听、去确认、去把决定权还回去**
+        "reflect_feeling", "support_autonomy",
+        "check_understanding", "informed_warning",
     }
 
 
@@ -191,3 +205,39 @@ def test_一局都没有时占比是零而不是崩() -> None:
     assert snap["games"] == 0
     assert snap["endings"]["persuaded"]["share"] == 0.0
     assert snap["keys"]["scold"]["rate"] == 0.0
+
+
+# ── 共享 Redis 上的两条硬约束（2026-08-18）────────────────────────────────
+#
+# 大赛的 Redis 是**共享实例**，而且要求所有作品都用 db0（原文三个感叹号）。
+# 这两条测试守的不是本作品的功能，是"别把别人的数据搅了、别让自己的数据丢了"。
+
+
+@pytest.mark.parametrize(
+    ("配的", "实际连的"),
+    [
+        # 不写库号：redis-py 默认就是 0，但显式写出来才看得见
+        ("redis://10.126.192.12:7001", "redis://10.126.192.12:7001/0"),
+        # 写对了：原样
+        ("redis://:pw@10.126.192.12:7001/0", "redis://:pw@10.126.192.12:7001/0"),
+        # **写错了：改回 0**。手滑写成 /1，数据就进了看板查不到的地方，
+        # 而且不报错——这种错只会在"为什么统计是空的"上耗掉半天
+        ("redis://:pw@10.126.192.12:7001/1", "redis://:pw@10.126.192.12:7001/0"),
+        ("rediss://:pw@host:7001/15", "rediss://:pw@host:7001/0"),
+        # 没配就是没配，不要凭空造一个连接串出来
+        ("", ""),
+    ],
+)
+def test_库号一律钉死在零(配的: str, 实际连的: str) -> None:
+    assert force_db0(配的) == 实际连的
+
+
+def test_键名带作品前缀() -> None:
+    """共享 db0 上不许用通用键名。
+
+    原来叫 `stats:games`——这是任何一个参赛作品都会随手取的名字。
+    几十个作品挤在同一个 db0 里，撞名就会**互相把对方的计数器加上去**，
+    谁也看不出来，而复盘里那句「别人打成什么样」会显示别人的数。
+    """
+    for key in (KEY_GAMES, KEY_TURNS, KEY_ENDINGS, KEY_HITS):
+        assert key.startswith("ai-antifraud-persuasion:"), key

@@ -19,7 +19,15 @@ from .scoring import GameState, new_game
 
 # v2：GameState 增加 guard / window / peak。旧令牌一律拒绝而不做兼容解析——
 # 缺字段的局按默认值续玩会算出与判分规格不符的分数，那比让玩家重开一局更糟。
-TOKEN_VERSION = 2
+#
+# **v3（2026-08-17）一次补了两样，它们都必须随令牌走：**
+#
+# · `sid` 场景标识。多场景之后，第二局要是没带它，第 2 轮会被当成老陈那一局
+#   重新派生——效力矩阵、兜底台词、结局文案全部换人，而玩家什么都没做。
+# · `breaches` 这一局踩过几次合规红线。这个字段第 2 步就加进 GameState 了，
+#   **却一直没进令牌**，于是每一轮都从 0 重新开始数。复盘那张合规卡是前端
+#   自己按 hits 数的，所以没被发现——一个"存在但从来没有真正生效"的字段。
+TOKEN_VERSION = 3
 
 # 令牌有效期。签名本身不防重放，过期时间是那道兜底：
 # 一个泄漏的令牌最多只能被拿来续玩两小时。
@@ -67,6 +75,8 @@ class TurnRecord:
 class Session:
     gid: str
     state: GameState
+    # 场景标识（app/scenario.py）。空串落到默认场景，见 `scenario_for`
+    sid: str = ""
     # 复盘面板的唯一数据源。随令牌回到客户端，服务端不需要任何额外存储。
     history: Tuple[TurnRecord, ...] = ()
     # 开场白。它是第 1 轮唯一可供"扎根"的对话内容，因此必须随令牌带着走，
@@ -74,8 +84,8 @@ class Session:
     opening: str = ""
 
 
-def new_session(gid: str, opening: str = "") -> Session:
-    return Session(gid=gid, state=new_game(), opening=opening)
+def new_session(gid: str, opening: str = "", sid: str = "") -> Session:
+    return Session(gid=gid, state=new_game(), opening=opening, sid=sid)
 
 
 def sign_session(session: Session, *, secret: str, issued_at: int) -> str:
@@ -83,6 +93,7 @@ def sign_session(session: Session, *, secret: str, issued_at: int) -> str:
         {
             "v": TOKEN_VERSION,
             "gid": session.gid,
+            "sid": session.sid,
             "round": session.state.round,
             "trust": session.state.trust,
             "pool": session.state.pool,
@@ -90,6 +101,7 @@ def sign_session(session: Session, *, secret: str, issued_at: int) -> str:
             "guard": session.state.guard,
             "window": session.state.window,
             "peak": session.state.peak,
+            "breaches": session.state.breaches,
             "history": [record.to_wire() for record in session.history],
             "op": session.opening,
             "iat": issued_at,
@@ -115,6 +127,7 @@ def verify_token(token: str, *, secret: str, now: int) -> Session:
 
     return Session(
         gid=data["gid"],
+        sid=data.get("sid", ""),
         state=GameState(
             round=data["round"],
             trust=data["trust"],
@@ -123,6 +136,7 @@ def verify_token(token: str, *, secret: str, now: int) -> Session:
             guard=data["guard"],
             window=data["window"],
             peak=data["peak"],
+            breaches=data["breaches"],
         ),
         history=tuple(TurnRecord.from_wire(r) for r in data.get("history", ())),
         opening=data.get("op", ""),

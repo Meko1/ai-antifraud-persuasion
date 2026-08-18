@@ -11,7 +11,25 @@ set -euo pipefail
 APP_ID="ai-antifraud-persuasion"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PY="${APP_DIR}/.venv/bin/python"
-RUNTIME_DIR="${HOME}/.${APP_ID}"
+# 运行时目录（PID 与日志）。**优先级照大赛打包契约写**：
+# AI_CREATOR_STATE_ROOT → XDG_STATE_HOME → HOME → /tmp
+#
+# 原先只写 "${HOME}/.${APP_ID}"，而契约明确说了
+# 「Linux 脚本不得假设 Salt 提供 HOME」。平台执行部署时若 HOME 未设置，
+# ${HOME} 展开成空串，路径就变成 /.ai-antifraud-persuasion——
+# mkdir 在文件系统根目录上必然失败，整个部署挂在 install 这一步，
+# 而且报错信息看不出是 HOME 的问题。
+#
+# HOME 仍然留在第三顺位（契约只要求"不得假设"，没禁止用）：
+# 它比 /tmp 稳，/tmp 可能被系统清理，而 PID 文件必须跨 release 存活——
+# 平台每次部署都会删掉并重建解压目录，PID 放那儿新版 stop 就找不到旧进程。
+state_root() {
+  if [ -n "${AI_CREATOR_STATE_ROOT:-}" ]; then echo "${AI_CREATOR_STATE_ROOT}"
+  elif [ -n "${XDG_STATE_HOME:-}" ]; then echo "${XDG_STATE_HOME}"
+  elif [ -n "${HOME:-}" ]; then echo "${HOME}"
+  else echo "/tmp"; fi
+}
+RUNTIME_DIR="$(state_root)/.${APP_ID}"
 PID_FILE="${RUNTIME_DIR}/app.pid"
 LOG_FILE="${RUNTIME_DIR}/logs/app.log"
 PORT="${PORT:-21818}"
@@ -33,7 +51,50 @@ if [ -f "${PID_FILE}" ]; then
   fi
 fi
 
-# ── 2. 后台拉起服务 ─────────────────────────────────────────────────────────
+# ── 2. 载入部署机上的本地环境文件（可选）────────────────────────────────────
+#
+# **这是给密钥用的唯一一条通路。** `.env` 里有真实 API key，按打包规范不进
+# ZIP；而平台通过 Salt 执行 stop/install/start，中间没有地方能传环境变量。
+# 于是任何需要密钥的配置（大模型网关、Redis 口令）在目标机上都没有来源。
+#
+# 做法：运维在**跨 release 稳定**的运行时目录里放一个 env 文件，一次就够，
+# 之后每次重新部署都自动带上——解压目录会被平台删掉重建，这个目录不会。
+#
+#   ${RUNTIME_DIR}/env      权限建议 600
+#
+# 里面按 KEY=VALUE 写，例如（口令用真值替换，**不要提交进仓库**）：
+#   INTERNAL_LLM_API_KEY=...
+#   REDIS_URL=redis://:口令@10.126.192.12:7001/0
+#
+# `set -a` 让文件里的赋值自动导出；用完立刻关掉，别影响后面的局部变量。
+# 已经存在的真实环境变量不会被覆盖（下面几处都是 `-z` 判空才取值）。
+ENV_FILE="${RUNTIME_DIR}/env"
+if [ -f "${ENV_FILE}" ]; then
+  log "载入本地环境文件: ${ENV_FILE}"
+  set -a
+  # shellcheck disable=SC1090
+  . "${ENV_FILE}"
+  set +a
+fi
+
+# ── 3. 注入对局签名密钥 ─────────────────────────────────────────────────────
+#
+# 优先用真实环境变量（运维自己管密钥时走这条），否则读 install.sh 生成的那份。
+#
+# **两者都没有时不在这里报错。** 开发机上密钥来自项目目录里的 `.env`，
+# 那是 python-dotenv 在**应用进程内**读的，脚本这一层根本看不见——
+# 在这儿 fail 会把本地 `./start.sh` 直接打死（第一版就是这么写的，当场翻车）。
+# 真的缺，让 app/config.py 去拒绝启动：那条报错写得比这里清楚，
+# 而且下面的健康检查循环会把日志尾巴打出来。
+if [ -z "${STATE_SIGNING_SECRET:-}" ]; then
+  SECRET_FILE="${RUNTIME_DIR}/state_signing_secret"
+  if [ -s "${SECRET_FILE}" ]; then
+    STATE_SIGNING_SECRET="$(cat "${SECRET_FILE}")"
+    export STATE_SIGNING_SECRET
+  fi
+fi
+
+# ── 4. 后台拉起服务 ─────────────────────────────────────────────────────────
 log "启动服务，端口 ${PORT}，日志 ${LOG_FILE}"
 cd "${APP_DIR}"
 nohup "${VENV_PY}" -m uvicorn app.main:app \
@@ -46,7 +107,7 @@ APP_PID=$!
 echo "${APP_PID}" > "${PID_FILE}"
 log "进程已拉起 (PID ${APP_PID})"
 
-# ── 3. 等待健康检查通过后才返回 0 ───────────────────────────────────────────
+# ── 5. 等待健康检查通过后才返回 0 ───────────────────────────────────────────
 # 部署平台按退出码判定成败，所以这里必须真的确认服务可用，
 # 不能进程一拉起就返回 0 —— 那样端口没起来也会被判成"部署成功"。
 probe_health() {

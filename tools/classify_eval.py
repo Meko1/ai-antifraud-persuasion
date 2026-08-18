@@ -29,9 +29,9 @@ from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
 from app.classify import Classification, parse_classification
-from app.scoring import KEY_VALUES, PENALTY_VALUES
+from app.scoring import ALL_PENALTIES, KEY_VALUES
 
-LABELS: Tuple[str, ...] = (*KEY_VALUES, *PENALTY_VALUES)
+LABELS: Tuple[str, ...] = (*KEY_VALUES, *ALL_PENALTIES)
 
 # 混淆矩阵里"什么都没判"的那一行／那一列。漏判与误判是两类不同的病，
 # 没有它，这两种错误都会从矩阵里消失。
@@ -287,8 +287,18 @@ _SHORT = {
     "scold": "scold",
     "preach": "preach",
     "bare_assertion": "bare",
+    "unlicensed_advice": "advice",
+    "guaranteed_return": "guarant",
     EMPTY: EMPTY,
 }
+
+
+def _short(label: str) -> str:
+    """混淆矩阵的列头。**闭集加标签时不能只加到 scoring.py**——
+    这张表原先是写死的六项，加了合规红线之后跑批跑完 118 次调用才在
+    打印那一步 KeyError，整批白跑。取不到就退回截断，宁可难看，不要炸。
+    """
+    return _SHORT.get(label, label[:7])
 
 
 def format_report(report: Report) -> str:
@@ -324,7 +334,7 @@ def format_report(report: Report) -> str:
         )
 
     lines += ["", "混淆矩阵（行＝人工标注，列＝模型预测，共现计数）", ""]
-    header = "".join(f"{_SHORT[c]:>10}" for c in (*LABELS, EMPTY))
+    header = "".join(f"{_short(c):>10}" for c in (*LABELS, EMPTY))
     lines.append(f"{'':<22}{header}")
     for row in (*LABELS, EMPTY):
         cells = "".join(

@@ -10,7 +10,7 @@
 from typing import Optional, Sequence, Tuple
 
 from app.classify import Classification
-from app.scoring import KEY_VALUES, PENALTY_VALUES
+from app.scoring import ALL_PENALTIES, KEY_VALUES
 from tools.classify_eval import (
     DEFAULT_SET_PATH,
     EMPTY,
@@ -23,7 +23,7 @@ from tools.classify_eval import (
     summarize,
 )
 
-LABELS = frozenset(KEY_VALUES) | frozenset(PENALTY_VALUES)
+LABELS = frozenset(KEY_VALUES) | frozenset(ALL_PENALTIES)
 
 # §9.3 点名要求覆盖的三类难例
 HARD_TAGS = ("tricky_wording", "false_friend", "parrot")
@@ -54,15 +54,27 @@ def pred(
 # ── 标注集本身 ────────────────────────────────────────────────────────────
 
 
-def test_标注集规模落在五十到一百条之间() -> None:
-    """§9.3 要求 50–100 条。
+def test_标注集规模落在五十到一百六十条之间() -> None:
+    """§9.3 原本要求 50–100 条，上限 8-17 随闭集两次扩张放到 160。
 
     下限保证统计量有意义：50 条时一条错样本值 2 个百分点，
     85% 的门槛还能分辨出提示词改动的效果；再少就只是在读噪声。
+
+    上限不是随手放的：闭集从 6 个标签变成 12 个（合规红线 2 条 + 专业动作 4 条），而
+    `test_每个标签都有足够样本撑起混淆矩阵` 要求每个标签 ≥5 条。
+    硬守 100 条会逼着后来的人删旧样本去给新标签腾位置——那是在拿
+    已经验过的覆盖面换新覆盖面。上限跟着闭集走，不跟着习惯走。
+
+    它仍然是个上限：跑批一次要调 118 次模型，标注集无限膨胀会让
+    "改完提示词就重跑一次"这件几毛钱的事变成一件要考虑的事。
+
+    **下次再加标签之前先想清楚**：每加一个标签就要 ≥5 条样本，
+    而分类器的准确率会被新标签的边界问题拖低——这次加 4 把钥匙，
+    第一版跑批直接从 88.1% 掉下来过。标签不是越多越好。
     """
     cases = load_cases()
 
-    assert 50 <= len(cases) <= 100
+    assert 50 <= len(cases) <= 160
 
 
 def test_标注约定与数据放在同一个文件() -> None:

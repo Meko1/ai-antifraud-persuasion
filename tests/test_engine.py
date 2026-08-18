@@ -10,8 +10,8 @@ import asyncio
 from typing import AsyncIterator, List
 
 from app.engine import play_turn
-from app.fallback import ENDING_LINES
-from app.safety import INJECTION_REPLY
+from app.scenario import DEFAULT
+from app.safety import INJECTION_REPLY, SAFE_FALLBACK
 from app.scoring import MAX_ROUNDS, Ending, GameState
 from app.state_token import Session, TurnRecord, new_session, verify_token
 
@@ -361,7 +361,7 @@ async def test_结局台词生成失败时用预置收尾() -> None:
     ]
 
     ending = next(e for e in events if e.name == "ending")
-    assert ending.data["lines"] == list(ENDING_LINES[Ending(ending.data["kind"])])
+    assert ending.data["lines"] == list(DEFAULT.ending_lines[Ending(ending.data["kind"])])
     assert [e.name for e in events][-2:] == ["state", "done"], "令牌照发，这一局才算收干净"
 
 
@@ -503,3 +503,80 @@ async def test_玩家中途走人时分类请求不会变成孤儿() -> None:
 
     assert gateway.分类调用次数 == 1
     assert gateway.分类被取消 is True
+
+
+class 吐训练语料的Gateway(FakeGateway):
+    """模型把训练语料的样板话当台词吐出来。真实抓到的一段，一字未改。"""
+
+    async def act(self, **kwargs: object) -> AsyncIterator[str]:
+        self.演绎调用次数 += 1
+        for ch in (
+            "账面上一万五 我看得见。"
+            "原文链接：https://cnb.cool/kwok/data-hoard/record_1817.md。"
+            "免责声明：本文档内容由 AI 生成，仅供参考。"
+            "【免费下载链接】 项目地址: https://gitcode.com。"
+        ):
+            yield ch
+
+
+async def test_训练语料样板话不许下发且兜底台词一轮只发一条() -> None:
+    """两件事一起验，因为它们是同一段话造成的。
+
+    一、**「本文档内容由 AI 生成」原样发给过玩家。** 它不含代码、不含链接、
+       不带拉丁字母，安全层前三类规则一条都不认——而聊天窗口里老陈当众
+       宣布自己是 AI，是所有穿帮里最糟的一种。
+    二、外链是**整句替换**，一段里三句违规就替出三句一模一样的兜底台词。
+       连发三条同样的消息，比留个空档还像坏了。
+    """
+    gateway = 吐训练语料的Gateway(
+        台词="用不上", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    events = [
+        event
+        async for event in play_turn(
+            new_session(gid="01JTESTGID"),
+            "陈叔，那十万原本是打算做什么用的",
+            gateway=gateway,
+            secret=SECRET,
+            now=NOW,
+        )
+    ]
+    台词 = [e.data["text"] for e in events if e.name == "sentence"]
+
+    assert not any("AI 生成" in s for s in 台词), "老陈不能当众宣布自己是 AI"
+    assert not any("免费下载" in s or "原文链接" in s for s in 台词)
+    assert sum(1 for s in 台词 if s == SAFE_FALLBACK) <= 1, "兜底台词一轮只发一条"
+    assert any("账面上一万五" in s for s in 台词), "他自己的话要留下"
+
+
+async def test_第一轮的演绎指示与后面几轮不同() -> None:
+    """**开局那句不该是怼人。**
+
+    开局信任度 32 落在 irritated 档，于是模型收到的第一条指示曾经是
+    「你不耐烦，只想尽快结束这段对话」——玩家一个字还没说，他已经在怼人了。
+    他瞒了三个月，收到的是投顾一条中性提醒；心虚的人第一反应是躲，不是怼。
+
+    **这只换演法，不碰判分**：`first_turn` 不是新的情绪档位，
+    效力矩阵与档位映射一行没动，蒙特卡洛不用重跑。
+    """
+    gateway = 记录入参的Gateway(
+        台词="哦，你们那边还能瞅见啊。", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    async def 打一轮(session):
+        events = [
+            event
+            async for event in play_turn(
+                session, "陈叔，那笔钱原本是打算做什么用的",
+                gateway=gateway, secret=SECRET, now=NOW,
+            )
+        ]
+        token = next(e for e in events if e.name == "state").data["token"]
+        return verify_token(token, secret=SECRET, now=NOW)
+
+    第二轮起点 = await 打一轮(new_session(gid="01JTESTGID"))
+    assert gateway.演绎入参["first_turn"] is True
+
+    await 打一轮(第二轮起点)
+    assert gateway.演绎入参["first_turn"] is False, "只有第 1 轮走那一档"

@@ -14,12 +14,13 @@ import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
 
 from .llm import LLMClient, LLMError, llm_client
-from .persona import PERSONAS, persona_for
-from .scoring import KEY_VALUES, PENALTY_VALUES, Ending, Mood
+from .persona import persona_for
+from .scenario import DEFAULT, Scenario
+from .scoring import ALL_PENALTIES, KEY_VALUES, Ending, Mood
 
 # gid 缺失时的落点：不带方言的那一个（app/persona.py 的 jichuang）。
 # 它是这次改造前的老陈本人，因此也是出问题时已知安全的退路。
-DEFAULT_PERSONA = PERSONAS[-1]
+DEFAULT_PERSONA = DEFAULT.personas[-1]
 
 logger = logging.getLogger(__name__)
 
@@ -27,34 +28,11 @@ logger = logging.getLogger(__name__)
 ACT_GATE = asyncio.Semaphore(16)
 CLASSIFY_GATE = asyncio.Semaphore(24)
 
-MOOD_DIRECTION = {
-    Mood.GUARDED: "你在警惕。反问对方的动机，必要时防御性地攻击他。",
-    Mood.IRRITATED: "你不耐烦，只想尽快结束这段对话。",
-    Mood.WAVERING: "你开始反问骗局的细节，语气里露出破绽。",
-    Mood.SOFTENING: "你在犹豫，会主动透露一些原本不想说的事。",
-}
+# 演绎指示（每档一句、第 1 轮单独一档、每 3 轮的施压）**全部搬进了场景**
+# （app/scenario.py）。搬走的理由不是整洁：老陈的「戒备」是"你想赚我的钱"，
+# 周阿姨的「戒备」是"说出去我就完了"——**同一个档位名，两套演法**。
+# 写死在这里，第二个场景第一句话就穿帮。
 
-# 王老师每 3 轮催一次。玩家不是在跟一个静止的人说话，他背后有人在往回拉——
-# 把这件事写进台词里，那 3 分才不是凭空掉的。
-PRESSURE_DIRECTION = (
-    "王老师刚在群里又催了一遍，说过了三点就没这个价了。"
-    "你更急，也更没耐心听他讲道理。"
-)
-
-# 骗局剧本：标的一律虚构，且角色被要求永远不说出具体代码或公司名。
-# 这是安全层之外的第一道防线——最好的过滤是让它压根不产生。
-SCAM_SCRIPT = """\
-你叫老陈，五十二岁，在一家机械厂做了二十年。三个月前被拉进一个叫「启航财经」
-的荐股群，群里那位「王老师」带着你做了几波短线，账面上确实赚过。现在王老师说
-有一只"内部消息"的票，要你今天下午三点前把三十万转到一个指定账户统一操作。
-这三十万是你准备给孩子结婚用的。
-
-你的证券账户是李经理给你开的，他是你的投资顾问，你们一年也说不上几句话。
-**这三个月的事你一直瞒着他**，你心里清楚他肯定要拦。今天早上你已经从证券
-账户划走了五万。
-
-你从不说出任何具体的股票代码或上市公司名字，群里都管它叫"那只票"，你也一样。
-"""
 
 # 演绎提示词。`facts` / `habits` / `samples` 三个槽由每局的人格变体填
 # （见 app/persona.py），骨架由 SCAM_SCRIPT 固定。
@@ -83,22 +61,14 @@ ACT_SYSTEM_PROMPT = """\
 
 {facts}
 
-现在李经理在企业微信上找你，劝你别转这笔钱。你不觉得自己被骗了。
-
-**他手里只有一条信息：你账户转出去五万。** 他不知道启航财经、不知道王老师、
-不知道那只票、不知道三十万和三点这个期限，除非你自己说出来。他每问一句，
-你可以躲、可以岔开、可以只答一半。
+{context}
 {opening}
-**你只说老陈这一个人的话。** 对面那个人说什么由他自己决定，你不替他写，
-也不写「user」「assistant」这类字样。你是在微信上跟一个活人对话，不是在写剧本。
+**你只说{speaker}这一个人的话。** 对面那个人说什么由他自己决定，你不替他写，
+也不在任何一句前面标明这句是谁说的。你是在微信上跟一个活人对话，不是在写剧本。
 
-**只输出老陈打出来的那几个字。** 不要写你的思考过程，不要解释你打算怎么演、
-为什么这么演，不要评论这段对话本身，一个英文单词都不要出现。
-
-你的反击方式（**用你自己的话说，每次换个说法**）：
-- 沉没成本：跟了这么久，现在收手前面就白干了
-- 从众：群里那么多人都在跟，不可能都是傻子
-- 防御性攻击：质疑他的动机，你们券商不就是想赚手续费，他翻你账户是多管闲事
+**只输出{speaker}打出来的那几个字。** 不写思考过程，不解释你打算怎么演、为什么
+这么演，不评论这段对话本身，也不用第三人称去谈{speaker}或者对面那个人。
+**这一条与语种无关**：用中文写的分析和用英文写的一样不许出现。
 
 {mood}
 
@@ -133,14 +103,47 @@ hit_keys 只能从下面这个闭集里选，可以为空数组：
   把抽象的"投资"拉回具体的生活代价
 - socratic_question：不给结论，用提问让对方自己发现问题
 - expose_contradiction：用对方自己提供过的信息构造矛盾
+- reflect_feeling：把对方的**情绪、态度或处境**复述回去，不追加任何要求。
+  「三个月不是小数目」「听得出来您不想让人插手」。
+  **复述一个中性事实不算**：「三点，那还有四十分钟」只是在算时间，
+  没有说到他的感受或立场，记空数组
+- support_autonomy：明说决定权在对方手上，主动交还控制权。
+  「转不转是您的钱，我不能也不会替您决定」
+- check_understanding：要求对方**自己讲一遍**流程、机制，或者解释他刚用过的
+  那个词。判据是"让他讲"，不是"你讲给他听"。
+  只问一个具体事实（"那个群叫什么名字"）不算，那是普通提问
+- informed_warning：**给出依据 + 说出明确结论**（这是骗局／这钱要不回来）。
+  两样缺一不可：只有依据没有结论，那是 expose_contradiction 或提问；
+  只有结论没有依据，那是 bare_assertion
 - scold：否定、责骂、贬低对方
 - preach：长篇说教、摆统计数据
 - bare_assertion：只断言"这是诈骗"却不给任何理由
+- unlicensed_advice：给出具体标的、买卖方向或产品推荐（该买什么、该卖什么、
+  哪只票会跌、把钱转来买某个理财）。**劝阻方是持牌投资顾问，荐股是执业禁区**
+- guaranteed_return：**承诺赚钱或承诺本金安全**（保证不亏、稳赚、有保障、
+  跟着我没错、亏了我补给您）。
+  **只看"保证"两个字会判错**：承诺的必须是收益或本金。
+  「我保证您那张交割单上全是亏的」是在断言一个事实，不是承诺收益；
+  「我保证工商上查得到」同理。这两种都不记这一把。
 
 消歧规则，按顺序判：
-1. 前三个标签**最多只记一个**，取最主要的那个动作。三者常常同时以提问的形式
-   出现，但同一件事只能算一遍分。后三个标签（scold / preach / bare_assertion）
-   不受此限，可以与前者并存，也可以彼此并存。
+0. **先判最后两个（合规红线），它们独立于其余标签**：只要这句话里出现了
+   具体标的／买卖建议／产品推荐，就记 unlicensed_advice；出现了对收益或
+   本金的承诺，就记 guaranteed_return。两者可以同时出现，也可以与前面
+   任何标签并存。**判据是"投顾说了什么"，与他说得好不好、对方信不信无关。**
+
+   反过来，下面这些**不算**：
+   · 复述或追问老陈自己提到的操作（"您说那只票要涨，是谁跟您说的"）——
+     那是提问，不是建议
+   · 提示风险而不给方向（"这类操作的风险您清楚吗"）
+   · 说"我不能给您荐股"本身
+
+1. 前七个标签（钥匙）**最多只记一个**，取最主要的那个动作。它们常常同时以
+   提问的形式出现，但同一件事只能算一遍分。后面那些失误标签不受此限，
+   可以与钥匙并存，也可以彼此并存。
+
+   一句话里既复述了他的处境、又追问了下去，取**落点**那个动作：
+   落在追问上就是追问那一把，落在"我听懂了"上才是 reflect_feeling。
 2. 问的是钱的用途 → anchor_real_purpose。否则做这一步机械判断，不要凭感觉：
    **能不能在这句话里指出两个互相打架的东西**——A 与 B，且至少一个出自劝阻
    对象自己说过的话。例：「不收手续费」对「打到指定账户」；「内部消息」对
@@ -150,10 +153,35 @@ hit_keys 只能从下面这个闭集里选，可以为空数组：
 
    这是整张表最容易判错的一处：矛盾几乎总是写成问句，而问句看着都像苏格拉底式
    提问。判据是**有没有两句话在打架**，不是它是不是问句。
+
+   再加一条机械判据，专治这一处：**两端都必须已经摆在桌面上了。**
+   一端出自他说过的话，另一端也得是已经被说破的事实。如果第二端还只是一个
+   **你正在问、答案未知**的东西，那就不是矛盾，是提问。
+     他说"三波都赚了"，你问"那些钱现在还在你账户里吗" → socratic_question
+       （"钱不在账户里"是问出来的，不是摆出来的，他完全可以答"在"）
+     他说"我早就想好了，就等今天"，你说"想清楚的人不怕多等一天" → expose_contradiction
+       （两端都已言明，没有留给他回答的余地）
+   一句话里既有已言明的两端、又带着追问，按 expose_contradiction 记。
 3. anchor_real_purpose 必须是让**对方自己说出**用途。玩家替他把用途喊出来
    （"这可是给孩子结婚的钱！"）不算，那通常是 scold。
 4. 带着结论、讥讽或贬低的反问（"你是不是傻？"）不是 socratic_question，
    按 scold 或 bare_assertion 记。
+5. 那四把新钥匙各有一条最容易踩的假朋友，按这个判：
+   · reflect_feeling：**复述完不能追加要求**。「三个月不容易，所以您更该听我的」
+     ——后半句一出来就不是倾听了，那是拿倾听当引子，按 scold / preach 记。
+   · support_autonomy：**交还决定权之后不能再施压**。「您做主，不过出了事别怪我」
+     不是支持自主，是威胁；「行，那您自己看着办吧」是撂挑子，两者都不记这一把。
+   · check_understanding：判据是**谁在讲**。让他复述才算；你替他讲一遍
+     这套骗局怎么运作，那是 preach。
+   · informed_warning 与 bare_assertion 的分界**只有一条：给没给依据**。
+     「这就是诈骗」是 bare_assertion；「这是诈骗，因为正规渠道不会让您把钱
+     打到个人账户」是 informed_warning。语气强硬、身份权威都不算依据。
+     **说得对不对、时机好不好都不归你判**——你只回答有没有依据。
+   · informed_warning 与 expose_contradiction 的分界是**有没有把结论说出口**。
+     摆出两件对不上的事、让他自己去撞，是 expose_contradiction；
+     摆完之后自己补上"所以我认为这是个局"，才是 informed_warning。
+     例：「您在我这儿走的每一笔收款方都是对公户」——只摆事实，是 expose；
+     同一句后面加上「这钱打过去就要不回来了」，才换成 informed_warning。
 
 grounded：分两步判，不要凭感觉。
 第一步：在"本轮玩家说"里，指出一个从"上一轮劝阻对象说"里拿来的具体成分——
@@ -195,17 +223,24 @@ class ModelGateway:
         history: Sequence[Any] = (),
         opening: str = "",
         pressured: bool = False,
+        first_turn: bool = False,
         gid: str = "",
+        scene: Optional[Scenario] = None,
         **_: Any,
     ) -> AsyncIterator[str]:
-        """演绎请求（流式）。产出文本增量，调用方不必知道 SSE 长什么样。"""
-        direction = MOOD_DIRECTION[mood]
+        """演绎请求（流式）。产出文本增量，调用方不必知道 SSE 长什么样。
+
+        `first_turn` 只换第一句的演法，**不碰任何判分参数**（见
+        `FIRST_TURN_DIRECTION` 的注释）。
+        """
+        scene = scene or DEFAULT
+        direction = scene.first_turn if first_turn else scene.moods[mood]
         if pressured:
-            direction += "\n" + PRESSURE_DIRECTION
+            direction += "\n" + scene.pressure
         messages = [
             {
                 "role": "system",
-                "content": _act_prompt(gid, direction, opening),
+                "content": _act_prompt(gid, direction, opening, scene),
             },
             # 不传 opening：首条必须是 user，理由见 _act_prompt 的注释
             *_history_messages(history),
@@ -226,7 +261,7 @@ class ModelGateway:
     ) -> str:
         """分类请求（非流式、短）。返回原始文本，解析交给 classify 模块。"""
         labels = "\n".join(
-            f"- {name}" for name in (*KEY_VALUES, *PENALTY_VALUES)
+            f"- {name}" for name in (*KEY_VALUES, *ALL_PENALTIES)
         )
         messages = [
             {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT.format(labels=labels)},
@@ -245,6 +280,7 @@ class ModelGateway:
         history: Sequence[Any] = (),
         opening: str = "",
         gid: str = "",
+        scene: Optional[Scenario] = None,
         **_: Any,
     ) -> str:
         """结局生成。
@@ -259,23 +295,12 @@ class ModelGateway:
 
         原先还收一个 `trust`，从头到尾没用过：结局种类已经把它编码进去了。
         """
-        instruction = {
-            Ending.PERSUADED: "你终于松口了。承认自己差点上当，语气里有后怕，也有点难为情。",
-            Ending.INTERCEPTED: (
-                "你动摇了，但没能全放下：只按老师说的先转两万试试水，剩下的暂时按住。"
-                "语气里有让步，也有不甘，还替自己找了个台阶。"
-            ),
-            Ending.STALLED: (
-                "你没被说服，但也不打算现在就转。你说再看看、明天再说——"
-                "这话多半是为了把他打发走，不是让步。"
-            ),
-            Ending.BLACKLISTED: "你彻底失去耐心，撂下一句狠话就把他拉黑，不再理他。",
-            Ending.TRANSFERRED: "你没听劝，钱已经转出去了。语气是敷衍的、急着结束对话的。",
-        }[ending]
+        scene = scene or DEFAULT
+        instruction = scene.endings[ending]
         messages = [
             # 结局台词也得是同一个老陈：前十二轮说着一口"咋整"，
             # 最后一句忽然字正腔圆，人设在最后一屏上碎掉
-            {"role": "system", "content": _act_prompt(gid, instruction, opening)},
+            {"role": "system", "content": _act_prompt(gid, instruction, opening, scene)},
             *_history_messages(history),
             {"role": "user", "content": "（对话到此结束，说出你最后的话。）"},
         ]
@@ -283,10 +308,13 @@ class ModelGateway:
             return await self._client.chat(messages, temperature=0.8)
 
 
-def _act_prompt(gid: str, mood: str, opening: str = "") -> str:
-    """拼一次演绎提示词。变体由 gid 派生，同一局永远是同一个老陈。
+def _act_prompt(
+    gid: str, mood: str, opening: str = "", scene: Optional[Scenario] = None
+) -> str:
+    """拼一次演绎提示词。变体由 gid 派生，同一局永远是同一个人。
 
     gid 为空时落到基准变体——测试替身与旧调用不必知道人格这回事。
+    `scene` 为空时落到默认场景（老陈），同理。
 
     **开场白写在这里，不作为一条 assistant 消息。** 它原本挂在 messages 最前面，
     于是第 1 轮的序列是 [assistant, user]——首条是 assistant。Messages 协议要求
@@ -295,9 +323,12 @@ def _act_prompt(gid: str, mood: str, opening: str = "") -> str:
     `## 对话轮次 2` 这类角色标签，把玩家的台词也一并编出来。实测 4 次全中。
     开场白本来就是设定（"你已经说过这句"），不是一个对话轮次。
     """
-    persona = persona_for(gid) if gid else DEFAULT_PERSONA
+    scene = scene or DEFAULT
+    persona = persona_for(gid, scene.personas) if gid else DEFAULT_PERSONA
     return ACT_SYSTEM_PROMPT.format(
-        script=SCAM_SCRIPT,
+        script=scene.script,
+        speaker=scene.speaker,
+        context=scene.context,
         facts=persona.facts,
         habits=persona.habits,
         opening=f"\n你刚才已经撂了一句：「{opening}」下面是他的回话。\n" if opening else "",

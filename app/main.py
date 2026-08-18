@@ -26,6 +26,7 @@ from . import APP_ID, APP_VERSION
 from .config import BASE_DIR, settings
 from .engine import play_turn
 from .persona import opening_for
+from .scenario import pick_scenario, scenario_for
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
 from .scoring import MAX_ROUNDS, WIN_THRESHOLD, mood_for
@@ -53,6 +54,56 @@ app = FastAPI(
 )
 
 
+# ── 安全响应头 ─────────────────────────────────────────────────────────────
+#
+# 2026-08-18 补。大赛的 security-skill 评分里这一项扣了 6 分（未配 CSP、
+# 无安全头中间件），而说明文档写着「所有投稿作品部署后，平台将联合安全部门
+# 进行全面的安全漏洞扫描」——这类扫描器第一条查的就是响应头。
+#
+# **CSP 按这个作品实际加载的东西写，不抄模板。** 它只加载同源的一个 JS、
+# 一个 CSS，没有 CDN、没有外链字体、没有图片外链、不嵌 iframe：
+#   · script-src / style-src 只给 'self'，**不给 'unsafe-inline'**
+#     （技能给的模板里有，那是为了兼容内联脚本；本作品没有内联脚本与内联样式，
+#     给了反而白白放宽）
+#   · 分享卡用 canvas 生成 PNG 塞进 <img>，所以 img-src 要 data: 和 blob:
+#   · connect-src 只有同源（SSE 走 /api/game/turn）
+#   · frame-ancestors 'none' 顶掉点击劫持，object-src 'none' 顶掉老插件面
+#
+# HSTS 没加：平台是 http://ip:21818 直连，没有 TLS，发 HSTS 只会让浏览器
+# 把这个 host 记进强制 HTTPS 列表，反而打不开。有域名和证书之后再加。
+CSP = "; ".join((
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self' data: blob:",
+    "connect-src 'self'",
+    "font-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+))
+
+SECURITY_HEADERS = {
+    "Content-Security-Policy": CSP,
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
+}
+
+
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    response = await call_next(request)
+    # setdefault 语义：不覆盖某个响应自己已经设好的头
+    for name, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(name, value)
+    return response
+
+
 @app.on_event("startup")
 async def _on_startup() -> None:
     logger.info("%s v%s 启动完成，监听端口 %s", APP_ID, APP_VERSION, settings.port)
@@ -65,11 +116,14 @@ async def game_start() -> JSONResponse:
 
     开场白取自预生成缓存，不调模型——首屏因此不受网关排队影响。
     """
-    # 开场白与人格变体同源：开场自称什么，后面十二轮就得是什么
+    # 场景与人格变体同一个做法：由 gid 哈希派生，服务端不存任何东西。
+    # 派生出来的 sid 进令牌（v3），否则第 2 轮会被当成另一个场景重新算
     gid = uuid.uuid4().hex
-    line = opening_for(gid)
+    scene = pick_scenario(gid)
+    # 开场白与人格变体同源：开场自称什么，后面十二轮就得是什么
+    line = opening_for(gid, scene.personas)
     # 开场白必须进 session：它是第 1 轮唯一可供"扎根"的对话内容
-    session = new_session(gid=gid, opening=line)
+    session = new_session(gid=gid, opening=line, sid=scene.id)
     stats.record_start()
     return JSONResponse(
         {
@@ -84,6 +138,10 @@ async def game_start() -> JSONResponse:
             "mood": mood_for(session.state.trust).value,
             "win_threshold": WIN_THRESHOLD,
             "contest_id": settings.contest_id,
+            # 整个剧本的界面素材：客户档案、揭晓清单、金额、结局文案。
+            # **前端不再写死任何一条**——写死的话，加场景时那些地方
+            # 没有一处会提醒你漏改了（app/scenario.py 的 payload）
+            "scenario": scene.payload(),
             "token": sign_session(
                 session,
                 secret=settings.state_signing_secret,

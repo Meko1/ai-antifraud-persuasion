@@ -12,10 +12,10 @@ import json
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from .scoring import KEY_VALUES, PENALTY_VALUES
+from .scoring import ALL_PENALTIES, KEY_VALUES
 
-# 闭集：钥匙 + 失误。判分引擎只认这些标识。
-LABELS = frozenset(KEY_VALUES) | frozenset(PENALTY_VALUES)
+# 闭集：钥匙 + 失误（含合规红线）。判分引擎只认这些标识。
+LABELS = frozenset(KEY_VALUES) | frozenset(ALL_PENALTIES)
 
 
 @dataclass(frozen=True)

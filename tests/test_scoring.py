@@ -10,8 +10,11 @@
 import pytest
 
 from app.scoring import (
+    DRIFT,
     EFFICACY,
     MAX_ROUNDS,
+    PRESSURE_DRIFT,
+    WINDOW_MISSED_TRUST,
     Ending,
     GameState,
     Mood,
@@ -38,11 +41,11 @@ def 对局中(**overrides: object) -> GameState:
     ("钥匙", "信任度", "档位", "预期得分"),
     [
         # 锚定真实用途是开场：他敌意最重的时候最有力，等他松动了再问就多余了
-        ("anchor_real_purpose", 20, Mood.GUARDED, 23),
-        ("anchor_real_purpose", 45, Mood.WAVERING, 14),
+        ("anchor_real_purpose", 20, Mood.GUARDED, 18),
+        ("anchor_real_purpose", 45, Mood.WAVERING, 11),
         # 指出内部矛盾正相反：太早用他会替骗局辩护，晃起来了才拆得动
-        ("expose_contradiction", 20, Mood.GUARDED, 5),
-        ("expose_contradiction", 45, Mood.WAVERING, 21),
+        ("expose_contradiction", 20, Mood.GUARDED, 4),
+        ("expose_contradiction", 45, Mood.WAVERING, 16),
     ],
 )
 def test_同一把钥匙在不同档位值不同的分(
@@ -81,13 +84,17 @@ def test_在他还戒备时硬拆矛盾会顶起防御姿态() -> None:
 
 @pytest.mark.parametrize(
     ("已用次数", "预期得分"),
-    [(0, 18), (1, 13), (2, 8), (3, 5), (7, 5)],
+    [(0, 18), (1, 10), (2, 5), (3, 3), (7, 3)],
 )
 def test_钥匙钝化随使用次数递减(已用次数: int, 预期得分: int) -> None:
-    """第 1/2/3/4+ 次命中权重 1.0 / 0.7 / 0.45 / 0.25。
+    """第 1/2/3/4+ 次命中权重 1.0 / 0.55 / 0.3 / 0.16。
 
     尾巴不归零：效力矩阵已经在管"别复读一招"，钝化再一刀切到 0，
     12 轮里可用的分数总量就低于过线所需，谁都赢不了。
+
+    **8-17 从 0.7/0.45/0.25 收紧。** 钥匙从三把变七把之后，按钥匙记的钝化
+    基本失效——12 轮里每把只用得上一两次，全停在头两档。实测 expert 胜率
+    因此窜到 92.0%，正是上一轮难度重设计要消灭的东西。
     """
     state = 对局中(used={"socratic_question": 已用次数})
 
@@ -214,13 +221,18 @@ def test_跨回已经到过的档位不再开窗() -> None:
 
 @pytest.mark.parametrize(
     ("信任度", "预期系数"),
-    [(40, 1.0), (50, 1.0), (65, 0.64), (80, 0.28)],
+    [(40, 1.0), (50, 1.0), (65, 0.59), (80, 0.18)],
 )
 def test_越接近松口推动他越难(信任度: int, 预期系数: float) -> None:
     """让他心软是便宜的，让他说出"我不转了"不是。
 
     这条曲线同时是平衡上的压缩器：没有它，判分只是一场速度比赛，
     说得快的人第 5 轮就过线，说得慢的人永远够不着，中间没有过渡带。
+
+    **底值 8-17 从 0.28 收到 0.18**，是七把钥匙上线后唯一按得住 speedrun
+    的旋钮：钥匙多了，中盘拿分变容易（那是对的），但"让他说出我不转了"
+    这一步不该跟着变容易。压钝化、降基值都打在中盘，而 speedrun 四五轮
+    就赢了——只有这条打在终局。
     """
     assert resistance(信任度) == pytest.approx(预期系数)
 
@@ -286,6 +298,86 @@ def test_失误扣分不受钝化与扎根影响() -> None:
     assert outcome.state.used["scold"] == 3
 
 
+# ── 合规红线 ──────────────────────────────────────────────────────────────
+#
+# 这一类 8-17 才补进来。此前判分闭集里一条合规违规都没有，而这套判分表
+# 自称的根基正是「只能问，不能荐」——玩家荐股、打包票，系统一分都不扣。
+
+
+@pytest.mark.parametrize(
+    ("红线", "预期得分"),
+    [("unlicensed_advice", -5), ("guaranteed_return", -6)],
+)
+def test_踩合规红线照扣分(红线: str, 预期得分: int) -> None:
+    outcome = evaluate_turn(对局中(), hit_keys=[红线], grounded=False)
+
+    assert outcome.delta == 预期得分
+    assert outcome.breached == 1
+    assert outcome.state.breaches == 1
+
+
+def test_合规红线顶起的防备比责骂更高() -> None:
+    """剧情上这一条是现成的：演绎提示词里老陈的反击方式第三条就是
+    「你们券商不就是想赚手续费」。玩家一开口荐股，等于亲手把这句话递给他。
+    """
+    荐股 = evaluate_turn(对局中(), hit_keys=["unlicensed_advice"], grounded=False)
+    责骂 = evaluate_turn(对局中(), hit_keys=["scold"], grounded=False)
+
+    assert 荐股.state.guard > 责骂.state.guard
+
+
+def test_一句话同时踩两条红线要各记一次() -> None:
+    """「把钱转来买我们的理财，保本」——荐股 + 承诺收益，真实存在的一句话。"""
+    outcome = evaluate_turn(
+        对局中(), hit_keys=["unlicensed_advice", "guaranteed_return"], grounded=False
+    )
+
+    assert outcome.delta == -11
+    assert outcome.breached == 2
+
+
+def test_合规红线不会把人推到被拉黑() -> None:
+    """**被拉黑是关系破裂**，老陈拉黑你是因为你羞辱了他（那是 scold 干的）。
+    投顾想卖他个产品，他不会断绝往来，只会认定你也是来卖东西的。
+
+    训练上的理由更硬：受训者被踢出局，就永远看不到合规反馈在上下文里长什么样，
+    只会觉得自己输了。而这一类真正的教学价值恰恰是那个反差——
+    你甚至可能把三十万全保住了，复盘照样告诉你这是一起合规事件。
+
+    实测：不设地板时 novice 的被拉黑率从 20.8% 顶到 49.2%。
+    """
+    outcome = evaluate_turn(
+        对局中(trust=14), hit_keys=["guaranteed_return"], grounded=False
+    )
+
+    # 地板在 12：只扣得动 2 分，剩下 4 分被地板吃掉
+    assert outcome.delta == -2
+    assert outcome.state.trust == 12
+    assert outcome.ending is None
+
+
+def test_已经低于地板时红线一分都不扣() -> None:
+    """责骂把他打到 8 分之后再荐股，不该倒扣回去。"""
+    outcome = evaluate_turn(
+        对局中(trust=10), hit_keys=["scold", "unlicensed_advice"], grounded=False
+    )
+
+    # 只有责骂那 −4 生效；红线撞在地板上，一分不扣
+    assert outcome.delta == -4
+
+
+def test_地板只拦合规那一笔不赦免话术失误() -> None:
+    """地板保护的是"合规违规不该把人推出局"，不是"低分时百无禁忌"。"""
+    带红线 = evaluate_turn(
+        对局中(trust=13), hit_keys=["scold", "guaranteed_return"], grounded=False
+    )
+    只责骂 = evaluate_turn(对局中(trust=13), hit_keys=["scold"], grounded=False)
+
+    # 责骂那 −4 照扣，两者相同；红线只吃掉地板以上还剩的那一点
+    assert 只责骂.delta == -4
+    assert 带红线.delta == -4  # 13 − 4 = 9，已在地板 12 以下，红线扣不动
+
+
 # ── 蓄势池 ────────────────────────────────────────────────────────────────
 
 
@@ -333,7 +425,9 @@ def test_第四轮起蓄势池逐轮释放() -> None:
 @pytest.mark.parametrize(
     ("初始信任", "命中", "预期信任"),
     [
-        (95, ["expose_contradiction"], 100),
+        # 98 而不是 95：阻力底值 8-17 收到 0.18 之后，95 分只涨到 99，
+        # 上界钳制根本没被触发，这条就白测了
+        (98, ["expose_contradiction"], 100),
         (2, ["scold"], 0),
     ],
 )
@@ -423,3 +517,37 @@ def test_同轮多把钥匙时不下发效力倍率() -> None:
     assert 一把.efficacy == EFFICACY["anchor_real_purpose"][Mood.IRRITATED]
     assert 两把.efficacy is None
     assert 两把.delta > 0, "分照加，只是倍率没法归到某一把头上"
+
+
+def test_信任流失与蓄势池释放都要下发() -> None:
+    """**不下发，复盘上的账就对不上。**
+
+    玩家看到「第 3 轮 23 分，第 4 轮 +18」，结果却是 39，他会去算 23+18=41。
+    差的那 2 分是信任流失，而它在界面上一个字都没有——这是真实收到的反馈。
+
+    更要紧的是信任流失就是这局的核心张力（他背后有人在往回拉）。
+    藏起来，等于把玩家在跟什么赛跑这件事也一起藏了。
+    """
+    平轮 = evaluate_turn(对局中(round=3), hit_keys=["socratic_question"], grounded=True)
+    催单轮 = evaluate_turn(对局中(round=2), hit_keys=[], grounded=False)
+
+    assert 平轮.drift == DRIFT
+    # 第 3 轮王老师催了一遍，多掉 3 分——这一下以前在复盘里完全看不见
+    assert 催单轮.pressured is True
+    assert 催单轮.drift == DRIFT + PRESSURE_DRIFT
+
+    # 账必须能对上：判分 + 流失 + 池子释放 = 信任度的净变化
+    for out, before in ((平轮, 40), (催单轮, 40)):
+        assert out.state.trust == before + out.delta + out.drift + out.released
+
+
+def test_错过追问窗口的扣分并进流失一起下发() -> None:
+    """对玩家来说它们是同一件事："这一轮没挣到分，还倒退了这么多"。
+
+    它为什么倒退，由 window_result 那一行单独解释，不必在数字上再拆一次。
+    """
+    out = evaluate_turn(对局中(window=1), hit_keys=[], grounded=False)
+
+    assert out.window_result == "missed"
+    assert out.drift == DRIFT + WINDOW_MISSED_TRUST
+    assert out.state.trust == 40 + out.delta + out.drift + out.released

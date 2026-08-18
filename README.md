@@ -1,22 +1,26 @@
 # AI 反诈劝阻
 
-> AI 扮演一位已被荐股骗局洗脑、正准备转账 30 万的客户。你是他的投资顾问，有 12 轮对话劝住他。
+> 客户被荐股骗局套住、正要转账时，投资顾问该怎么开口。
 
-一个以游戏化方式呈现的 AI 投顾话术训练器。
+一套可交互的**投顾专业训练系统**。AI 扮演你自己的客户——一位已被洗脑、
+正准备大额转账的股民；你有 12 轮，而且**只能问，不能荐**。
 
-完整的产品定位、人物关系、剧情、业务流程、判分机制与技术架构见
-[项目完整介绍](docs/PROJECT-INTRODUCTION.md)。
-
-同类 AI 训练产品对比、业务逻辑问题与分阶段改进建议见
-[同类产品研究与业务逻辑审计](docs/COMPETITIVE-RESEARCH-AND-BUSINESS-AUDIT.md)。
+产品身份（核心矛盾 / 成功标准 / 不做什么）写在 [docs/POSITIONING.md](docs/POSITIONING.md)。
+**提需求之前先拿那一页量一遍**，它是尺子。
 
 ---
 
 ## 当前状态
 
-当前版本已经端到端可玩，包含微信式冷开场、8 种老陈人格、12 轮自由文本对局、
-结构化判分、输出安全层、五种终态、逐轮复盘、分享卡和可选的 Redis 全局统计。
-规划中的“接话”短练习与异议题库尚未实现，详见项目完整介绍的“当前完成度”。
+端到端可玩：12 轮状态机、结构化判分（七把钥匙 + 三项话术失误 + 两条合规红线）、
+输出安全层、12 个人格变体、复盘与分享卡全部在线。`python -m pytest` 332 个测试全绿。
+
+判分完全由程序的规则表求值，模型只负责演（ADR-0001）——所以同一串输入
+两次跑出同一个分，参数由两万局蒙特卡洛标定。
+
+**两个场景**：荐股群（贪）与冒充公检法（怕）。它们共用同一张判分表，
+而四个情绪档位上的最优解**全不一样**——这是"能力可迁移，不是背下一个剧本"
+唯一能被直接验证的地方，由 `tests/test_balance.py` 两条测试守着。
 
 ## 目录结构
 
@@ -29,46 +33,27 @@
 ├── requirements.txt
 ├── CONTEXT.md          领域术语表（只定义语言，不含实现）
 ├── docs/
+│   ├── POSITIONING.md  产品身份 · 核心矛盾 / 成功标准 / 不做什么
 │   ├── TECH-DESIGN.md  技术方案 · 施工图
-│   ├── PROJECT-INTRODUCTION.md  产品、角色与核心业务完整介绍
+│   ├── HANDOFF.md      交接说明 · 踩过的坑
 │   └── adr/            五条不可轻易反转的决策及其理由
 ├── app/
-│   ├── config.py       环境变量配置，密钥不入源码
-│   ├── llm.py          大模型 provider 抽象（内网网关 / 公网接口可切换）
-│   ├── engine.py       一轮对局编排、流式事件与多级降级
-│   ├── scoring.py      确定性判分、情绪档位与结局状态机
-│   ├── persona.py      8 种老陈人格变体与开场白
+│   ├── scoring.py      判分引擎（纯函数，可蒙特卡洛离线重跑）
+│   ├── scenario.py     场景：剧本 / 人格 / 台词 / 界面素材 / 效力矩阵覆写
+│   ├── gateway.py      三个模型操作与全部提示词
+│   ├── persona.py      12 个人格变体（两个场景各一组）
+│   ├── safety.py       输出安全层
 │   └── main.py         FastAPI 入口
-└── static/             微信式对局前端、复盘与分享卡
+└── static/             首页工作台 / 聊天页 / 复盘（原生三件，零构建）
 ```
 
-对局引擎怎么做，先读 [docs/TECH-DESIGN.md](docs/TECH-DESIGN.md)；动手改判分或流式粒度之前，先读 [docs/adr/](docs/adr/)——那里有几条看起来像 bug 的设计。
+新会话先读 [docs/HANDOFF.md](docs/HANDOFF.md)；判断一个改动该不该做，读
+[docs/POSITIONING.md](docs/POSITIONING.md)；动手改判分或流式粒度之前，先读
+[docs/adr/](docs/adr/)——那里有几条看起来像 bug 的设计。
 
 ## 本地运行
 
 需要 **Python 3.10+**。
-
-Windows PC（PowerShell）：
-
-```powershell
-.\install-local.ps1 -Dev
-.\start-local.ps1
-Start-Process http://127.0.0.1:21818/
-```
-
-停止本地服务：
-
-```powershell
-.\stop-local.ps1
-```
-
-`install-local.ps1` 会创建 / 复用 `.venv`，安装依赖，并在缺少 `.env` 时从
-`.env.example` 生成本地配置；若 `STATE_SIGNING_SECRET` 为空，也会自动生成一个仅供
-本机测试使用的签名密钥。没有配置大模型 Key 时，开局、健康检查和基础页面仍可用；
-打一轮对话时模型调用会走现有降级链路，用兜底台词完成本地链路验证。需要真实模型
-效果时，再填写 `.env` 中对应的 `*_LLM_*` 变量。
-
-Linux / 部署平台：
 
 ```bash
 ./stop.sh && ./install.sh && ./start.sh
