@@ -1,15 +1,22 @@
 # AI 反诈劝阻
 
-> AI 扮演一位已被荐股骗局洗脑、正准备转账 30 万的股民，你有 12 轮对话劝住他。
+> AI 扮演一位已被荐股骗局洗脑、正准备转账 30 万的客户。你是他的投资顾问，有 12 轮对话劝住他。
 
-一个 AI 对话游戏项目 · 骨架版本。
+一个以游戏化方式呈现的 AI 投顾话术训练器。
+
+完整的产品定位、人物关系、剧情、业务流程、判分机制与技术架构见
+[项目完整介绍](docs/PROJECT-INTRODUCTION.md)。
+
+同类 AI 训练产品对比、业务逻辑问题与分阶段改进建议见
+[同类产品研究与业务逻辑审计](docs/COMPETITIVE-RESEARCH-AND-BUSINESS-AUDIT.md)。
 
 ---
 
 ## 当前状态
 
-骨架阶段，只包含**跑通部署链路**所需的最小内容：健康检查、静态首页、SSE 流式验证。
-对局引擎（12 轮状态机 / 结构化判分 / 输出安全层）尚未接入。
+当前版本已经端到端可玩，包含微信式冷开场、8 种老陈人格、12 轮自由文本对局、
+结构化判分、输出安全层、五种终态、逐轮复盘、分享卡和可选的 Redis 全局统计。
+规划中的“接话”短练习与异议题库尚未实现，详见项目完整介绍的“当前完成度”。
 
 ## 目录结构
 
@@ -23,12 +30,16 @@
 ├── CONTEXT.md          领域术语表（只定义语言，不含实现）
 ├── docs/
 │   ├── TECH-DESIGN.md  技术方案 · 施工图
+│   ├── PROJECT-INTRODUCTION.md  产品、角色与核心业务完整介绍
 │   └── adr/            五条不可轻易反转的决策及其理由
 ├── app/
 │   ├── config.py       环境变量配置，密钥不入源码
 │   ├── llm.py          大模型 provider 抽象（内网网关 / 公网接口可切换）
+│   ├── engine.py       一轮对局编排、流式事件与多级降级
+│   ├── scoring.py      确定性判分、情绪档位与结局状态机
+│   ├── persona.py      8 种老陈人格变体与开场白
 │   └── main.py         FastAPI 入口
-└── static/index.html   部署自检页
+└── static/             微信式对局前端、复盘与分享卡
 ```
 
 对局引擎怎么做，先读 [docs/TECH-DESIGN.md](docs/TECH-DESIGN.md)；动手改判分或流式粒度之前，先读 [docs/adr/](docs/adr/)——那里有几条看起来像 bug 的设计。
@@ -36,6 +47,28 @@
 ## 本地运行
 
 需要 **Python 3.10+**。
+
+Windows PC（PowerShell）：
+
+```powershell
+.\install-local.ps1 -Dev
+.\start-local.ps1
+Start-Process http://127.0.0.1:21818/
+```
+
+停止本地服务：
+
+```powershell
+.\stop-local.ps1
+```
+
+`install-local.ps1` 会创建 / 复用 `.venv`，安装依赖，并在缺少 `.env` 时从
+`.env.example` 生成本地配置；若 `STATE_SIGNING_SECRET` 为空，也会自动生成一个仅供
+本机测试使用的签名密钥。没有配置大模型 Key 时，开局、健康检查和基础页面仍可用；
+打一轮对话时模型调用会走现有降级链路，用兜底台词完成本地链路验证。需要真实模型
+效果时，再填写 `.env` 中对应的 `*_LLM_*` 变量。
+
+Linux / 部署平台：
 
 ```bash
 ./stop.sh && ./install.sh && ./start.sh
