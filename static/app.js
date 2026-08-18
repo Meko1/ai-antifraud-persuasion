@@ -1,7 +1,12 @@
 /* AI 反诈劝阻 · 前端
  *
- * 你＝老陈的投资顾问（局内他叫你李经理），他＝你的客户。首页那一屏是**他的
- * 手机**（冷开场），点开你发给他的那条未读，才切到你这一侧的企业微信。
+ * 你＝老陈的投资顾问（局内他叫你李经理），他＝你的客户。首页那一屏是**你的
+ * 工作台**（企业微信 + 券商 CRM）：一条资产异动预警加一张客户档案，就是你
+ * 开局手上的全部。点"给陈叔发消息"才进聊天。
+ *
+ * 他手机上那五条（启航财经群、招行、老伴、小雨、反诈中心）**不在开局**——
+ * 它们在复盘里逐条揭晓（`paintPhone`）。原先它们就是首页，等于开局把这一局
+ * 要挖的东西全给了玩家，而挖它就是玩法。
  *
  * 服务端不存会话：每轮请求都要带上一轮返回的 token（ADR-0003）。
  * SSE 事件顺序恒为 meta → sentence* → score → ending? → state → done，
@@ -32,6 +37,28 @@ const KEYS = {
     tip: '骗局的话术经不起并置：「内部消息」和「几百人的群」不可能同时成立。' +
          '用他自己说过的话去顶，比引用任何新闻都管用。',
   },
+  // 下面四把 8-17 补。前三把都属于"引出他自己说话"的一侧，缺的是另外半套：
+  // 先听懂他、确认他到底理解了什么、以及不去替他做决定。
+  reflect_feeling: {
+    name: '反映式倾听',
+    tip: '把他的处境原样说回去，不追加任何要求。它是唯一能主动把他的防备压下去的动作——' +
+         '骂过他之后，别的招都被打折，只有先听他说完才救得回来。',
+  },
+  support_autonomy: {
+    name: '支持自主',
+    tip: '「转不转是您的钱，我不替您做主。」它同时是逆反的解药和投顾唯一站得住的合规姿态。' +
+         '**他越是竖起防备，别的招越没用，而这一把照常生效**。',
+  },
+  check_understanding: {
+    name: '确认理解',
+    tip: '让他自己讲一遍钱转过去之后会怎么走。这是适当性管理的硬要求，' +
+         '也是揭穿骗局最狠的一招——他讲不出来。他自己听见自己答不上，比你说一百句都重。',
+  },
+  informed_warning: {
+    name: '有据告知',
+    tip: '把判断说出口，并且给出依据。投顾对疑似诈骗负有告知义务，该说的时候不说是失职。' +
+         '**但说早了它就不是钥匙**：他还硬着的时候，这句和「这是诈骗」没有区别。',
+  },
 };
 
 const PENALTIES = {
@@ -40,19 +67,52 @@ const PENALTIES = {
   bare_assertion: { name: '空口断言', tip: '「这是诈骗」四个字他这三个月听了无数遍，早免疫了。' },
 };
 
-// 转账金额与收款方在这儿写死：它们是剧本设定（app/gateway.py 的 SCAM_SCRIPT），
-// 不是判分参数，服务端也不下发。
-const TOTAL = 300000;
+// 合规红线。与 app/scoring.py 的 COMPLIANCE_VALUES 一一对应。
+//
+// **它们和上面三条不是一类东西，所以不放在同一张表里。** 话术失误是
+// "这一轮没劝动他"，合规红线是"**你自己要出事**"——后者的后果不由这一局的
+// 输赢承载，复盘因此要单独把它拎出来说，哪怕玩家把三十万全保住了。
+const BREACHES = {
+  unlicensed_advice: {
+    name: '荐股',
+    tip: '给出具体标的、买卖方向或产品推荐。投顾无证荐股是执业禁区，' +
+         '多家券商因此被罚——而且他当场就会认定你也是来卖东西的。',
+  },
+  guaranteed_return: {
+    name: '承诺收益',
+    tip: '保本、稳赚、打包票。它同时是监管红线和一句谎：' +
+         '你用王老师的话术去反驳王老师，赢了也是输。',
+  },
+};
+
+/** 这一局踩了几次红线。判分口径在服务端，前端只认下发的 hits。 */
+function breachTurns() {
+  return game.turns.filter((t) => t.hits.some((h) => h in BREACHES));
+}
+
+// ── 剧本素材 ────────────────────────────────────────────────────
+//
+// **金额、收款方、客户档案、揭晓清单原先全写死在这里和 index.html 里。**
+// 加第二个场景时那些地方没有一处会提醒你漏改了——于是它们搬去了服务端
+// （app/scenario.py 的 `payload`），开局随 /api/game/start 下发。
+//
+// 这不只是整洁：判分那边按场景换了效力矩阵，界面这边要是还印着三十万和
+// 王老师，玩家看到的就是两个不同的骗局拼在一起。
+let SCENE = null;
+
+const TOTAL = () => (SCENE ? SCENE.money.total : 300000);
 // 拦下那一档里仍有一小笔钱被转走。这是骗局的标准剧本——先小额取信——
 // 代价是玩家表现不错、结局仍有人损失。取真实。
-const TEST_TRANSFER = 20000;
-const PAYEE = '转账给 启航财经-王';
+const TEST_TRANSFER = () => (SCENE ? SCENE.money.test_transfer : 20000);
+const PAYEE = () => (SCENE ? SCENE.money.payee : '');
 
-// 你先发的那一条。它同时出现在冷开场的会话列表里（老陈手机上的那条未读），
-// 和聊天窗口的第一条——**老陈的开场白是在回它**，少了它他就是在回应空气。
-// 内容只能有一条信息：账户转出去一笔。启航财经、王老师、三十万、三点，
-// 开局你一概不知道（CONTEXT.md「对局」）。
-const PING = '陈叔，方便说句话吗？系统给我推了条提醒，说您账户今天转出去一笔。';
+// 你先发的那一条，聊天窗口的第一条——**他的开场白是在回它**，
+// 少了它他就是在回应空气。
+// 内容只能有一条信息：账户动了。骗局的一切开局你一概不知道（CONTEXT.md「对局」）。
+const PING = () => (SCENE ? SCENE.ping : '');
+const peerInitial = () => (SCENE ? SCENE.initial : '陈');
+// 状态条上那个「他/她」。周淑琴那一局写「他现在」，玩家一眼看出界面是照别人做的
+const peerPronoun = () => (SCENE ? SCENE.pronoun : '他');
 
 const money = (n) =>
   '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -68,8 +128,8 @@ const wholeMoney = (n) => '¥' + n.toLocaleString('zh-CN');
  * 那句话说了半天，不如一个 ¥0 来得重。
  */
 function savedAmount(kind) {
-  if (kind === 'persuaded') return TOTAL;
-  if (kind === 'intercepted') return TOTAL - TEST_TRANSFER;
+  if (kind === 'persuaded') return TOTAL();
+  if (kind === 'intercepted') return TOTAL() - TEST_TRANSFER();
   return 0;
 }
 
@@ -77,36 +137,28 @@ function savedAmount(kind) {
 // 对玩家呈现为"你救回了多少钱"——金额是这件事在现实里的记法。
 // 排序的反直觉之处：拖住一分没转，仍排在已转出一小笔的拦下之下，
 // 因为"我再想想"多半是打发你的话，不是让步。
-const ENDINGS = {
-  persuaded: {
-    tier: '劝住', title: '他把钱留住了',
-    savedCopy: '三十万，一分没转',
-    receipt: 'void', amount: TOTAL,
-  },
-  intercepted: {
-    tier: '拦下', title: '他只转了两万',
-    savedCopy: '转出两万试水，保住二十八万',
-    receipt: 'sent', amount: TEST_TRANSFER,
-  },
-  stalled: {
-    tier: '拖住', title: '他说再想想',
-    savedCopy: '钱一分没动，也一分没保住',
-    receipt: 'hold', amount: TOTAL,
-  },
-  transferred: {
-    tier: '转账', title: '他还是转走了',
-    savedCopy: '三十万，三点整全部到账',
-    receipt: 'sent', amount: TOTAL,
-  },
-  // 被拉黑不入档：连凭证都没有，你不会知道他最后把钱转没转
-  // 陌生人被拉黑只是出局；**客户**把投顾拉黑，是关系断了、他照转不误、
-  // 而你连看都看不到。同一档，在新设定下重得多。
-  blacklisted: {
-    tier: '被拉黑', title: '客户把你拉黑了',
-    savedCopy: '他照样会转，而你连看都看不到了',
-    receipt: null, amount: TOTAL,
-  },
+// 结局是一道阶梯，不是胜负（CONTEXT.md「结局」）。四档量的是他最后有多信你，
+// 对玩家呈现为"你救回了多少钱"——金额是这件事在现实里的记法。
+// 排序的反直觉之处：拖住一分没转，仍排在已转出一小笔的拦下之下，
+// 因为"我再想想"多半是打发你的话，不是让步。
+//
+// 三档的文案（档位名 / 标题 / 那句说明）随场景走：老陈是"他还是转走了"，
+// 周阿姨是"她还是转走了"。凭证形态与金额不随场景变，它们是机制。
+const RECEIPT = {
+  persuaded: 'void', intercepted: 'sent', stalled: 'hold',
+  transferred: 'sent', blacklisted: null,
 };
+
+function endingMeta(kind) {
+  const copy = (SCENE && SCENE.endings[kind]) || {};
+  return {
+    tier: copy.tier || '转账',
+    title: copy.title || '他还是转走了',
+    savedCopy: copy.saved || '',
+    receipt: RECEIPT[kind] !== undefined ? RECEIPT[kind] : 'sent',
+    amount: kind === 'intercepted' ? TEST_TRANSFER() : TOTAL(),
+  };
+}
 
 const ERRORS = {
   invalid_state: '这一局放得太久了，得重开一局',
@@ -304,7 +356,7 @@ function avatar(who) {
   const el = document.createElement('span');
   el.className = 'avatar' + (who === 'them' ? ' av-chen' : '');
   el.setAttribute('aria-hidden', 'true');
-  el.textContent = who === 'them' ? '陈' : '我';
+  el.textContent = who === 'them' ? peerInitial() : '我';
   return el;
 }
 
@@ -394,10 +446,12 @@ function sysnote(nodes, bad) {
 }
 
 function tag(id) {
-  const meta = KEYS[id] || PENALTIES[id];
+  const meta = KEYS[id] || PENALTIES[id] || BREACHES[id];
   const el = document.createElement('span');
-  el.className = 'tag ' + (KEYS[id] ? 'key' : 'penalty');
-  el.textContent = meta ? meta.name : id;
+  // 红线单独一个类：它在对局中就要比失误更扎眼一点。踩线那一刻的反馈
+  // 才教得会人，等到复盘才说，玩家已经忘了自己当时为什么那么讲。
+  el.className = 'tag ' + (KEYS[id] ? 'key' : BREACHES[id] ? 'breach' : 'penalty');
+  el.textContent = BREACHES[id] ? `合规红线 · ${BREACHES[id].name}` : (meta ? meta.name : id);
   return el;
 }
 
@@ -414,13 +468,17 @@ function tag(id) {
  * 三句都指向下一步该怎么改，而「没使上劲」一句都不指。
  */
 function missNote(t) {
-  if (t.grounded) return '接住了他的话，但没往下问';
+  if (t.grounded) return `接住了${peerPronoun()}的话，但没往下问`;
   if ((t.utterance || '').replace(/\s/g, '').length <= 8) return '太短了，撑不起一轮';
   return '三把钥匙一把都没沾上';
 }
 
 function hitTags(t) {
   const out = t.hits.map(tag);
+  // 说早了的「有据告知」不挂"扎根/未扎根"那一条：它根本没被当钥匙算过
+  // （判分那边已经换成 bare_assertion），再说一句"效力打折"是在解释一件
+  // 没发生的事，只会把玩家的注意力从真正的问题——时机——上引开。
+  if (t.mistimedWarning) return out;
   if (t.hits.some((h) => KEYS[h])) {
     const g = document.createElement('span');
     g.className = 'tag';
@@ -571,12 +629,27 @@ async function playTurn(utterance) {
       trust: score.trust,
       before: game.trust,
       pool: score.pool,
+      breached: score.breached,
+      breaches: score.breaches,
+      mistimedWarning: score.mistimed_warning,
     });
     game.trust = score.trust;
     paintMood(score.mood);
     // 判分卡不在对局中出现：标签与分数一律留到复盘。
     // 边打边给答案等于把攻略印在屏幕上——玩家两轮就学会照着清单刷分，
     // 从此不再读人。要读的东西只有一样：他说的话。
+    //
+    // **合规红线是这条规矩唯一的例外**，理由不是它更重要，是它性质不同：
+    // 上面那条规矩防的是"泄漏怎么劝才有效"，而"投顾不能荐股"不是劝法，
+    // 是这场练习的规则本身——说出来一分攻略都不漏。
+    // 而且它在虚构上是自洽的：开局那句「本会话已按监管要求存档」
+    // 到这里才第一次兑现——存档系统当场把你这句话挑了出来。
+    // 不给分数、不给标签，只说踩了哪条线。
+    if (score.breached) {
+      const names = (score.hits || [])
+        .filter((h) => h in BREACHES).map((h) => BREACHES[h].name);
+      sysnote([`合规红线 · ${names.join(' / ')}`, '这句已进存档'], true);
+    }
     if (score.pressure) narrate('王老师又在群里催了一遍');
   }
 
@@ -630,11 +703,11 @@ function receipt(state, amount) {
       '<div><div class="receipt-amt"></div><div class="receipt-to"></div></div>' +
     '</div><div class="receipt-foot"></div>';
   el.querySelector('.receipt-amt').textContent = text;
-  el.querySelector('.receipt-to').textContent = PAYEE;
+  el.querySelector('.receipt-to').textContent = PAYEE();
   el.querySelector('.receipt-foot').textContent = RECEIPT_FOOT[state];
   el.setAttribute('role', 'img');
   el.setAttribute('aria-label',
-    `转账凭证截图：${text}，${PAYEE}，${RECEIPT_FOOT[state]}`);
+    `转账凭证截图：${text}，${PAYEE()}，${RECEIPT_FOOT[state]}`);
   return el;
 }
 
@@ -662,7 +735,7 @@ async function finish() {
   await sleep(400);
 
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
-  const meta = ENDINGS[kind] || ENDINGS.transferred;
+  const meta = endingMeta(kind);
   if (!meta.receipt) {
     // 被拒收之后聊天窗口显示的就是这一条。开局那句「对方是你的客户」在这里
     // 合上了口：他还是你的客户，你还得对他负责，只是话再也递不进去了。
@@ -694,11 +767,15 @@ function verdictCopy() {
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
   const parts = [];
 
-  if (kind === 'persuaded') parts.push(`你用了 ${game.turns.length} 轮把他劝了回来。`);
-  else if (kind === 'intercepted') parts.push('他只按老师说的转了两万试水，剩下的二十八万你按住了。');
-  else if (kind === 'stalled') parts.push('他把这事推到了明天——你争到的是时间，不是他的决定。');
-  else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，他把你拉黑了——这条线断了，你再也看不到他的动静。`);
-  else parts.push('他还是把那三十万转出去了。');
+  // 代词与那句「他做了什么」都随场景走。原先这五句写死着"他"和"三十万"，
+  // 周淑琴那一局读起来就是在讲另一个人的事
+  const TA = peerPronoun();
+  const meta = endingMeta(kind);
+  if (kind === 'persuaded') parts.push(`你用了 ${game.turns.length} 轮把${TA}劝了回来。`);
+  else if (kind === 'intercepted') parts.push(`${meta.savedCopy}。`);
+  else if (kind === 'stalled') parts.push(`${TA}把这事推后了——你争到的是时间，不是${TA}的决定。`);
+  else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，${TA}把你拉黑了——这条线断了，你再也看不到${TA}的动静。`);
+  else parts.push(`${meta.savedCopy}。`);
 
   if (best && best.delta > 0) {
     parts.push(
@@ -716,15 +793,15 @@ function verdictCopy() {
         .filter((x) => x.windowOpened && x.round < missed[0].round)
         .pop();
       parts.push(
-        `你差的不是方向——第 <em>${(opened || missed[0]).round}</em> 轮他晃到了新的一档，` +
-        `接下来两轮本来是机会，你没接住，第 ${missed[0].round} 轮他重新硬了回去。`);
+        `你差的不是方向——第 <em>${(opened || missed[0]).round}</em> 轮${TA}晃到了新的一档，` +
+        `接下来两轮本来是机会，你没接住，第 ${missed[0].round} 轮${TA}重新硬了回去。`);
     } else if (caught.length && kind !== 'persuaded') {
       parts.push(
-        `他松动的那几次你都接住了（第 ${caught.map((x) => x.round).join('、')} 轮），` +
-        `差的是最后一公里——越接近松口，同一句话推动他的幅度越小。`);
+        `${TA}松动的那几次你都接住了（第 ${caught.map((x) => x.round).join('、')} 轮），` +
+        `差的是最后一公里——越接近松口，同一句话推动${TA}的幅度越小。`);
     }
   } else {
-    parts.push('全场没有一句真正推动过他。下一局试着先问问，那笔钱原本是准备干什么用的。');
+    parts.push(`全场没有一句真正推动过${TA}。下一局试着先听懂${TA}在怕什么、在图什么，再往下问。`);
   }
   return parts.join('');
 }
@@ -735,7 +812,7 @@ function openReview() {
   const best = game.turns.reduce(
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
   const kind = game.ending ? game.ending.kind : 'transferred';
-  const meta = ENDINGS[kind] || ENDINGS.transferred;
+  const meta = endingMeta(kind);
 
   const view = document.createElement('section');
   view.className = 'review';
@@ -766,6 +843,29 @@ function openReview() {
         <div class="stat"><b id="sTrust"></b><i>最终信任度</i></div>
         <div class="stat"><b id="sRounds"></b><i>用了几轮</i></div>
         <div class="stat"><b id="sBest"></b><i>最有力的一句</i></div>
+      </div>
+
+      <!-- 合规红线。**排在所有内容之前**（结算卡与三栏统计之后），
+           因为在一个投顾训练系统里，这是复盘要说的第一件事：
+           你可能把三十万全保住了，而这场对话在现实里已经是一起合规事件。
+           这个反差就是这一节全部的教学价值，所以它不能排在"踩过的坑"里
+           跟责骂说教并列——那三条是"没劝动他"，这一条是"你自己要出事"。
+           一次都没踩就整块不出现，不留一个空着的绿勾。 -->
+      <div class="group" id="breachWrap" hidden>
+        <div class="group-title">合规红线</div>
+        <div class="panel" id="breachList"></div>
+      </div>
+
+      <!-- 揭晓老陈的手机。**这五条原来是首页**——开局就把启航财经、三点截止、
+           家里等着这笔钱、女儿查过工商全给了玩家，而这一局的玩法恰恰是
+           "这些都得从他嘴里问出来"（CONTEXT.md「对局」）。搬到这里之后
+           它们从剧透变成记分卡。
+
+           位置刻意排在结算与三栏统计之后、K 线之前：它回答的是
+           "刚才那十二轮为什么那么难"，先看到它，后面每一节读起来都不一样。 -->
+      <div class="group">
+        <div class="group-title" id="phoneTitle">这一局你没看见的</div>
+        <div class="panel" id="phoneList"></div>
       </div>
 
       <div class="group">
@@ -841,6 +941,8 @@ function openReview() {
     bestStat.nextElementSibling.textContent = '没有一句推动他';
   }
 
+  paintBreaches(view);
+  paintPhone(view);
   paintChart(view);
 
   const list = view.querySelector('#roundsList');
@@ -891,6 +993,188 @@ function openReview() {
   view.querySelector('#restart').onclick = () => location.reload();
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
+}
+
+/** 合规红线那一节。
+ *
+ * **这是全作品唯一一处与输赢无关的判定。** 其余每一个数字都在回答
+ * "你有没有劝住他"；这一节回答的是另一个问题——"你这么劝，自己有没有事"。
+ * 两个问题的答案可以同时是"很好"和"很糟"，而那正是它要教的东西。
+ *
+ * 逐条列出踩线的那一轮和原话：合规这件事上，"你说过这句话"本身就是证据，
+ * 泛泛说一句"注意合规"没有任何用。
+ */
+function paintBreaches(view) {
+  const turns = breachTurns();
+  if (!turns.length) return;
+
+  view.querySelector('#breachWrap').hidden = false;
+  const box = view.querySelector('#breachList');
+
+  const lead = document.createElement('p');
+  lead.className = 'breach-lead';
+  const kinds = new Set();
+  turns.forEach((t) => t.hits.forEach((h) => h in BREACHES && kinds.add(h)));
+  lead.innerHTML =
+    `这一局你有 <b>${turns.length}</b> 轮踩到了执业红线。` +
+    `<br>这一节和你劝没劝住他无关 —— <b>这样的对话记录，合规那边看到是要问话的</b>。` +
+    `本会话按监管要求存档，开局那条提示不是布景。`;
+  box.appendChild(lead);
+
+  turns.forEach((t) => {
+    const row = document.createElement('div');
+    row.className = 'breachrow';
+
+    const head = document.createElement('div');
+    head.className = 'breachhead';
+    t.hits.filter((h) => h in BREACHES).forEach((h) => {
+      const b = document.createElement('span');
+      b.className = 'breachname';
+      b.textContent = BREACHES[h].name;
+      head.appendChild(b);
+    });
+    const no = document.createElement('span');
+    no.className = 'breachno';
+    no.textContent = `第 ${t.round} 轮`;
+    head.appendChild(no);
+
+    const said = document.createElement('div');
+    said.className = 'breachsaid';
+    said.textContent = `你说：${t.utterance}`;
+
+    row.append(head, said);
+    t.hits.filter((h) => h in BREACHES).forEach((h) => {
+      const why = document.createElement('div');
+      why.className = 'breachwhy';
+      why.textContent = BREACHES[h].tip;
+      row.appendChild(why);
+    });
+    box.appendChild(row);
+  });
+}
+
+// ── 揭晓：老陈的手机 ────────────────────────────────────────
+//
+// 这五条会话原本是首页那一屏。移过来的理由写在 index.html 的注释里，
+// 一句话说完：**首页把这一局要挖的东西全给了，而挖它就是玩法。**
+//
+// 判据是"**他**说没说过"，不是"你猜没猜到"——所以匹配跑在老陈的台词上。
+// 这与扎根的判据同源（引用的是他说过的话），也更诚实：玩家从别处知道
+// 老陈有个女儿不算本事，把他问到主动提起小雨才算。
+//
+// 招行那条单独标"这一条你有"：系统推给李经理的资产异动预警就是它的另一面。
+// 它在这张清单上的作用是让"你开局只有这一条"看得见。
+// 揭晓清单**随场景下发**（app/scenario.py 的 PhoneRow）。它原先是写死在这里的
+// 五条老陈的会话——第二个场景一来，那五条就成了另一个人的手机。
+//
+// `test` 是正则源码字符串，在这儿编译。判据仍然是"**他**说没说过"，
+// 匹配跑在劝阻对象的台词上，与扎根同源。
+function phoneRows() {
+  return (SCENE ? SCENE.phone : []).map((r) => ({
+    cls: r.avatar,
+    text: r.initial,
+    name: r.name,
+    time: r.time,
+    line: r.line,
+    clue: r.clue,
+    own: r.own,
+    test: r.test ? new RegExp(r.test) : null,
+  }));
+}
+
+/** 他这一局说过的话，按时间序，不做任何过滤。
+ *
+ * 与 hisLines() 分开：那个是给名场面用的，按句切、掐长度、去重；
+ * 这里要的是全文，掐掉一个字都可能让某条线索误判成"他没提"。
+ */
+function hisSpeech() {
+  const out = [{ round: 0, text: game.opening || '' }];
+  game.turns.forEach((t) =>
+    out.push({ round: t.round, text: t.reply || (t.lines || []).join('') }));
+  ((game.ending && game.ending.lines) || []).forEach((line) =>
+    out.push({ round: null, text: line }));
+  return out.filter((x) => x.text);
+}
+
+/** 揭晓老陈的手机：哪几条他跟你说了，哪几条到最后你也不知道。 */
+function paintPhone(view) {
+  const box = view.querySelector('#phoneList');
+  const speech = hisSpeech();
+  const rows = phoneRows();
+  const diggable = rows.filter((x) => !x.own);
+  const TA = peerPronoun();
+  // 标题也随场景走。原先写死「老陈的手机」，周淑琴那一局照样这么印
+  view.querySelector('#phoneTitle').textContent =
+    `这一局你没看见的 · ${SCENE ? SCENE.client.name : '客户'}的手机`;
+  let got = 0;
+
+  const lead = document.createElement('p');
+  lead.className = 'phone-lead';
+  box.appendChild(lead);
+
+  rows.forEach((item) => {
+    const found = item.own
+      ? null
+      : speech.find((s) => item.test.test(s.text));
+    if (found) got += 1;
+
+    const row = document.createElement('li');
+    row.className = 'chatrow' + (!item.own && !found ? ' missed' : '');
+
+    const av = document.createElement('span');
+    av.className = 'avatar ' + item.cls;
+    av.setAttribute('aria-hidden', 'true');
+    av.textContent = item.text;
+    // 群头像是四格拼的，没有文字
+    if (item.cls === 'av-group') av.innerHTML = '<i></i><i></i><i></i><i></i>';
+
+    const state = document.createElement('span');
+    if (item.own) {
+      state.className = 'phone-state own';
+      state.textContent = '你已有';
+    } else if (found) {
+      state.className = 'phone-state yes';
+      // 开场白算第 0 轮，结局台词没有轮次——都得说人话，不能印出「第 0 轮」
+      state.textContent =
+        found.round === 0 ? `${TA}开口就说了`
+          : found.round === null ? '最后才说'
+            : `${TA}第 ${found.round} 轮说了`;
+    } else {
+      state.className = 'phone-state no';
+      state.textContent = `${TA}没提`;
+    }
+
+    const main = document.createElement('span');
+    main.className = 'row-main';
+    main.innerHTML = `
+      <span class="row-top">
+        <span class="row-name"></span>
+        <span class="row-time"></span>
+      </span>
+      <span class="row-bottom">
+        <span class="row-preview"></span>
+      </span>
+      <span class="phone-clue"></span>`;
+    main.querySelector('.row-name').textContent = item.name;
+    main.querySelector('.row-time').textContent = item.time;
+    main.querySelector('.row-preview').textContent = item.line;
+    main.querySelector('.phone-clue').textContent = item.clue;
+    main.querySelector('.row-bottom').appendChild(state);
+
+    row.append(av, main);
+    box.appendChild(row);
+  });
+
+  // 数字之外还要有一句判断，否则「4 条里问到 1 条」玩家不知道算好算差
+  const verdict =
+    got === diggable.length ? `${TA}几乎什么都跟你说了 —— 这一局你是真把${TA}问开了。`
+      // 不能写死"十二轮下来"：被拉黑与提前结束的局根本没打满
+      : got === 0 ? `一条都没有 —— 打完这一局，你对${TA}的了解和开局时一样多。`
+        : got * 2 >= diggable.length ? `问出一半以上，${TA}对你是有话说的。`
+          : '大部分到最后你也不知道 —— 而不知道这些，你就只能泛泛地劝。';
+  lead.innerHTML =
+    `开局你手上只有账户那一侧的一条预警。${TA}手机上还有这些，` +
+    `<b>${diggable.length}</b> 条里${TA}跟你说到了 <b class="got">${got}</b> 条。<br>${verdict}`;
 }
 
 /** 三把钥匙的维度条。
@@ -1038,7 +1322,7 @@ async function paintStats(view, kind) {
   const share = data.endings && data.endings[kind];
   if (share && share.share) {
     rows.push([
-      `你落在「${(ENDINGS[kind] || ENDINGS.transferred).title}」`,
+      `你落在「${endingMeta(kind).title}」`,
       `${Math.round(share.share * 100)}% 的人也停在这一档`,
     ]);
   }
@@ -1097,6 +1381,19 @@ async function paintStats(view, kind) {
  *  倍率由服务端下发（判分参数只此一份，前端不抄那张表）。
  */
 function timingNote(t) {
+  // 说早了的「有据告知」优先说这一句。判分那边已经把它换成了 bare_assertion，
+  // 玩家只看到一个"空口断言"标签会完全对不上号——**他明明给了依据**。
+  // 错的不是那句话，是时候，而这正是全作品唯一在判的东西的极端形态：
+  // 同一句话，早说是失误，晚说是钥匙。
+  if (t.mistimedWarning) {
+    const el = document.createElement('div');
+    el.className = 'timing bad';
+    el.textContent =
+      `他当时${MOODS[t.judgedMood] || t.judgedMood} · `
+      + '这句话本身没问题，你给了依据 —— 但他还没到听得进去的时候，'
+      + '这时候说，跟「这是诈骗」四个字在他耳朵里是一样的';
+    return el;
+  }
   if (t.efficacy == null) return null;
   const mood = MOODS[t.judgedMood] || t.judgedMood;
   const el = document.createElement('div');
@@ -1345,7 +1642,7 @@ function makeCard(view) {
   const QUOTE_LH = 48;
   const c = palette();
   const kind = game.ending ? game.ending.kind : 'transferred';
-  const meta = ENDINGS[kind] || ENDINGS.transferred;
+  const meta = endingMeta(kind);
   const quote = game.quote;
   if (!quote) return;
 
@@ -1387,7 +1684,7 @@ function makeCard(view) {
   ctx.font = `500 25px ${c.sans}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('陈', pad + AV / 2, BUB_TOP + AV / 2 + 1);
+  ctx.fillText(peerInitial(), pad + AV / 2, BUB_TOP + AV / 2 + 1);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
 
@@ -1465,7 +1762,50 @@ const ready = (async () => {
   game.maxRounds = data.remaining;
   game.remaining = data.remaining;
   game.contestId = data.contest_id || '';
+  SCENE = data.scenario || null;
+  paintDesk();
 })();
+
+/** 把场景素材铺到工作台上。**这一屏此前是写死的老陈档案。**
+ *
+ * 铺的东西必须和判分那边是同一个场景——判分按场景换了效力矩阵，
+ * 界面这边要是还印着三十万和王老师，玩家看到的就是两个骗局拼在一起。
+ */
+function paintDesk() {
+  if (!SCENE) return;
+  const c = SCENE.client;
+  $('cName').textContent = c.name;
+  $('cSub').textContent = c.sub;
+  $('cTag').textContent = c.tag;
+  document.querySelector('.ccard-top .avatar').textContent = c.name.slice(0, 1);
+  $('peer').textContent = SCENE.peer;
+  $('ctaLabel').textContent = `给${SCENE.peer}发消息`;
+  // 这段交底带 <b> 强调，是文案的一部分（"账户这一侧一个字都看不到"）。
+  // 内容来自我们自己的场景表，不是用户输入
+  $('deskNote').innerHTML = SCENE.note.join('<br>');
+  document.querySelector('.st-label').textContent = `${SCENE.pronoun}现在`;
+
+  const box = $('cFacts');
+  box.innerHTML = '';
+  c.facts.forEach((f) => {
+    const row = document.createElement('div');
+    row.className = 'fact' + (f.warn ? ' warn' : '');
+    const dt = document.createElement('dt');
+    dt.textContent = f.label;
+    const dd = document.createElement('dd');
+    const v = document.createElement('span');
+    v.className = 'num';
+    v.textContent = f.value;
+    dd.appendChild(v);
+    if (f.note) {
+      const em = document.createElement('em');
+      em.textContent = f.note;
+      dd.appendChild(em);
+    }
+    row.append(dt, dd);
+    box.appendChild(row);
+  });
+}
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === id));
@@ -1475,30 +1815,33 @@ async function enterGame() {
   showScreen('chat');
   if (game.entered) return;
 
-  const row = $('openChen');
+  const cta = $('openChen');
   try {
     await ready;
   } catch (e) {
+    // 开局请求是在玩家读工作台那一屏时就发出去的，通常早已到手；
+    // 走到这里说明服务真的没起来，把话说在按钮上，别把人扔进一个空聊天窗
     showScreen('home');
-    row.querySelector('.row-preview').textContent = '连不上服务，确认服务已启动后重试';
+    cta.classList.add('dead');
+    cta.disabled = true;
+    cta.querySelector('b').textContent = '连不上服务';
+    const sub = $('ctaSub');
+    sub.classList.add('dead');
+    sub.textContent = '确认服务已启动后刷新页面';
     return;
   }
 
   game.entered = true;
-  row.querySelector('.badge').remove();
-  document.querySelector('.nav-count').remove();
   $('remaining').textContent = String(game.remaining);
   paintMood(game.mood);
   divider('下午 2:47');
-  say('me', PING);
+  say('me', PING());
   say('them', game.opening);
   $('say').focus();
 }
 
+// 它现在是个真 <button>，回车与空格由浏览器自己管，不用再补 keydown
 $('openChen').addEventListener('click', enterGame);
-$('openChen').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); enterGame(); }
-});
 $('backHome').addEventListener('click', () => showScreen('home'));
 
 $('composer').addEventListener('submit', (e) => {

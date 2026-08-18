@@ -181,6 +181,13 @@ def test_快照给出结局占比与全部闭集标签() -> None:
     assert set(snap["keys"]) == {
         "anchor_real_purpose", "socratic_question", "expose_contradiction",
         "scold", "preach", "bare_assertion",
+        # 合规红线（8-17 补）。看板上少了它们，就答不出投票期最想知道的
+        # 那个数：有多少人在劝阻的时候顺口荐了股
+        "unlicensed_advice", "guaranteed_return",
+        # 另外半套专业动作（8-17 补）。这几个的占比是这套统计最有意思的一栏：
+        # 它量的是**有多少人根本想不到去听、去确认、去把决定权还回去**
+        "reflect_feeling", "support_autonomy",
+        "check_understanding", "informed_warning",
     }
 
 

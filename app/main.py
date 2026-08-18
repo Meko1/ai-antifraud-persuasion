@@ -26,6 +26,7 @@ from . import APP_ID, APP_VERSION
 from .config import BASE_DIR, settings
 from .engine import play_turn
 from .persona import opening_for
+from .scenario import pick_scenario, scenario_for
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
 from .scoring import MAX_ROUNDS, WIN_THRESHOLD, mood_for
@@ -65,11 +66,14 @@ async def game_start() -> JSONResponse:
 
     开场白取自预生成缓存，不调模型——首屏因此不受网关排队影响。
     """
-    # 开场白与人格变体同源：开场自称什么，后面十二轮就得是什么
+    # 场景与人格变体同一个做法：由 gid 哈希派生，服务端不存任何东西。
+    # 派生出来的 sid 进令牌（v3），否则第 2 轮会被当成另一个场景重新算
     gid = uuid.uuid4().hex
-    line = opening_for(gid)
+    scene = pick_scenario(gid)
+    # 开场白与人格变体同源：开场自称什么，后面十二轮就得是什么
+    line = opening_for(gid, scene.personas)
     # 开场白必须进 session：它是第 1 轮唯一可供"扎根"的对话内容
-    session = new_session(gid=gid, opening=line)
+    session = new_session(gid=gid, opening=line, sid=scene.id)
     stats.record_start()
     return JSONResponse(
         {
@@ -84,6 +88,10 @@ async def game_start() -> JSONResponse:
             "mood": mood_for(session.state.trust).value,
             "win_threshold": WIN_THRESHOLD,
             "contest_id": settings.contest_id,
+            # 整个剧本的界面素材：客户档案、揭晓清单、金额、结局文案。
+            # **前端不再写死任何一条**——写死的话，加场景时那些地方
+            # 没有一处会提醒你漏改了（app/scenario.py 的 payload）
+            "scenario": scene.payload(),
             "token": sign_session(
                 session,
                 secret=settings.state_signing_secret,

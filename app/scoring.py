@@ -37,7 +37,12 @@ PRESSURE_DRIFT = -3
 # 同一把钥匙第 1/2/3/4+ 次命中的权重。
 # 尾巴不再归零：效力矩阵已经承担了"别复读一招"的职责（用错档位直接打三折），
 # 钝化再一刀切到 0，12 轮里可用的分数总量就低于过线所需，谁都赢不了。
-BLUNT = (1.0, 0.7, 0.45, 0.25)
+#
+# **2026-08-17 从 (1.0, 0.7, 0.45, 0.25) 收紧。** 钥匙从三把变七把之后，
+# 按钥匙记的钝化基本失效了：12 轮里会读人的玩家每把只用一两次，全停在
+# 1.0/0.7 那两档。实测 expert 胜率因此从 45.6% 直接窜到 92.0%——
+# 正是上一轮难度重设计（98.7% → 47.9%）要消灭的那个东西。
+BLUNT = (1.0, 0.55, 0.3, 0.16)
 
 # 命中未扎根于对话具体内容时的折扣。堵的是照攻略复读固定句子，
 # §9.2 对照实验显示去掉它 parrot 胜率从 11.7% 跳到 100%。
@@ -63,10 +68,36 @@ POOL_CAP = 10
 # 矩阵、防御姿态与阻力曲线之后，12 轮里能挣到的分数总量顶不到过线所需，
 # 连完美执行的玩家也只能靠蓄势池过线。真正变了的是**相对关系**——
 # 三把钥匙不再等值，而且每一把都要乘以档位效力。
+# **2026-08-17 从三把加到七把。** 原来那三把（锚定用途、提问、拆矛盾）
+# 都属于动机式访谈里"引出改变语言"的一侧，缺的是另外半套专业动作：
+# 先听懂他、确认他到底理解了什么、以及不去替他做决定。
+# 缺了这半套，判分表教出来的是一个只会追问的人。
 KEY_VALUES: Mapping[str, int] = {
     "anchor_real_purpose": 25,   # 锚定钱的真实用途
     "socratic_question": 18,     # 苏格拉底式提问
     "expose_contradiction": 23,  # 指出骗局内部矛盾
+    # 反映式倾听。基值最低，因为它自己不推进——它的价值在于**降防御姿态**
+    # （见 REFLECT_RELIEF）。骂过他之后唯一的解法是先听他说完，
+    # 这一条在现实里成立，在这张表里也该成立。
+    "reflect_feeling": 8,
+    # 支持自主。「转不转是您的钱，您决定，我不能替您做主。」
+    # 它同时是逆反的解药和投顾唯一站得住的合规姿态——本作最该教会人的一句话，
+    # 在此之前一分不值。**它是唯一不被防御姿态削弱的钥匙**（见 GUARD_IMMUNE）。
+    "support_autonomy": 12,
+    # 确认理解（teach-back）。让他自己复述这笔钱转过去之后会发生什么。
+    # 它是适当性管理的硬要求，也是揭穿骗局最狠的一招——**他复述不出来**。
+    "check_understanding": 16,
+    # 有据告知。「我认为这是诈骗，理由是一二三。」
+    #
+    # 补它的理由不是"「这是诈骗」被永久设计成负分"——`bare_assertion` 的判据
+    # 一直写着"只断言却**不给任何理由**"。真正的洞是：**给了理由也不加分**。
+    # 奖励空间里从来没有"依据充分的明确告知"这个动作，而现实里投顾负有
+    # 告知义务，在他已经动摇、你手里又有他自己给的素材时不把话挑明，那是失职。
+    #
+    # 时机决定它是钥匙还是失误：戒备/烦躁档使用一律退化按 `bare_assertion` 记
+    # （见 evaluate_turn 里的 _retime）。**这正是本作唯一判据的极端形态**——
+    # 同一句话，早说是失误，晚说是钥匙。
+    "informed_warning": 18,
 }
 
 # 失误 —— 不受钝化、扎根与档位调节，命中即照扣。
@@ -76,6 +107,63 @@ PENALTY_VALUES: Mapping[str, int] = {
     "preach": -2,          # 说教
     "bare_assertion": -2,  # 空口断言
 }
+
+# ── 合规红线 ──────────────────────────────────────────────────────────────
+#
+# **这一类 2026-08-17 才补进来，此前判分闭集里一条合规违规都没有。**
+# 而这套判分表自称的方法论根基正是「只能问，不能荐」——三把钥匙全是问、
+# 三项失误全是说。少了这一类，玩家打出
+#
+#     「陈叔那票别买了，您把钱转回来买我们的稳健理财，年化 4% 保本」
+#
+# ——一个真实投顾职业生涯里最危险的一句话（无证荐股 + 承诺收益）——
+# 系统判 0 分，不扣、不提示，甚至因为"没骂人没说教"而显得比一句笨拙的追问安全。
+# **一个不惩罚荐股的投顾训练系统，训练的不是投顾。**
+#
+# 为什么单独一张表而不是并进 PENALTY_VALUES：这两类东西的性质不同。
+# 话术失误是"这一轮没劝动他"，合规违规是"**你自己要出事**"——后者的后果
+# 不由这一局的输赢承载，所以复盘要单独把它拎出来说（见 static/app.js），
+# 哪怕玩家把三十万全保住了。代码里分成两张表，界面才分得开。
+#
+# 只收了两条，不是三条。**「替客户做决定」被拿掉了**：投顾对疑似诈骗本来就
+# 负有告知义务，「别转」不是违规，是职责；它真正的毛病是激起逆反，
+# 那属于话术，正确的位置是与「支持客户自主」配成一对（POSITIONING 第 3 步）。
+# 「代客操作／索要账户密码」也拿掉了：这一局的场景里几乎不会有人这么说，
+# 凑不出自然的标注样本，一个没人触发的标签只是混淆矩阵上的一行空数。
+# **当轮扣分刻意给得不重**（比责骂重一点，仅此而已），重的是防御姿态。
+# 第一版给的是 −8 / −10，蒙特卡洛当场把 novice 的被拉黑率从 20.8% 顶到
+# **60.5%**——四分之一的玩家里有六成打不完就出局，§9.4 那条 12% 的上限
+# 是为投票转化守的，直接击穿。
+#
+# 但真正的理由不是平衡，是**这么记不对**：合规违规在现实里的后果不是
+# "客户不再信你"，是"你自己要出事"。把它做成一记重创信任的打击，等于把
+# 一件监管的事翻译成一件说服的事，翻译错了。它在局内该有的样子是——
+# 他从此认定你也是来卖东西的（防御姿态 +3，压住你接下来两三轮的钥匙效力），
+# 而它真正的分量落在复盘那张合规红线卡上，与这一局的输赢无关。
+COMPLIANCE_VALUES: Mapping[str, int] = {
+    # 荐股：给出具体标的、买卖方向或产品推荐。多家券商因投顾无证荐股被罚
+    "unlicensed_advice": -5,
+    # 承诺收益、保本、打包票。比荐股重一分：它同时是监管红线和一句谎
+    "guaranteed_return": -6,
+}
+
+# 判分求值只认这一张合并表。分开定义是为了让界面与复盘能把两类分开说。
+ALL_PENALTIES: Mapping[str, int] = {**PENALTY_VALUES, **COMPLIANCE_VALUES}
+
+# **合规违规单独结算，而且够不到拉黑线。**
+#
+# 与 DRIFT_FLOOR 同一个形状，理由却不同。剧情上：被拉黑是**关系破裂**，
+# 老陈拉黑你是因为你羞辱了他（那是 scold 干的事）；投顾想卖他个产品，
+# 他不会断绝往来，只会认定你也是来卖东西的——所以荐股该顶防备，不该出局。
+#
+# 更要紧的是训练上的理由：**受训者被踢出局，就永远看不到合规反馈在上下文里
+# 长什么样**，只会觉得自己输了。这一类真正的教学payload 是那个反差——
+# 你甚至可能把三十万全保住了，复盘照样告诉你这场对话在现实里已经是一起
+# 合规事件。中途出局把这个反差整个抹掉。
+#
+# 实测：不设地板时 novice 的被拉黑率从 20.8% 顶到 49.2%（breach_rate=0.10），
+# 就算把踩线概率压到 0.04 也还有 32.9%。地板一加，回到 20.8% 的基线。
+BREACH_FLOOR = 12
 
 
 class Ending(str, Enum):
@@ -169,13 +257,64 @@ EFFICACY: Mapping[str, Mapping[Mood, float]] = {
         Mood.GUARDED: 0.3, Mood.IRRITATED: 0.6,
         Mood.WAVERING: 1.3, Mood.SOFTENING: 1.4,
     },
+    # 反映式倾听在他最横的时候最值钱：那时候他要的不是道理，是有人听懂他。
+    # 等他自己都开始晃了再去复述他的情绪，就是在拖时间。
+    "reflect_feeling": {
+        Mood.GUARDED: 1.4, Mood.IRRITATED: 1.2,
+        Mood.WAVERING: 0.7, Mood.SOFTENING: 0.5,
+    },
+    # 支持自主全档位等值——它对抗的是逆反，而逆反在哪一档都在。
+    # 它的独特之处不在这张表里，在 GUARD_IMMUNE：**他越是竖着防备，
+    # 别的招越没用，而这一招照常生效**。这是它存在的全部理由。
+    "support_autonomy": {
+        Mood.GUARDED: 1.0, Mood.IRRITATED: 1.0,
+        Mood.WAVERING: 1.0, Mood.SOFTENING: 1.0,
+    },
+    # 确认理解的峰在**中盘**，与拆矛盾的峰（松动）刻意错开一档。
+    # 他还硬着的时候，你让他复述他就敷衍你；等他已经开始自我怀疑，
+    # 复述又是多余的——他自己已经想过一遍了。真正的窗口是中间那一段。
+    "check_understanding": {
+        Mood.GUARDED: 0.4, Mood.IRRITATED: 0.7,
+        Mood.WAVERING: 1.4, Mood.SOFTENING: 0.8,
+    },
+    # 有据告知只在后两档取值。前两档它压根走不到这里——会先被 _retime
+    # 换成 bare_assertion。这两个数留着是护栏，不是常规路径。
+    "informed_warning": {
+        Mood.GUARDED: 0.3, Mood.IRRITATED: 0.3,
+        Mood.WAVERING: 1.2, Mood.SOFTENING: 1.4,
+    },
 }
+
+# 不被防御姿态削弱的钥匙。
+#
+# 只有支持自主在这里，而这正是它的全部意义：他竖起防备的时候，追问、拆矛盾、
+# 锚定用途统统被打折（GUARD_STEP），**唯独「这事您自己决定，我不替您做主」
+# 照常落地**——因为防备本来就是"你要逼我"激起来的，而这句话说的正是"我不逼你"。
+#
+# 于是高防备局面下有了两条出路，且教的是两件不同的事：
+# 反映式倾听（把防备**降下来**）与支持自主（**绕过**防备）。
+GUARD_IMMUNE = frozenset({"support_autonomy"})
+
+# 反映式倾听当轮直接削掉的防御姿态。
+# 它比 GUARD_DECAY（每轮自然消退 1）快一倍：骂完人干等两轮，不如听他说一句。
+REFLECT_RELIEF = 2
+
+# 时机不对的有据告知会退化成哪个失误。
+# 早说的「这是诈骗」和空口断言在老陈那边是同一件事——他昨天刚从女儿嘴里
+# 听过一模一样的话（首页那六条会话里，小雨那条就是为这个铺的）。
+MISTIMED_WARNING_MOODS = (Mood.GUARDED, Mood.IRRITATED)
+MISTIMED_WARNING_AS = "bare_assertion"
 
 # ── 防御姿态 ──────────────────────────────────────────────────────────────
 #
 # 骂过人之后对方一时听不进去，这是真的。它也堵死了"钥匙刷分、失误无所谓"
 # 的打法：一句难听的话会污染接下来两三轮，而不是当轮扣完就算清。
 GUARD_PENALTY = 2      # 每命中一次失误
+# 合规违规顶起的防备比责骂还高，而且这一条在剧情里是**现成的**：
+# 演绎提示词里老陈的反击方式第三条就是「你们券商不就是想赚手续费」。
+# 玩家一旦开口荐股或者打包票，等于亲手把这句话递到他手上——
+# 从此这一局他有充分理由认定你也是来卖东西的。
+GUARD_BREACH = 3
 GUARD_MISTIMED = 1     # 在戒备/烦躁档位硬拆矛盾
 GUARD_DECAY = 1        # 每轮结算后自然消退
 GUARD_STEP = 0.25      # 每一点防御姿态削掉的钥匙效力
@@ -198,8 +337,17 @@ WINDOW_MISSED_TRUST = -6
 #
 # 这条曲线同时是平衡上的压缩器：没有它，判分只是一场速度比赛，
 # 说得快的人第 5 轮就过线，说得慢的人永远够不着，中间没有过渡带。
+# **2026-08-17 从 0.28 收到 0.18。** 这是七把钥匙上线之后唯一按得住
+# speedrun 的旋钮，而它按得住的原因正是它该存在的原因：
+# 钥匙变多，玩家在中盘拿分变容易了（那是对的，专业动作本来就该有回报），
+# 但"让他说出我不转了"这一步不该跟着变容易——它要推翻的是他三个月的全部投入。
+#
+# 换过别的旋钮都不行，记在这儿省得下一个人再试一遍：
+# · 只压钝化尾巴：speedrun 仍有 87.9%（他四五轮就赢了，钝化还没咬上）
+# · 只降新钥匙基值：expert 掉到 52% 时 speedrun 还有 92.4%
+# 这两条都打在中盘，而 speedrun 的问题在**终局**——只有阻力曲线打在那儿。
 RESIST_FROM = 50
-RESIST_FLOOR = 0.28
+RESIST_FLOOR = 0.18
 
 
 @dataclass(frozen=True)
@@ -213,6 +361,10 @@ class GameState:
     guard: int = 0     # 防御姿态，削弱钥匙效力
     window: int = 0    # 追问窗口的剩余轮数
     peak: int = TRUST_INIT  # 历史最高信任度，用来判断"首次跨入更高一档"
+    # 这一局踩过几次合规红线。**它不参与任何求值**，纯粹是累计——
+    # 合规违规的后果不由这一局的输赢承载（见 COMPLIANCE_VALUES 的注释），
+    # 但复盘必须能说出"你踩了几次"，哪怕这一局你把三十万全保住了。
+    breaches: int = 0
 
 
 @dataclass(frozen=True)
@@ -256,6 +408,13 @@ class TurnOutcome:
     drift: int = 0
     # 本轮从蓄势池释放出来的分（正数）。它同样会让"判分 + 流失"对不上账。
     released: int = 0
+    # 本轮踩了几次合规红线（0 / 1 / 2）。下发它是为了让前端在**当轮**就能
+    # 把这件事说出来，而不是等到复盘——踩线那一刻的反馈才教得会人。
+    breached: int = 0
+    # 本轮那句「有据告知」是不是说早了——说早了它就不是钥匙，是空口断言。
+    # 下发它，复盘才说得出「你这句本身没问题，问题是第 2 轮说的」，
+    # 而不是让玩家看着一个 `bare_assertion` 标签去猜自己错在哪。
+    mistimed_warning: bool = False
 
 
 def new_game() -> GameState:
@@ -274,8 +433,21 @@ def evaluate_turn(
     state: GameState,
     hit_keys: Sequence[str],
     grounded: bool,
+    *,
+    efficacy_table: Optional[Mapping[str, Mapping[Mood, float]]] = None,
+    mistimed_moods: Sequence[Mood] = MISTIMED_WARNING_MOODS,
 ) -> TurnOutcome:
-    """求值一轮。顺序见 docs/TECH-DESIGN.md §3.4，改动顺序等于改动平衡。"""
+    """求值一轮。顺序见 docs/TECH-DESIGN.md §3.4，改动顺序等于改动平衡。
+
+    **场景只能动这两个参数，别的一律共用**（app/scenario.py）：
+    `efficacy_table` 决定此刻哪一招管用，`mistimed_moods` 决定「有据告知」
+    在哪几档会退化成空口断言。钝化、扎根、防御姿态、追问窗口、阻力曲线、
+    蓄势池、结局阶梯全部与场景无关——一个需要新机制才成立的场景，
+    说明它不该做成场景。
+
+    两者都有缺省值，因此老调用方（测试、蒙特卡洛的单场景路径）一行不用改。
+    """
+    table = efficacy_table if efficacy_table is not None else EFFICACY
     # 用【回合开始时】的档位。它与注入演绎提示词的那一档是同一个，
     # 于是"他现在是什么状态"对玩家和对判分是同一件事（ADR-0002）。
     mood = mood_for(state.trust)
@@ -283,6 +455,11 @@ def evaluate_turn(
     window_factor = WINDOW_BONUS if state.window > 0 else 1.0
     ground_factor = 1.0 if grounded else UNGROUNDED_FACTOR
     resist_factor = resistance(state.trust)
+
+    # **时机先于一切**：说早了的「有据告知」在这里就变成了空口断言，
+    # 后面所有环节看到的都是 bare_assertion。同一句话，早说是失误，晚说是钥匙。
+    mistimed_warning = "informed_warning" in hit_keys and mood in mistimed_moods
+    hit_keys = _retime(hit_keys, mistimed_warning)
 
     used = dict(state.used)
     raw = 0.0
@@ -292,11 +469,14 @@ def evaluate_turn(
         if key not in KEY_VALUES:
             continue
         hit_key = True
-        efficacies.append(EFFICACY[key][mood])
+        efficacies.append(table[key][mood])
         blunt = BLUNT[min(used.get(key, 0), len(BLUNT) - 1)]
+        # 支持自主不吃防御姿态那一刀——他越防着你，别的招越没用，
+        # 唯独"我不替您做主"照常落地（见 GUARD_IMMUNE）
+        guard_here = 1.0 if key in GUARD_IMMUNE else guard_factor
         raw += (
             KEY_VALUES[key] * blunt * ground_factor
-            * EFFICACY[key][mood] * guard_factor * window_factor * resist_factor
+            * table[key][mood] * guard_here * window_factor * resist_factor
         )
         used[key] = used.get(key, 0) + 1
 
@@ -313,6 +493,16 @@ def evaluate_turn(
     # 权重相乘会产生小数，在求和后一次性取整，避免逐项取整累积偏差
     delta = _round_half_up(max(-ROUND_CLAMP, min(ROUND_CLAMP, raw)))
 
+    # 合规违规**在钳制之外单独结算**，因为它带自己的地板（见 BREACH_FLOOR）。
+    # 单轮最多 −11（两条都踩），进不进 ROUND_CLAMP 不影响结果。
+    breached = sum(1 for k in hit_keys if k in COMPLIANCE_VALUES)
+    breach_loss = sum(COMPLIANCE_VALUES.get(k, 0) for k in hit_keys)
+    if breach_loss:
+        # 合规之外这一轮已经走到哪儿了；地板只拦合规这一笔，不倒扣
+        base = state.trust + delta
+        breach_loss = max(breach_loss, -max(0, base - BREACH_FLOOR))
+        delta += breach_loss
+
     # 先让上一轮的防备消退，再累加本轮新顶起来的。
     # 顺序反过来的话，decay 会当场抵掉本轮那 +1，"太早拆矛盾"就一点后果都没有了。
     guard = max(0, state.guard - GUARD_DECAY)
@@ -324,8 +514,14 @@ def evaluate_turn(
         window_result = "hit" if hit_key else ("missed" if missed else "open")
     guard += GUARD_MISTIMED if missed else 0
     guard += GUARD_PENALTY * sum(1 for k in hit_keys if k in PENALTY_VALUES)
+    guard += GUARD_BREACH * breached
     if "expose_contradiction" in hit_keys and mood in (Mood.GUARDED, Mood.IRRITATED):
         guard += GUARD_MISTIMED
+
+    # 反映式倾听是唯一能**主动**把防备压下去的动作。放在所有累加之后：
+    # 同一轮里既听懂了他又骂了他，那句难听的话照样顶起防备，倾听只是抵掉一部分。
+    if "reflect_feeling" in hit_keys:
+        guard = max(0, guard - REFLECT_RELIEF)
 
     round_ = state.round + 1
     pressured = under_pressure(round_)
@@ -367,6 +563,7 @@ def evaluate_turn(
             guard=guard,
             window=window,
             peak=peak,
+            breaches=state.breaches + breached,
         ),
         delta=delta,
         ending=decide_ending(trust, round_),
@@ -380,7 +577,21 @@ def evaluate_turn(
         # 那一行单独解释，不必在数字上再拆一次。
         drift=drift + missed,
         released=released,
+        breached=breached,
+        mistimed_warning=mistimed_warning,
     )
+
+
+def _retime(hit_keys: Sequence[str], mistimed: bool) -> Sequence[str]:
+    """把说早了的「有据告知」换成空口断言。
+
+    不是在判分上打个折，是**换一个标签**：早说的「这是诈骗」和空口断言在老陈
+    那边就是同一件事——他昨天刚从女儿嘴里听过一模一样的话。既然是同一件事，
+    后面的防御姿态、复盘标签、Redis 统计就都该按同一件事记，不该有两套账。
+    """
+    if not mistimed:
+        return hit_keys
+    return [MISTIMED_WARNING_AS if k == "informed_warning" else k for k in hit_keys]
 
 
 def resistance(trust: int) -> float:

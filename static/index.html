@@ -9,159 +9,136 @@
 </head>
 <body>
 
-<!-- 冷开场 = **老陈的手机**。这一屏你在局内看不到，它是给玩家的交底。
-     六条会话不是布景：每一条各交代一件事——你（李经理）在找他、他在哪个群、
-     已经转过一次钱、家里等着这笔钱、女儿劝过而且劝失败了、官方提醒被他划掉了。
-     开局要说的话全在这一屏上，一句旁白都不用写。
+<!-- 冷开场 = **李经理的工作台**（企业微信 + 券商 CRM 的语法）。
+     2026-08-17 从"老陈的手机"改过来的，理由是这一屏原先在拆自己的玩法。
 
-     第一条 2026-08-15 从"老陈"换成了"李经理"。原先那条把老陈列成联系人，
-     可招行写着"您尾号8823"、小雨叫"爸"——这明明是老陈的手机，却又让老陈
-     给自己发消息。改一条，六条就全自洽了：你点的那条未读，正是他终于点开
-     你消息的那一刻，点完切到你这一侧。 -->
+     原先那一屏是老陈的手机，六条会话把启航财经、王老师三点截止、划走十万、
+     家里等钱、女儿查过工商、反诈中心提醒**一次性全给了**。而 CONTEXT.md
+     「对局」写的是：「开局时投资顾问只知道客户账户转出过一笔钱，骗局的一切
+     都得从他嘴里挖出来。信息差不是设定上的偷懒，它就是玩法。」
+     两份定义文件当面打架。
+
+     **危害是机制性的，不只是剧透。** 玩家读完六条，第 1 轮最自然的开口是
+     "您女儿查过那家公司，工商上查不到"——老陈还什么都没说，`grounded=false`
+     打 0.45 折，同时大概率判 `bare_assertion` 扣分并顶起防御姿态。
+     被夸得最多的一屏，是一台"未扎根打法"生成器。
+
+     现在这一屏只给李经理真正看得到的东西：一条资产异动预警，加一张客户档案。
+     档案里那几行不是布景，是**牌**——「风险测评保守型」对「三个月 47 笔、
+     持仓清空」本身就是一组现成的矛盾，而且是投顾独有、家属和反诈中心都拿不出的
+     角度。它与 gateway.py 的 SCAM_SCRIPT「他手里有你的账户，没有你的生活」
+     那份清单逐条对应。用它仍然得等老陈自己开口才算扎根。
+
+     六条会话没有删，移到了**复盘**（app.js 的 paintPhone）：逐条揭晓 + 打勾，
+     从剧透变成记分卡。而"「这是诈骗」四个字没用"这个教学点，从开局提前告知
+     变成结束时才发现他女儿早说过了——教学效果是反过来的强。 -->
 <section class="screen on" id="home">
   <header class="navbar">
-    <h1>微信<span class="nav-count">(1)</span></h1>
+    <h1>客户管理</h1>
   </header>
 
-  <div class="searchbar"><span class="search-input">搜索</span></div>
+  <div class="deskhead">
+    <span class="desk-me"><i class="avatar av-li" aria-hidden="true">李</i>李经理 · 投资顾问</span>
+    <span class="desk-time">今天 14:47</span>
+  </div>
 
-  <ul class="chatlist">
-    <li class="chatrow" id="openChen" tabindex="0" role="button" aria-label="他点开了你的消息，开始对话">
-      <span class="avatar av-li" aria-hidden="true">李</span>
-      <span class="row-main">
-        <span class="row-top">
-          <span class="row-name">李经理 · 投资顾问</span>
-          <span class="row-time">14:47</span>
-        </span>
-        <span class="row-bottom">
-          <!-- 与 app.js 的 PING 必须逐字一致：会话列表这条就是聊天页里
-               你发出去的那一条，玩家点进去会看到同一句话 -->
-          <span class="row-preview">陈叔，方便说句话吗？系统给我推了条提醒，说您账户今天转出去一笔。</span>
-          <span class="badge">1</span>
-        </span>
-      </span>
-    </li>
+  <div class="desk-body">
+    <!-- 预警条。**措辞是"资产异动"不是"风控"**：银证转出到本人绑定卡是最
+         正常的操作，风控与反洗钱不会为它报警，报的是营销条线的资产流失预警。
+         这样也更有戏——李经理最初的动机是挽留资产，聊着聊着才发现不对。 -->
+    <div class="alertbar">
+      <span class="alert-dot" aria-hidden="true"></span>
+      <b>资产异动预警</b>
+      <span class="alert-sub">1 条待处理 · 14:47</span>
+    </div>
 
-    <!-- 这个群是玩家能找上他的理由：同群的人才能私聊。 -->
-    <li class="chatrow" aria-disabled="true">
-      <span class="avatar av-group" aria-hidden="true">
-        <i></i><i></i><i></i><i></i>
-      </span>
-      <span class="row-main">
-        <span class="row-top">
-          <span class="row-name">启航财经 · 内部交流群</span>
-          <span class="row-time">14:44</span>
-        </span>
-        <span class="row-bottom">
-          <span class="row-preview">王老师：三点前统一操作，别掉队</span>
-          <span class="mutebell" aria-label="消息免打扰"></span>
-        </span>
-      </span>
-    </li>
+    <!-- 客户档案。**内容由服务端下发**（app/scenario.py 的 payload），
+         这里只留骨架。原先这七行是写死的，第二个场景一来就得再抄一份，
+         而抄的那一份没有任何东西会提醒你和剧本对不上。
 
-    <li class="chatrow" aria-disabled="true">
-      <span class="avatar av-bank" aria-hidden="true">招</span>
-      <span class="row-main">
-        <span class="row-top">
-          <span class="row-name">招商银行</span>
-          <span class="row-time">14:31</span>
+         带 warn 的那几行是玩家手上的牌，与该场景 SCRIPT 里
+         「账户那一侧他看得一清二楚」那份清单逐条对应。
+         但它们第一次拿出来必然判"未扎根"——扎根只认引用他上一轮说过的话。 -->
+    <div class="ccard">
+      <div class="ccard-top">
+        <span class="avatar av-chen" aria-hidden="true">陈</span>
+        <span class="ccard-id">
+          <b id="cName"></b>
+          <i id="cSub"></i>
         </span>
-        <span class="row-bottom">
-          <span class="row-preview">您尾号8823账户支出100,000.00元</span>
-        </span>
-      </span>
-    </li>
+        <span class="ctag" id="cTag"></span>
+      </div>
 
-    <li class="chatrow" aria-disabled="true">
-      <span class="avatar av-wife" aria-hidden="true">桂</span>
-      <span class="row-main">
-        <span class="row-top">
-          <span class="row-name">老伴</span>
-          <span class="row-time">13:52</span>
-        </span>
-        <span class="row-bottom">
-          <span class="row-preview">定金那头又催了一遍，那笔钱你可千万别动啊</span>
-        </span>
-      </span>
-    </li>
+      <dl class="facts" id="cFacts"></dl>
+    </div>
 
-    <!-- 女儿劝过，而且劝失败了。玩家读到这一行就知道：直接说"这是诈骗"没用。 -->
-    <li class="chatrow" aria-disabled="true">
-      <span class="avatar av-daughter" aria-hidden="true">雨</span>
-      <span class="row-main">
-        <span class="row-top">
-          <span class="row-name">小雨</span>
-          <span class="row-time">昨天</span>
-        </span>
-        <span class="row-bottom">
-          <span class="row-preview">爸，我查过那个启航财经了，工商上根本查不到这家公司，你听我一次行不行</span>
-        </span>
-      </span>
-    </li>
+    <!-- 另外两条待办不可点，纯布景。它们要说的是：这是你日常工作里的一个上午，
+         不是一个英雄时刻。少了它们，客户档案孤零零一张，像个教学弹窗。
 
-    <li class="chatrow" aria-disabled="true">
-      <span class="avatar av-gov" aria-hidden="true">反</span>
-      <span class="row-main">
-        <span class="row-top">
-          <span class="row-name">国家反诈中心</span>
-          <span class="row-time">8月9日</span>
+         **名字不能和任何一个场景的客户撞。** 原来这里是「周建国」，
+         周淑琴那一局上线之后，工作台上就并排站了两个姓周的，
+         头像还都是「周」。加场景时顺手要看一眼这两行。 -->
+    <div class="desk-label">其他待办</div>
+    <ul class="chatlist">
+      <li class="chatrow" aria-disabled="true">
+        <span class="avatar av-c1" aria-hidden="true">王</span>
+        <span class="row-main">
+          <span class="row-top">
+            <span class="row-name">王秀兰</span>
+            <span class="row-time">11:02</span>
+          </span>
+          <span class="row-bottom">
+            <span class="row-preview">定投扣款失败，需回访确认</span>
+          </span>
         </span>
-        <span class="row-bottom">
-          <span class="row-preview">您可能正在遭遇投资理财类诈骗，请立即停止转账</span>
+      </li>
+      <li class="chatrow" aria-disabled="true">
+        <span class="avatar av-c2" aria-hidden="true">郑</span>
+        <span class="row-main">
+          <span class="row-top">
+            <span class="row-name">郑建国</span>
+            <span class="row-time">昨天</span>
+          </span>
+          <span class="row-bottom">
+            <span class="row-preview">风险测评到期，提醒重做</span>
+          </span>
         </span>
-      </span>
-    </li>
-  </ul>
+      </li>
+    </ul>
 
-  <!-- 这一屏要同时立住三件事，缺一条玩家就会问"我凭什么劝他"：
-       ① 赌注是三十万，② 你为什么会知道（资产异动提醒，不是风控——银证转出到
-       本人绑定卡是正常操作，报的是营销条线的资产流失预警），③ 你知道的到底
-       有多少。第三条最要紧：**三十万在他银行卡上，你看不见**——玩家看得见，
-       他的角色看不见，这一层落差就是这一局要干的活：把它从老陈嘴里问出来。 -->
-  <p class="home-note">这是老陈的手机。他下午三点前要把三十万转出去，那笔钱在他银行卡上，你看不见。<br>
-    你是给他开户的投资顾问，系统刚推来一条资产异动提醒：他今天从证券账户划走十万，账上只剩两万八。<br>
-    <b>点开你发的那条，他终于看见了。</b></p>
+    <!-- 这一屏要立住的三件事（缺一条玩家就会问"我凭什么劝他"）：
+         ① 你为什么会知道 —— 资产异动预警；
+         ② 事情有多不对劲 —— 一个保守型的老客户，持仓在一早上之内清空；
+         ③ **你知道的到底有多少** —— 这是最要紧的一条，也是这一屏这次改造的
+            全部理由。钱去了哪、他要拿去做什么、有没有人在推，账户这一侧
+            一个字都看不到。它不是设定上的偷懒，它就是这一局要干的活。 -->
+    <p class="home-note" id="deskNote"></p>
 
-  <!-- 底部标签栏不接任何功能，它是布景的最后一块：少了它，这一屏的下缘就空着，
-       整个界面看着像没做完，而不像一台手机。 -->
-  <nav class="tabbar" aria-hidden="true">
-    <span class="tab on">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
-           stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 4C7 4 3 7.3 3 11.3c0 2.3 1.3 4.3 3.4 5.6L5.6 20l3.2-1.7c1 .3 2.1.4 3.2.4
-                 5 0 9-3.3 9-7.4S17 4 12 4Z"/>
-      </svg>
-      <b>微信</b><i class="tabdot"></i>
-    </span>
-    <span class="tab">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
-           stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 5h16v14H4z"/><path d="M8 5v14"/><path d="M12 10h5"/><path d="M12 14h5"/>
-      </svg>
-      <b>通讯录</b>
-    </span>
-    <span class="tab">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
-           stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="8"/><path d="m15 9-2.2 4.8L8 16l2.2-4.8L15 9Z"/>
-      </svg>
-      <b>发现</b>
-    </span>
-    <span class="tab">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
-           stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c0-3.6 3.1-5.5 7-5.5s7 1.9 7 5.5"/>
-      </svg>
-      <b>我</b>
-    </span>
-  </nav>
+  </div>
+
+  <!-- 底部操作栏。**这一屏唯一的动作，必须永远看得见。**
+       实测 375×812 上内容有 913px、可视区只有 664px——按钮跟着内容滚，
+       落地第一眼看不到它。券商 App 的客户详情页本来也是这么排的：
+       内容滚动，操作固定在底下。
+
+       原先这里是一条微信式的四格标签栏（消息/通讯录/发现/我），去掉了：
+       那是**微信首页**的部件，而这一屏已经不是微信了；把它和操作栏叠在一起，
+       375px 上光是底部就吃掉 116px。这一屏的"真在用的系统"感由抬头那行
+       李经理、预警条、客户档案和其他待办撑着，不缺这一条。 -->
+  <div class="deskfoot">
+    <button class="deskcta" id="openChen" type="button"><b id="ctaLabel">给客户发消息</b></button>
+    <!-- 这行小字**在按钮外面**：白字压在微信绿上只有 2.38:1，11.5px 的字
+         在那上面是读不动的（微信自己的绿按钮也一样，只是它从不在按钮里放注文）。
+         挪到浅底上就能用够对比度的深灰。 -->
+    <p class="deskfoot-note" id="ctaSub">企业微信 · 会话按监管要求存档</p>
+  </div>
 </section>
 
 <!-- 聊天页 -->
 <section class="screen" id="chat">
   <header class="navbar chat-nav">
     <button class="navback" id="backHome" type="button" aria-label="返回"></button>
-    <h1 id="peer">老陈</h1>
+    <h1 id="peer"></h1>
     <span class="navmore" aria-hidden="true"></span>
   </header>
 

@@ -18,7 +18,7 @@ import logging
 from typing import Any, Dict, Iterable, Optional, Set
 
 from .config import settings
-from .scoring import KEY_VALUES, PENALTY_VALUES, Ending
+from .scoring import ALL_PENALTIES, KEY_VALUES, Ending
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class Stats:
             # 除以局数会得出大于 1 的"命中率"
             "keys": {
                 name: {"hits": hits.get(name, 0), "rate": _ratio(hits.get(name, 0), turns)}
-                for name in (*KEY_VALUES, *PENALTY_VALUES)
+                for name in (*KEY_VALUES, *ALL_PENALTIES)
             },
         }
 

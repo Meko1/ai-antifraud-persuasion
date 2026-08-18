@@ -17,6 +17,7 @@ import logging
 
 from .classify import Classification, parse_classification
 from .fallback import ending_fallback, fallback_line
+from .scenario import scenario_for
 from .safety import SAFE_FALLBACK, absorb_injection, screen_sentence
 from .scoring import MAX_ROUNDS, Ending, evaluate_turn, mood_for, under_pressure
 from .state_token import Session, TurnRecord, sign_session
@@ -140,6 +141,9 @@ async def play_turn(
 ) -> AsyncIterator[Event]:
     state = session.state
     round_ = state.round + 1
+    # 场景由令牌里的 sid 取回（ADR-0003：服务端不存任何东西）。
+    # 它决定演什么、兜底说什么，以及**此刻哪一招管用**（效力矩阵）。
+    scene = scenario_for(session.sid)
 
     yield Event("meta", {"round": round_, "remaining": MAX_ROUNDS - round_})
 
@@ -190,6 +194,7 @@ async def play_turn(
                     # 第一句单独一档：心虚地客气，不是一上来就怼。
                     # 只换演法，判分那边一个参数都没动
                     first_turn=round_ == 1,
+                    scene=scene,
                 ):
                     for text in _screened(buffer.feed(chunk), seen_fallback):
                         spoken.append(text)
@@ -207,7 +212,7 @@ async def play_turn(
 
             if not spoken:
                 # L1：演绎降级。绝不给玩家一片空白。
-                text = fallback_line(mood)
+                text = fallback_line(mood, scene=scene)
                 spoken.append(text)
                 yield Event("sentence", {"text": text})
 
@@ -224,7 +229,15 @@ async def play_turn(
         hit_keys = classification.hit_keys if classification else ()
         grounded = classification.grounded if classification else False
 
-    outcome = evaluate_turn(state, hit_keys=hit_keys, grounded=grounded)
+    outcome = evaluate_turn(
+        state,
+        hit_keys=hit_keys,
+        grounded=grounded,
+        # 场景唯一能动的两处判分参数。其余（钝化、扎根、防御姿态、追问窗口、
+        # 阻力曲线、蓄势池、结局阶梯）全部共用——见 app/scenario.py 顶部
+        efficacy_table=scene.efficacy,
+        mistimed_moods=scene.mistimed_warning_moods,
+    )
     yield Event(
         "score",
         {
@@ -248,6 +261,17 @@ async def play_turn(
             # 「第 3 轮 23 分，第 4 轮 +18」，结果却是 39——玩家会去算 23+18=41
             "drift": outcome.drift,
             "released": outcome.released,
+            # 合规红线：本轮踩了几次、这一局累计几次。
+            # **当轮就要下发**，不能只留到复盘——踩线那一刻的反馈才教得会人。
+            # 累计数一并给，是因为复盘那张合规卡要在任何结局下都说得出总数，
+            # 而前端自己数 hits 会与判分口径走散（哪些标签算红线只此一份）。
+            "breached": outcome.breached,
+            "breaches": outcome.state.breaches,
+            # 那句「有据告知」是不是说早了。**必须单独下发**：判分那边已经把它
+            # 换成了 bare_assertion（`scoring._retime`），前端只看 hits 的话，
+            # 玩家会看到一个"空口断言"标签，然后完全不知道自己错在哪——
+            # 他明明给了依据。错的不是那句话，是时候。
+            "mistimed_warning": outcome.mistimed_warning,
             "degraded": classification is None,
             # 剧情事件，不是判分反馈：前端在对话里渲染成一条旁白
             "pressure": outcome.pressured,
@@ -275,6 +299,7 @@ async def play_turn(
                     gid=session.gid,
                     history=history,
                     opening=session.opening,
+                    scene=scene,
                 )
             )
         except Exception:  # noqa: BLE001 - 判分已经下发了，这一屏绝不能再丢
@@ -288,12 +313,13 @@ async def play_turn(
                 # 生成失败或被安全层剥空时用预置收尾。逐轮台词降级还能靠
                 # "骗子本来就说车轱辘话"糊过去，最后一屏糊不过去：玩家会看到
                 # 判分跳完之后对话直接断掉，连一句收尾都没有。
-                "lines": lines or list(ending_fallback(outcome.ending)),
+                "lines": lines or list(ending_fallback(outcome.ending, scene)),
             },
         )
 
     next_session = Session(
         gid=session.gid,
+        sid=session.sid,
         state=outcome.state,
         history=history,
         # 开场白要一路带下去：服务端不存任何东西，令牌里没有的就是永远没有了，

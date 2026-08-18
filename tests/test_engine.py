@@ -10,7 +10,7 @@ import asyncio
 from typing import AsyncIterator, List
 
 from app.engine import play_turn
-from app.fallback import ENDING_LINES
+from app.scenario import DEFAULT
 from app.safety import INJECTION_REPLY, SAFE_FALLBACK
 from app.scoring import MAX_ROUNDS, Ending, GameState
 from app.state_token import Session, TurnRecord, new_session, verify_token
@@ -361,7 +361,7 @@ async def test_结局台词生成失败时用预置收尾() -> None:
     ]
 
     ending = next(e for e in events if e.name == "ending")
-    assert ending.data["lines"] == list(ENDING_LINES[Ending(ending.data["kind"])])
+    assert ending.data["lines"] == list(DEFAULT.ending_lines[Ending(ending.data["kind"])])
     assert [e.name for e in events][-2:] == ["state", "done"], "令牌照发，这一局才算收干净"
 
 
