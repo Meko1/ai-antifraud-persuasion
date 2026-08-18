@@ -5,6 +5,13 @@ __pycache__/
 *.py[cod]
 dist/
 build/
+# 本项目没有 Node，这一行是给大赛 security-skill 的 Gate 6 用的：
+# 它按通用清单查 .gitignore，缺 node_modules/ 会报一条警告。
+# 留着比每次去解释"我们不是 Node 项目"便宜。
+node_modules/
+
+# 打包暂存目录（ai-creator-package-deploy 的 --source）
+.ai-creator-dist/
 
 # 密钥与本地配置 —— 绝不可入库（安全扫描会查）
 .env

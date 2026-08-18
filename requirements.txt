@@ -1,10 +1,25 @@
 # 注意：故意使用 plain uvicorn 而非 uvicorn[standard]。
 # uvicorn[standard] 会拉入 uvloop / httptools，这两个包在 CentOS 7.9 的老 gcc 上
 # 需要现场编译，是部署失败的高频原因。纯 h11 实现的性能足够本作品使用。
-fastapi==0.115.6
+#
+# ── 2026-08-18 安全升级（大赛 security-skill 依赖审计）─────────────────────
+#
+# `pip-audit` 在旧的一组上报出 **10 个已知漏洞 / 2 个包**：
+#   · python-dotenv 1.0.1        → PYSEC-2026-2270（修复版 1.2.2）
+#   · starlette 0.41.3（fastapi 的传递依赖，requirements 里根本没写它）
+#     → PYSEC-2026-161 / 248 / 249 / 1941 / 1942 / 2280 / 2281，
+#       最高要求修到 1.3.1
+#
+# **starlette 那一串是这次审计最值得记的一点**：它从来没出现在这个文件里，
+# 是 fastapi 拖进来的。只盯着自己写下的那几行，永远看不见它。
+# fastapi 0.115.6 把 starlette 钉在 <0.42，升不上去——所以必须连 fastapi 一起升。
+#
+# 升级后 `pip-audit` 为 0；332 个测试在新版本上全绿；
+# 四个包全是 `py3-none-any` 纯轮子，**CentOS 7.9 上不会现场编译**（这是硬约束）。
+fastapi==0.141.1
 uvicorn==0.34.0
-pydantic==2.10.4
-python-dotenv==1.0.1
+pydantic==2.13.4
+python-dotenv==1.2.2
 httpx==0.28.1
 # 旁路统计用（§10.2）。纯 Python 实现，不触发 CentOS 7.9 上的现场编译；
 # 没装或连不上都不影响启动与对局，app/stats.py 对缺包做了降级。

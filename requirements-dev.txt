@@ -4,5 +4,8 @@
 # 现场编译失败的风险；测试依赖留在这里，install.sh 不会碰它。
 -r requirements.txt
 
-pytest==8.3.4
-pytest-asyncio==0.25.0
+# 2026-08-18：pytest 8.3.4 有 PYSEC-2026-1845，升到 9.0.3。
+# pytest-asyncio 一并升到 1.4.0——0.25.0 与 pytest 9 冲突，装不上去。
+# 这两个只在开发与 CI 用，不进服务包（见上面那行 -r 的说明）。
+pytest==9.0.3
+pytest-asyncio==1.4.0

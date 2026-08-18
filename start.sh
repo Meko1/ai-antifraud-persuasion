@@ -11,7 +11,25 @@ set -euo pipefail
 APP_ID="ai-antifraud-persuasion"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PY="${APP_DIR}/.venv/bin/python"
-RUNTIME_DIR="${HOME}/.${APP_ID}"
+# 运行时目录（PID 与日志）。**优先级照大赛打包契约写**：
+# AI_CREATOR_STATE_ROOT → XDG_STATE_HOME → HOME → /tmp
+#
+# 原先只写 "${HOME}/.${APP_ID}"，而契约明确说了
+# 「Linux 脚本不得假设 Salt 提供 HOME」。平台执行部署时若 HOME 未设置，
+# ${HOME} 展开成空串，路径就变成 /.ai-antifraud-persuasion——
+# mkdir 在文件系统根目录上必然失败，整个部署挂在 install 这一步，
+# 而且报错信息看不出是 HOME 的问题。
+#
+# HOME 仍然留在第三顺位（契约只要求"不得假设"，没禁止用）：
+# 它比 /tmp 稳，/tmp 可能被系统清理，而 PID 文件必须跨 release 存活——
+# 平台每次部署都会删掉并重建解压目录，PID 放那儿新版 stop 就找不到旧进程。
+state_root() {
+  if [ -n "${AI_CREATOR_STATE_ROOT:-}" ]; then echo "${AI_CREATOR_STATE_ROOT}"
+  elif [ -n "${XDG_STATE_HOME:-}" ]; then echo "${XDG_STATE_HOME}"
+  elif [ -n "${HOME:-}" ]; then echo "${HOME}"
+  else echo "/tmp"; fi
+}
+RUNTIME_DIR="$(state_root)/.${APP_ID}"
 PID_FILE="${RUNTIME_DIR}/app.pid"
 LOG_FILE="${RUNTIME_DIR}/logs/app.log"
 PORT="${PORT:-21818}"
@@ -33,7 +51,21 @@ if [ -f "${PID_FILE}" ]; then
   fi
 fi
 
-# ── 2. 后台拉起服务 ─────────────────────────────────────────────────────────
+# ── 2. 注入对局签名密钥 ─────────────────────────────────────────────────────
+#
+# 优先用真实环境变量（运维自己管密钥时走这条），否则读 install.sh 生成的那份。
+# 两者都没有时不在这里假装成功——让 app/config.py 去拒绝启动，并把原因说清楚。
+if [ -z "${STATE_SIGNING_SECRET:-}" ]; then
+  SECRET_FILE="${RUNTIME_DIR}/state_signing_secret"
+  if [ -s "${SECRET_FILE}" ]; then
+    STATE_SIGNING_SECRET="$(cat "${SECRET_FILE}")"
+    export STATE_SIGNING_SECRET
+  else
+    fail "缺少 STATE_SIGNING_SECRET，且未找到 ${SECRET_FILE}；请先执行 install.sh"
+  fi
+fi
+
+# ── 3. 后台拉起服务 ─────────────────────────────────────────────────────────
 log "启动服务，端口 ${PORT}，日志 ${LOG_FILE}"
 cd "${APP_DIR}"
 nohup "${VENV_PY}" -m uvicorn app.main:app \

@@ -9,7 +9,25 @@
 set -uo pipefail
 
 APP_ID="ai-antifraud-persuasion"
-RUNTIME_DIR="${HOME}/.${APP_ID}"
+# 运行时目录（PID 与日志）。**优先级照大赛打包契约写**：
+# AI_CREATOR_STATE_ROOT → XDG_STATE_HOME → HOME → /tmp
+#
+# 原先只写 "${HOME}/.${APP_ID}"，而契约明确说了
+# 「Linux 脚本不得假设 Salt 提供 HOME」。平台执行部署时若 HOME 未设置，
+# ${HOME} 展开成空串，路径就变成 /.ai-antifraud-persuasion——
+# mkdir 在文件系统根目录上必然失败，整个部署挂在 install 这一步，
+# 而且报错信息看不出是 HOME 的问题。
+#
+# HOME 仍然留在第三顺位（契约只要求"不得假设"，没禁止用）：
+# 它比 /tmp 稳，/tmp 可能被系统清理，而 PID 文件必须跨 release 存活——
+# 平台每次部署都会删掉并重建解压目录，PID 放那儿新版 stop 就找不到旧进程。
+state_root() {
+  if [ -n "${AI_CREATOR_STATE_ROOT:-}" ]; then echo "${AI_CREATOR_STATE_ROOT}"
+  elif [ -n "${XDG_STATE_HOME:-}" ]; then echo "${XDG_STATE_HOME}"
+  elif [ -n "${HOME:-}" ]; then echo "${HOME}"
+  else echo "/tmp"; fi
+}
+RUNTIME_DIR="$(state_root)/.${APP_ID}"
 PID_FILE="${RUNTIME_DIR}/app.pid"
 PORT="${PORT:-21818}"
 # 进程特征：只有同时匹配它，才会被认定为"本作品的进程"

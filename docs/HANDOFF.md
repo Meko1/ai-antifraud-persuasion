@@ -316,6 +316,103 @@ REDESIGN-TRAINER D1 写了三个月的"投顾训练器"定位，虚构设定一�
 
 ---
 
+## 按大赛两份规范过了一遍（8-18）
+
+用官方两个 skill 实跑：`security-skill` 的安全门禁与 `ai-creator-package-deploy`
+的契约校验。**抓到两个会让部署直接失败的问题，本地都测不出来。**
+
+### 一、服务包在干净机器上根本起不来（最严重）
+
+`.env` 按规范不进 ZIP（里面有真实 API key），于是目标机上没有任何东西提供
+`STATE_SIGNING_SECRET`，而 `app/config.py` 缺它就**拒绝启动**（那条守则是对的）。
+后果：ZIP 过全部结构校验、上传成功、然后死在 start，部署被判失败。
+
+**本地永远测不出来**——本地项目目录里就躺着一个 `.env`，python-dotenv 自己读走了。
+是把 ZIP 解压到别处、清掉环境变量跑了一遍才炸出来的。
+
+改法：`install.sh` 首次安装生成一次性随机密钥（`secrets.token_urlsafe(48)`），
+写进**跨 release 稳定**的运行时目录，权限 600；`start.sh` 优先用真实环境变量，
+没有再读这个文件。不进仓库、不进 ZIP、每台机器各自一份，
+重新部署时复用（换密钥会让所有在玩的局当场作废）。
+
+### 二、生命周期脚本假设了 `HOME`
+
+三个脚本都写着 `RUNTIME_DIR="${HOME}/.${APP_ID}"`，而打包契约明确说
+**「Linux 脚本不得假设 Salt 提供 HOME」**。HOME 未设置时 `${HOME}` 展开成空串，
+路径变成 `/.ai-antifraud-persuasion`，`mkdir` 在文件系统根目录上必然失败，
+而且报错看不出是 HOME 的问题。
+
+改成契约要求的优先级：`AI_CREATOR_STATE_ROOT` → `XDG_STATE_HOME` → `HOME` → `/tmp`。
+HOME 留在第三位是刻意的：它比 `/tmp` 稳（`/tmp` 会被系统清理），
+而 PID 文件必须跨 release 存活。
+
+### 三、依赖有 10 个已知漏洞
+
+`pip-audit` 报出 **10 个漏洞 / 2 个包**，其中 `starlette` 那一串最值得记：
+**它从来没出现在 `requirements.txt` 里**，是 fastapi 拖进来的传递依赖。
+只盯自己写下的那几行，永远看不见它。fastapi 0.115.6 把 starlette 钉在 <0.42，
+升不上去，所以必须连 fastapi 一起升。
+
+| | 旧 | 新 |
+|---|---|---|
+| fastapi | 0.115.6 | 0.141.1 |
+| starlette（传递） | 0.41.3 | 1.6.0 |
+| pydantic | 2.10.4 | 2.13.4 |
+| python-dotenv | 1.0.1 | 1.2.2 |
+| pytest（仅开发） | 8.3.4 | 9.0.3 |
+
+升级后 `pip-audit` 为 0；332 个测试在新版本上全绿；四个包全是 `py3-none-any`
+纯轮子，**CentOS 7.9 上不会现场编译**（这条硬约束不能破）。
+
+### 四、补了安全响应头
+
+评分里扣了 6 分（未配 CSP、无安全头中间件），而说明文档写着
+「平台将联合安全部门进行全面的安全漏洞扫描」——这类扫描器第一条就查响应头。
+
+**CSP 按本作品实际加载的东西写，没抄模板**：只有同源一个 JS 一个 CSS，
+所以 `script-src`/`style-src` 只给 `'self'`，**不给 `'unsafe-inline'`**
+（技能模板里有，那是为兼容内联脚本，我们没有，给了白白放宽）。
+分享卡走 canvas + blob 下载，所以 `img-src` 要 `data: blob:`。
+**没加 HSTS**：平台是 `http://ip:21818` 直连、无 TLS，发 HSTS 会让浏览器
+把这个 host 记进强制 HTTPS 列表，反而打不开。
+
+改完在真机上验过：无 CSP 违规、复盘与分享卡照常、blob 下载不被拦。
+
+### 门禁结果与一个假红
+
+| 项 | 结果 |
+|---|---|
+| 密钥泄露扫描 / 安全自审计 / 幻觉依赖 / 安全评分 / .gitignore | ✅ 全过 |
+| 安全评分 | **89 / 100** |
+| 依赖漏洞审计（Gate 3） | ❌ **假红，是脚本自身的 bug** |
+
+Gate 3 的 `dependency-audit.sh` 用了 `declare -A`（关联数组），
+macOS 自带 bash 3.2 不支持，脚本当场报错退出，门禁把非零退出当成"发现高危漏洞"。
+**拿空目录跑一遍会得到一模一样的失败**，与本项目无关；而且它的 CVE 清单
+全是 npm 包（lodash / dompurify / babel），本项目连 `package.json` 都没有。
+真正的 Python 依赖漏洞用 `pip-audit` 查，已清零。
+
+### 复现命令
+
+```
+.venv/bin/python -m pip_audit                                   # 依赖漏洞，应为 0
+bash <security-skill>/scripts/security-gate.sh <项目根>          # 5/6 过，Gate 3 假红
+./package.sh                                                    # 出 ZIP
+.venv/bin/python <deploy-skill>/scripts/validate_package.py <zip> --target-os LINUX --skill-strict
+.venv/bin/python <deploy-skill>/scripts/audit_config.py <解压目录>
+```
+
+**干净机器模拟**（这一步别省，前两个问题都是它逼出来的）：
+
+```
+unzip <zip> -d /tmp/deploytest && cd /tmp/deploytest && chmod +x *.sh
+env -u HOME AI_CREATOR_STATE_ROOT=/tmp/plat-state bash ./stop.sh
+env -u HOME AI_CREATOR_STATE_ROOT=/tmp/plat-state bash ./install.sh
+env -u HOME AI_CREATOR_STATE_ROOT=/tmp/plat-state bash ./start.sh
+```
+
+---
+
 ## 抽 Scenario + 第二个场景（8-17，POSITIONING 第 4–5 步）
 
 **`app/scenario.py` 是这次新增的唯一一个模块。** 在它之前剧本写死在十五个
