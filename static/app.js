@@ -553,7 +553,7 @@ async function playTurn(utterance) {
 
   let resp;
   try {
-    resp = await fetch('/api/game/turn', {
+    resp = await fetch('api/game/turn', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: game.token, utterance }),
@@ -1310,7 +1310,7 @@ function scoreLedger(t) {
 async function paintStats(view, kind) {
   let data;
   try {
-    data = await (await fetch('/api/stats')).json();
+    data = await (await fetch('api/stats')).json();
   } catch (e) {
     return;
   }
@@ -1752,7 +1752,7 @@ function makeCard(view) {
 // 请求在首页就发出去了。玩家点开会话时开场白通常已经到手，
 // 「首屏 ≤3 秒」是被会话列表那一屏顺手买的单。
 const ready = (async () => {
-  const resp = await fetch('/api/game/start', { method: 'POST' });
+  const resp = await fetch('api/game/start', { method: 'POST' });
   const data = await resp.json();
   game.token = data.token;
   game.opening = data.opening;
@@ -1765,6 +1765,26 @@ const ready = (async () => {
   SCENE = data.scenario || null;
   paintDesk();
 })();
+
+/** 客户档案里的一行。 */
+function factRow(f) {
+  const row = document.createElement('div');
+  row.className = 'fact' + (f.warn ? ' warn' : '');
+  const dt = document.createElement('dt');
+  dt.textContent = f.label;
+  const dd = document.createElement('dd');
+  const v = document.createElement('span');
+  v.className = 'num';
+  v.textContent = f.value;
+  dd.appendChild(v);
+  if (f.note) {
+    const em = document.createElement('em');
+    em.textContent = f.note;
+    dd.appendChild(em);
+  }
+  row.append(dt, dd);
+  return row;
+}
 
 /** 把场景素材铺到工作台上。**这一屏此前是写死的老陈档案。**
  *
@@ -1785,26 +1805,34 @@ function paintDesk() {
   $('deskNote').innerHTML = SCENE.note.join('<br>');
   document.querySelector('.st-label').textContent = `${SCENE.pronoun}现在`;
 
+  // warn 的几行是牌，默认摊开；其余是背景，收进「展开」。
+  // 六行等权重铺开时，那组矛盾和"开户 19 年"一样重，玩家一条都记不住。
   const box = $('cFacts');
+  const warn = c.facts.filter((f) => f.warn);
+  const rest = c.facts.filter((f) => !f.warn);
   box.innerHTML = '';
-  c.facts.forEach((f) => {
-    const row = document.createElement('div');
-    row.className = 'fact' + (f.warn ? ' warn' : '');
-    const dt = document.createElement('dt');
-    dt.textContent = f.label;
-    const dd = document.createElement('dd');
-    const v = document.createElement('span');
-    v.className = 'num';
-    v.textContent = f.value;
-    dd.appendChild(v);
-    if (f.note) {
-      const em = document.createElement('em');
-      em.textContent = f.note;
-      dd.appendChild(em);
-    }
-    row.append(dt, dd);
-    box.appendChild(row);
-  });
+  warn.forEach((f) => box.appendChild(factRow(f)));
+
+  const more = $('factsMore');
+  const label = $('factsMoreLabel');
+  if (!rest.length) {
+    more.hidden = true;
+    return;
+  }
+  more.hidden = false;
+  let open = false;
+  const paint = () => {
+    label.textContent = open ? '收起' : `其余 ${rest.length} 项账户信息`;
+    more.setAttribute('aria-expanded', String(open));
+    more.classList.toggle('open', open);
+  };
+  more.onclick = () => {
+    open = !open;
+    if (open) rest.forEach((f) => box.appendChild(factRow(f)));
+    else warn.length && [...box.children].slice(warn.length).forEach((n) => n.remove());
+    paint();
+  };
+  paint();
 }
 
 function showScreen(id) {
