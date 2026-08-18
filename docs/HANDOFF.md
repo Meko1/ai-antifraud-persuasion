@@ -316,6 +316,60 @@ REDESIGN-TRAINER D1 写了三个月的"投顾训练器"定位，虚构设定一�
 
 ---
 
+## 平台中间件怎么配（8-18）
+
+平台给了共享 Redis 与 MySQL。**只用 Redis，不用 MySQL。**
+
+### 为什么不用 MySQL
+
+这个作品是无状态的：对局状态由客户端持有并签名（ADR-0003），服务端不存任何东西；
+Redis 那点计数是旁路展示，丢了也不影响对局。为了"用上提供的资源"而引一个数据库，
+只会多一个部署期的失败点，还要多一份连接池与凭据要管。真要落库再加。
+
+### Redis 的两条坑，代码里已经堵上
+
+平台的 Redis 是**共享实例**，而且要求所有作品都用 db0。这两件事叠在一起有两个坑：
+
+1. **库号写错不会报错，只会静默丢数。** `app/stats.py::force_db0` 把库号钉死在 0，
+   URL 里写成 `/1` 会被改回 `/0` 并留一行 WARNING。
+2. **通用键名会和别的作品对撞。** 原来的键叫 `stats:games`——几十个作品挤在
+   同一个 db0 里，撞名就会互相把对方的计数器加上去，谁也看不出来，
+   而复盘里那句「别人打成什么样」会显示别人的数。现在全部带
+   `ai-antifraud-persuasion:` 前缀。
+
+两条都有测试守着（`tests/test_stats.py`）。
+
+### 口令怎么送到部署机上
+
+**这是本次最容易卡住的一步**：`.env` 里有真实凭据，按打包规范不进 ZIP；
+而平台通过 Salt 执行 stop/install/start，中间没有地方能传环境变量。
+
+`start.sh` 第 2 段因此会载入一个**跨 release 稳定**的本地环境文件：
+
+```
+${AI_CREATOR_STATE_ROOT:-${XDG_STATE_HOME:-$HOME}}/.ai-antifraud-persuasion/env
+```
+
+在部署机上建一次，之后每次重新部署都自动带上（解压目录会被平台删掉重建，
+这个目录不会）：
+
+```bash
+D="${AI_CREATOR_STATE_ROOT:-${XDG_STATE_HOME:-$HOME}}/.ai-antifraud-persuasion"
+mkdir -p "$D"
+umask 077
+cat > "$D/env" <<'EOF'
+REDIS_URL=redis://:这里填口令@10.126.192.12:7001/0
+INTERNAL_LLM_API_KEY=这里填网关密钥
+EOF
+chmod 600 "$D/env"
+```
+
+真实环境变量优先于这个文件；`STATE_SIGNING_SECRET` 不用写，install.sh 会自己生成。
+
+**别把口令写进仓库、`.env.example`、提交信息或部署平台的备注里。**
+
+---
+
 ## 按大赛两份规范过了一遍（8-18）
 
 用官方两个 skill 实跑：`security-skill` 的安全门禁与 `ai-creator-package-deploy`

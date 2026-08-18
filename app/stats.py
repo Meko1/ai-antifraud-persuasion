@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any, Dict, Iterable, Optional, Set
+from urllib.parse import urlsplit, urlunsplit
 
 from .config import settings
 from .scoring import ALL_PENALTIES, KEY_VALUES, Ending
@@ -27,16 +28,58 @@ try:  # redis 是选填依赖，没装就等于没开这个功能
 except ImportError:  # pragma: no cover - 取决于部署环境装没装
     Redis = None  # type: ignore[assignment]
 
-KEY_GAMES = "stats:games"
-KEY_TURNS = "stats:turns"
-KEY_ENDINGS = "stats:endings"
-KEY_HITS = "stats:hits"
+# ── 键名前缀 ───────────────────────────────────────────────────────────────
+#
+# **2026-08-18 加的前缀，起因是大赛的 Redis 是共享实例、而且要求所有作品都用
+# db0。** 原来的键叫 `stats:games`、`stats:turns`——这是任何一个参赛作品都会
+# 随手取的名字。同一个 db0 里跑着几十个作品，两个用了同名键就会**互相把对方
+# 的计数器加上去**，谁也看不出来，复盘里那句「别人打成什么样」会显示别人的数。
+#
+# 共享 db 上不许用通用键名，这一条与本作品无关，是任何人上共享 Redis 都该做的。
+_NS = "ai-antifraud-persuasion"
+
+KEY_GAMES = f"{_NS}:stats:games"
+KEY_TURNS = f"{_NS}:stats:turns"
+KEY_ENDINGS = f"{_NS}:stats:endings"
+KEY_HITS = f"{_NS}:stats:hits"
 
 # Redis 卡住时不能把对局拖住，超时给得比正常往返大两个数量级也才半秒
 _TIMEOUT = 0.5
 
 # create_task 的返回值不留引用会被 GC 提前回收，任务就悄悄没了
 _pending: Set["asyncio.Task[None]"] = set()
+
+
+def force_db0(url: str) -> str:
+    """把连接串的库号钉死在 0。
+
+    大赛的共享 Redis **要求所有作品都用 db0**（原文三个感叹号）。
+    `redis://host:port` 不写库号时 redis-py 默认就是 0，但"默认是 0"和
+    "写死是 0"是两回事：谁手滑写成 `/1`，写进去的数据在看板上就永远查不到，
+    而且不报错——这种错只会在"为什么统计是空的"上耗掉半天。
+
+    所以这里不信任输入：URL 带了别的库号就改回 0，并留一行日志说明改过。
+    不抛错——统计是旁路功能，任何情况下都不该把服务拦住（见模块顶部）。
+    """
+    if not url:
+        return url
+    try:
+        parts = urlsplit(url)
+    except ValueError:  # pragma: no cover - 连拆都拆不开的串，交给 redis-py 报错
+        return url
+
+    # rediss:// 与 unix:// 的 path 语义不同，只处理 redis/rediss
+    if parts.scheme not in ("redis", "rediss"):
+        return url
+
+    current = parts.path.lstrip("/")
+    if current in ("", "0"):
+        return urlunsplit(parts._replace(path="/0"))
+
+    logger.warning(
+        "REDIS_URL 指定了 db=%s，已按大赛要求改用 db=0", current
+    )
+    return urlunsplit(parts._replace(path="/0"))
 
 
 class Stats:
@@ -53,7 +96,7 @@ class Stats:
     def _conn(self) -> Any:
         if self._client is None:
             self._client = Redis.from_url(
-                self._url,
+                force_db0(self._url),
                 socket_timeout=_TIMEOUT,
                 socket_connect_timeout=_TIMEOUT,
                 decode_responses=True,
