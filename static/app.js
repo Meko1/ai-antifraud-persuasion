@@ -806,6 +806,143 @@ function verdictCopy() {
   return parts.join('');
 }
 
+// ── 本机训练记录（跨局） ─────────────────────────────────────
+//
+// 单局复盘（paintKeyBars 等）回答"这一局你打得怎么样"；这里回答
+// "打了这么多局，你是不是在变好"。**只存本机 localStorage**——没有账号
+// 体系，不识别是谁，不能跨设备合并，因此也回答不了"团队里谁最常踩合规线"
+// 那类问题（那需要服务端持有用户状态，是另一件事，见交接给项目所有者的
+// 待定项）。localStorage 不可用（隐私模式、被禁用）时整块不出现，
+// 复盘其余部分不受影响——和 Redis 不可用时 statsWrap 的处理是同一个原则。
+
+const HISTORY_KEY = 'af_history_v1';
+const HISTORY_CAP = 50; // 只是个防止无限增长的上限，不是产品意图
+
+// 结局阶梯（CONTEXT.md「结局」）：四档由高到低，被拉黑不入档，
+// 因此不参与"最好成绩"这个比较——把它硬塞进排名会把"出局"读成"垫底"。
+const TIER_LABEL = {
+  persuaded: '劝住', intercepted: '拦下', stalled: '拖住',
+  transferred: '转账', blacklisted: '被拉黑',
+};
+const TIER_RANK = { persuaded: 4, intercepted: 3, stalled: 2, transferred: 1 };
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 把这一局记一笔。每局只记一次——openReview 只在 finish() 之后触发一次，
+ *  但仍然用 game 上的标记兜底，防止哪天多出一条调用路径就悄悄记重。 */
+function recordGame(kind) {
+  if (game._historyRecorded) return loadHistory();
+  const uses = {};
+  const gains = {};
+  Object.keys(KEYS).forEach((k) => {
+    const turns = game.turns.filter((t) => t.hits.includes(k));
+    uses[k] = turns.length;
+    gains[k] = turns.reduce((s, t) => s + Math.max(0, t.delta), 0);
+  });
+  const entry = {
+    ts: Date.now(),
+    sid: SCENE ? SCENE.id : '',
+    clientName: SCENE ? SCENE.client.name : '',
+    kind,
+    trust: game.trust,
+    rounds: game.turns.length,
+    uses, gains,
+  };
+  let list = loadHistory();
+  list.push(entry);
+  if (list.length > HISTORY_CAP) list = list.slice(list.length - HISTORY_CAP);
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+    game._historyRecorded = true;
+  } catch {
+    // 存不进去（隐私模式、配额满）就当这局没记，不影响复盘其余部分
+  }
+  return list;
+}
+
+function paintHistory(view, kind) {
+  let list;
+  try {
+    list = recordGame(kind);
+  } catch {
+    list = null;
+  }
+  if (!list || !list.length) return; // historyWrap 保持 hidden，和 statsWrap 同一处理
+
+  view.querySelector('#historyWrap').hidden = false;
+
+  const prior = list.slice(0, -1); // 不含本局，用来算"较以往"
+  const ranked = list.filter((e) => e.kind in TIER_RANK);
+  const best = ranked.reduce(
+    (a, b) => (TIER_RANK[b.kind] > (a ? TIER_RANK[a.kind] : -1) ? b : a), null);
+  const avgTrust = prior.length
+    ? Math.round(prior.reduce((s, e) => s + e.trust, 0) / prior.length)
+    : null;
+  const diff = avgTrust == null ? null : game.trust - avgTrust;
+
+  const strip = view.querySelector('#historyStrip');
+  strip.innerHTML = `
+    <div class="stat"><b class="num">${list.length}</b><i>这台设备上打过</i></div>
+    <div class="stat"><b class="num">${best ? TIER_LABEL[best.kind] : '被拉黑'}</b><i>最好成绩</i></div>
+    <div class="stat"><b class="num${diff == null ? ' nil' : ''}">${
+      diff == null ? '—' : (diff >= 0 ? '+' : '') + diff
+    }</b><i>${diff == null ? '还没有对比' : '信任度较以往均值'}</i></div>`;
+
+  const recentBox = view.querySelector('#historyList');
+  recentBox.innerHTML = '';
+  const recent = prior.slice(-5).reverse();
+  if (!recent.length) {
+    const p = document.createElement('p');
+    p.className = 'historyempty';
+    p.textContent = '这是这台设备上的第一局，下一局打完这里会有对比。';
+    recentBox.appendChild(p);
+  } else {
+    recent.forEach((e) => {
+      const row = document.createElement('div');
+      row.className = 'historyrow';
+      const d = new Date(e.ts);
+      const when = `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')} `
+        + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      const whenEl = document.createElement('span');
+      whenEl.className = 'historywhen num';
+      whenEl.textContent = when;
+      const whoEl = document.createElement('span');
+      whoEl.className = 'historywho';
+      whoEl.textContent = e.clientName || '客户';
+      const tierEl = document.createElement('span');
+      tierEl.className = `historytier ${e.kind}`;
+      tierEl.textContent = TIER_LABEL[e.kind] || e.kind;
+      row.append(whenEl, whoEl, tierEl);
+      recentBox.appendChild(row);
+    });
+  }
+
+  // 只在有历史可比时才提示"最少历练"，否则这行会和本局的 keyBars 完全重复
+  const weakBox = view.querySelector('#historyWeak');
+  if (!prior.length) {
+    weakBox.hidden = true;
+  } else {
+    const totalUses = {};
+    Object.keys(KEYS).forEach((k) => (totalUses[k] = 0));
+    list.forEach((e) => {
+      Object.keys(KEYS).forEach((k) => { totalUses[k] += (e.uses && e.uses[k]) || 0; });
+    });
+    const weakest = Object.keys(KEYS).sort((a, b) => totalUses[a] - totalUses[b])[0];
+    weakBox.hidden = false;
+    weakBox.querySelector('.keyname').textContent = KEYS[weakest].name;
+    weakBox.querySelector('.keynum').textContent = `${list.length} 局里用过 ${totalUses[weakest]} 次`;
+    weakBox.querySelector('.keynote').textContent = KEYS[weakest].tip;
+  }
+}
+
 function openReview() {
   const usedPenalties = Object.keys(PENALTIES).filter(
     (p) => game.turns.some((t) => t.hits.includes(p)));
@@ -845,6 +982,15 @@ function openReview() {
         <div class="stat"><b id="sBest"></b><i>最有力的一句</i></div>
       </div>
 
+      <!-- K 线紧跟着结算卡与三栏统计，中间不隔一个 group-title——三块本来说的
+           是同一件事（这一局的信任度），断成三个标题反而像三个不相干的板块。
+           百分比也放在这儿，跟统计数据本身待在一起，不单独开一节。 -->
+      <div class="panel">
+        <canvas id="chart"></canvas>
+        <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分给出的分——它和实体端点的落差就是每轮的信任流失。</p>
+        <p class="percentile" id="percentileLine" hidden></p>
+      </div>
+
       <!-- 合规红线。**排在所有内容之前**（结算卡与三栏统计之后），
            因为在一个投顾训练系统里，这是复盘要说的第一件事：
            你可能把三十万全保住了，而这场对话在现实里已经是一起合规事件。
@@ -861,19 +1007,11 @@ function openReview() {
            "这些都得从他嘴里问出来"（CONTEXT.md「对局」）。搬到这里之后
            它们从剧透变成记分卡。
 
-           位置刻意排在结算与三栏统计之后、K 线之前：它回答的是
+           位置刻意排在结算与三栏统计、K 线这块之后：它回答的是
            "刚才那十二轮为什么那么难"，先看到它，后面每一节读起来都不一样。 -->
       <div class="group">
         <div class="group-title" id="phoneTitle">这一局你没看见的</div>
         <div class="panel" id="phoneList"></div>
-      </div>
-
-      <div class="group">
-        <div class="group-title">信任度怎么走的</div>
-        <div class="panel">
-          <canvas id="chart"></canvas>
-          <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分给出的分——它和实体端点的落差就是每轮的信任流失。</p>
-        </div>
       </div>
 
       <!-- 三把钥匙的维度条。**同类产品（AI 陪练那一类）人人都有维度评分，
@@ -904,9 +1042,21 @@ function openReview() {
         <div class="panel" id="statsList"></div>
       </div>
 
-      <div class="group">
-        <div class="group-title">名场面 · 挑一句他说的话</div>
-        <div class="panel" id="quoteList" role="radiogroup" aria-label="名场面"></div>
+      <!-- 本机训练记录。只存在这台设备的 localStorage——不上传、不识别身份、
+           不能跨设备同步，因此也不是排行榜（ADR-0003：排行榜需要服务端权威
+           状态，与"服务端无状态"直接冲突）。它回答的是同一个练习者自己会问
+           的问题："我是不是在变好"，答案只对这台设备上打过的局负责。 -->
+      <div class="group" id="historyWrap" hidden>
+        <div class="group-title">你在这台设备上的训练记录</div>
+        <div class="panel statstrip" id="historyStrip"></div>
+        <div class="panel" id="historyList"></div>
+        <div class="panel keyrow" id="historyWeak" hidden>
+          <div class="keyhead">
+            <span class="keyname"></span>
+            <span class="keynum"></span>
+          </div>
+          <div class="keynote"></div>
+        </div>
       </div>
 
       <div class="actions">
@@ -987,8 +1137,8 @@ function openReview() {
     usedPenalties.forEach((p) => box.appendChild(tipCard(PENALTIES[p])));
   }
 
-  paintQuotes(view);
   paintStats(view, kind);
+  paintHistory(view, kind);
 
   view.querySelector('#restart').onclick = () => location.reload();
   view.querySelector('#makeCard').onclick = () => makeCard(view);
@@ -1082,10 +1232,8 @@ function phoneRows() {
   }));
 }
 
-/** 他这一局说过的话，按时间序，不做任何过滤。
- *
- * 与 hisLines() 分开：那个是给名场面用的，按句切、掐长度、去重；
- * 这里要的是全文，掐掉一个字都可能让某条线索误判成"他没提"。
+/** 他这一局说过的话，按时间序，不做任何过滤——掐掉一个字都可能让
+ *  某条线索误判成"他没提"。
  */
 function hisSpeech() {
   const out = [{ round: 0, text: game.opening || '' }];
@@ -1307,6 +1455,25 @@ function scoreLedger(t) {
  * **全程是旁路**：Redis 没配、接口挂了、还没人玩过，这一节整块不出现，
  * 复盘的其余部分一个字都不受影响。绝不让一个纯展示功能拖累最后一屏。
  */
+// 后端 `app/stats.py` 的 `_trust_bucket`：5 分一档、20 个桶，下标 = trust // 5。
+// 复盘定的门槛：样本（桶内计数之和）不满 20 局不显示——数据太少时报一个
+// "超过 100% 的人"没有意义，不如不说，跟这一节整体"没数据就不出现"是同一条原则。
+const TRUST_SAMPLE_MIN = 20;
+
+/** 分布是分桶存的，不是每一局的原始值，百分位因此是个近似值：
+ *  桶外的直接算"被我超过"，桶内按信任度在这 5 分区间里的相对位置插值——
+ *  不然数字会卡在 5 分一档的台阶上，一眼就看得出是硬凑的。 */
+function trustPercentile(buckets, trust) {
+  if (!Array.isArray(buckets) || !buckets.length) return null;
+  const total = buckets.reduce((a, b) => a + b, 0);
+  if (total < TRUST_SAMPLE_MIN) return null;
+  const mine = Math.max(0, Math.min(buckets.length - 1, Math.floor(trust / 5)));
+  const below = buckets.slice(0, mine).reduce((a, b) => a + b, 0);
+  const within = buckets[mine] || 0;
+  const pos = within ? Math.max(0, Math.min(1, (trust - mine * 5) / 5)) : 0;
+  return Math.round(((below + within * pos) / total) * 100);
+}
+
 async function paintStats(view, kind) {
   let data;
   try {
@@ -1314,7 +1481,20 @@ async function paintStats(view, kind) {
   } catch (e) {
     return;
   }
-  if (!data || !data.available || !data.turns) return;
+  if (!data || !data.available) return;
+
+  // 百分位单独判定，不跟下面 `!data.turns` 的早退共用一个门槛——
+  // 它现在挂在结算卡那块里，不属于「别人打成什么样」这一节，
+  // 后者没数据不该连累前者也不出现。
+  const pct = trustPercentile(data.trust_buckets, game.trust);
+  if (pct != null) {
+    game._percentile = pct;
+    const line = view.querySelector('#percentileLine');
+    line.hidden = false;
+    line.innerHTML = `这一局的信任度超过了已有记录里 <b>${pct}%</b>`;
+  }
+
+  if (!data.turns) return;
 
   const rows = [];
   const mine = game.turns.length;
@@ -1477,135 +1657,7 @@ function tipCard(meta) {
   return card;
 }
 
-// ── 名场面 ──────────────────────────────────────────────────
-//
-// 人们分享的不是自己的成绩，是 AI 说的那句话的截图。所以分享卡的主体是
-// **他说过的一句话**，成绩退到卡底一行小字。玩家自己挑那一句——
-// 哪句戳中了他，只有他知道，任何自动挑选都不如他准。
-
-const JARGON = [
-  '老师', '内部', '消息', '涨停', '翻倍', '行规', '散户', '机构', '补仓', '割肉',
-  '满仓', '加仓', '踏空', '解冻', '保证金', '跟单', '账户', '手续费', '出金',
-  '这波', '行情', '免责', '协议', '收益',
-];
-
-/** 按句切。后端已按句下发（ADR-0004），开场白与结局台词还得自己切一遍。 */
-function sentences(text) {
-  const out = [];
-  let cur = '';
-  for (const ch of text) {
-    cur += ch;
-    if ('。！？…'.includes(ch)) {
-      out.push(cur.trim());
-      cur = '';
-    }
-  }
-  if (cur.trim()) out.push(cur.trim());
-  return out;
-}
-
-/** 他这一局说过的所有句子，按时间序，去重。 */
-function hisLines() {
-  const raw = [];
-  sentences(game.opening).forEach((text) => raw.push({ round: 0, text }));
-  game.turns.forEach((t) =>
-    (t.lines || sentences(t.reply || '')).forEach((line) =>
-      sentences(line).forEach((text) => raw.push({ round: t.round, text }))));
-  ((game.ending && game.ending.lines) || []).forEach((line) =>
-    sentences(line).forEach((text) => raw.push({ round: null, text })));
-
-  const seen = new Set();
-  return raw.filter(({ text }) => {
-    // 太短的没有信息量，太长的在卡上就不是"一句话"了
-    if (text.length < 8 || text.length > 44 || seen.has(text)) return false;
-    seen.add(text);
-    return true;
-  });
-}
-
-/** 默认挑哪一句。挑不准也没关系——真正的选择权在下面那张列表上，
- *  这个函数只负责让默认值不尴尬。 */
-function punch(text) {
-  let score = 20 - Math.abs(text.length - 20);        // 20 字上下最像一句能被截图的话
-  if (text.includes('你')) score += 6;                 // 冲着你来的话最有对峙感
-  if (JARGON.some((w) => text.includes(w))) score += 5; // 骗局黑话是行内人一眼认得出的那部分
-  if (/[，,]/.test(text)) score += 2;                  // 有转折的句子比平铺的一句有味道
-  return score;
-}
-
-function quoteLabel(quote) {
-  if (quote.round === 0) return '开场';
-  return quote.round === null ? '最后' : `第 ${quote.round} 轮`;
-}
-
-function paintQuotes(view) {
-  const box = view.querySelector('#quoteList');
-  const lines = hisLines();
-  if (!lines.length) {
-    // 兜底台词全程顶上时会走到这里。没有名场面就没有分享卡——
-    // 与其出一张只有成绩的卡，不如让按钮明说。
-    box.innerHTML = '<p class="empty">这一局他没留下能单独拎出来的话。</p>';
-    game.quote = null;
-    const btn = view.querySelector('#makeCard');
-    btn.disabled = true;
-    btn.textContent = '没有可上卡的话';
-    return;
-  }
-
-  const top = lines.slice().sort((a, b) => punch(b.text) - punch(a.text))[0];
-  game.quote = game.quote || top;
-
-  lines.forEach((quote) => {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'quote';
-    row.setAttribute('role', 'radio');
-
-    const no = document.createElement('span');
-    no.className = 'qno';
-    no.textContent = quoteLabel(quote);
-    const text = document.createElement('span');
-    text.className = 'qtext';
-    text.textContent = quote.text;
-    row.append(no, text);
-
-    const select = () => {
-      game.quote = quote;
-      box.querySelectorAll('.quote').forEach((el) =>
-        el.setAttribute('aria-checked', String(el === row)));
-      // 已经出过图就当场换一张，省得玩家再点一次"生成"
-      if (view.querySelector('#card')) makeCard(view);
-    };
-    row.setAttribute('aria-checked', String(quote.text === game.quote.text));
-    row.onclick = select;
-    box.appendChild(row);
-  });
-}
-
 // ── 分享卡 ──────────────────────────────────────────────────
-
-// 避头尾：canvas 没有浏览器的中文断行规则，不管的话「——」会被劈成两半
-const NO_LINE_START = '，。、；：？！」）】》…—';
-
-function wrapText(ctx, text, maxWidth) {
-  const lines = [];
-  let line = '';
-  for (const ch of text) {
-    if (ctx.measureText(line + ch).width > maxWidth && line) {
-      if (NO_LINE_START.includes(ch)) {
-        lines.push(line + ch);
-        line = '';
-        continue;
-      }
-      lines.push(line);
-      line = ch;
-    } else {
-      line += ch;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
-}
 
 /** 圆角矩形。ctx.roundRect 在旧一点的 iOS Safari 上还没有，自己描一遍。 */
 function roundRect(ctx, x, y, w, h, r) {
@@ -1624,45 +1676,46 @@ function tierColor(kind, c) {
   return c.red;
 }
 
-/** 分享卡 = 他那句话的聊天截图。
+/** 分享卡 = 复盘正文里"结算卡 + 三栏统计 + K 线 + 百分比"这一整块，重画一遍。
  *
- * 上一版是一张成绩单（K 线 + 轮次 + 信任度峰值），而人们不发自己的成绩，
- * 发的是 AI 说的话——一个同行看到「免责协议那是行规，你外行不懂」会心头一紧，
- * 因为他上周刚听客户说过差不多的话。所以主体让给那句话，成绩退到卡底一行。
- * K 线没有丢，它留在复盘里——那是给认真打的人和评审看的东西。
+ * 上一版分享卡是他说过的一句话（聊天气泡截图），现在这一块换成了复盘正文
+ * 本身的内容——两者不再是两套东西：卡上有什么，正文往上翻就看得到。
+ * K 线直接复用 `paintKline`，画法与屏幕上那张一模一样，不用另起一套逻辑。
  */
 function makeCard(view) {
   const W = 640;
-  const pad = 44;
-  const AV = 60;              // 头像
-  const GAP = 16;             // 头像与气泡的间距
-  const BUB_PAD_X = 26;
-  const BUB_PAD_Y = 24;
-  const QUOTE_SIZE = 30;
-  const QUOTE_LH = 48;
+  const pad = 40;
+  const contentW = W - pad * 2;
   const c = palette();
   const kind = game.ending ? game.ending.kind : 'transferred';
   const meta = endingMeta(kind);
-  const quote = game.quote;
-  if (!quote) return;
+  const best = game.turns.reduce(
+    (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
+  // 分享卡生成时百分位可能还没算出来（`/api/stats` 是异步旁路）：没有就不画，
+  // 跟正文里 `#percentileLine` 的 hidden 处理是同一条原则，不硬凑一个数。
+  const pct = typeof game._percentile === 'number' ? game._percentile : null;
 
   const wrap = view.querySelector('#cardWrap');
   wrap.innerHTML = '<canvas id="card"></canvas>';
   const canvas = view.querySelector('#card');
 
-  // 先量那句话要占几行，再定卡片多高——句子长短决定卡片高矮，不留空档
-  const bubbleX = pad + AV + GAP;
-  const bubbleMax = W - pad - bubbleX;
-  const probe = canvas.getContext('2d');
-  probe.font = `600 ${QUOTE_SIZE}px ${c.sans}`;
-  const quoteLines = wrapText(probe, quote.text, bubbleMax - BUB_PAD_X * 2);
-  const bubbleW = Math.max(
-    ...quoteLines.map((l) => probe.measureText(l).width)) + BUB_PAD_X * 2;
-  const bubbleH = quoteLines.length * QUOTE_LH + BUB_PAD_Y * 2 - (QUOTE_LH - QUOTE_SIZE);
-
-  const BUB_TOP = pad + 46;
-  const FOOT_TOP = BUB_TOP + bubbleH + 132;
-  const H = FOOT_TOP + 82;   // 底部留白与左右的 pad 对齐，卡才不显得下坠
+  // 版式是固定的：除了要不要那行百分比，每一块的高度都是常数，
+  // 不用像上一版那样先量一句变长变短的引言才能定卡片多高。
+  const TIER_TOP = pad + 34;
+  const AMT_TOP = TIER_TOP + 58;
+  const CAP_TOP = AMT_TOP + 54;
+  const SAVED_TOP = CAP_TOP + 22;
+  const DIV1 = SAVED_TOP + 34;
+  const STAT_TOP = DIV1 + 26;
+  const STAT_H = 74;
+  const DIV2 = STAT_TOP + STAT_H + 18;
+  const CHART_TOP = DIV2 + 22;
+  const CHART_H = 190;
+  const LEGEND_TOP = CHART_TOP + CHART_H + 14;
+  const PCT_TOP = LEGEND_TOP + 30;
+  const PCT_H = pct != null ? 68 : 0;
+  const FOOT_TOP = PCT_TOP + PCT_H + (pct != null ? 16 : -8);
+  const H = FOOT_TOP + 56;
 
   const ctx = fitCanvas(canvas, W, H);
 
@@ -1676,62 +1729,111 @@ function makeCard(view) {
   ctx.font = `500 15px ${c.sans}`;
   ctx.fillText('AI 反诈劝阻', pad, pad);
 
-  // 头像：和对话里那个是同一个（.av-chen）
-  ctx.fillStyle = '#6f8bb5';
-  roundRect(ctx, pad, BUB_TOP, AV, AV, 6);
+  // 结局徽章：三色沿用复盘正文 .summary 的用法（劝住/拦下=品牌色，
+  // 拖住=灰，转账/拉黑=红），卡片和正文不会看着像两个不同的产品
+  const pill = `${meta.tier} · ${meta.title}`;
+  ctx.font = `600 15px ${c.sans}`;
+  const pillW = ctx.measureText(pill).width + 24;
+  ctx.fillStyle = tierColor(kind, c);
+  ctx.globalAlpha = 0.12;
+  roundRect(ctx, pad, TIER_TOP, pillW, 30, 15);
   ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.font = `500 25px ${c.sans}`;
-  ctx.textAlign = 'center';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = tierColor(kind, c);
   ctx.textBaseline = 'middle';
-  ctx.fillText(peerInitial(), pad + AV / 2, BUB_TOP + AV / 2 + 1);
-  ctx.textAlign = 'left';
+  ctx.fillText(pill, pad + 12, TIER_TOP + 16);
   ctx.textBaseline = 'top';
 
-  // 气泡：白底、5px 圆角、左上一个小尖角，和界面里的一模一样
-  ctx.fillStyle = c.white;
-  roundRect(ctx, bubbleX, BUB_TOP, bubbleW, bubbleH, 8);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(bubbleX, BUB_TOP + 22);
-  ctx.lineTo(bubbleX - 9, BUB_TOP + 30);
-  ctx.lineTo(bubbleX, BUB_TOP + 40);
-  ctx.closePath();
-  ctx.fill();
-
   ctx.fillStyle = c.text;
-  ctx.font = `600 ${QUOTE_SIZE}px ${c.sans}`;
-  quoteLines.forEach((line, i) =>
-    ctx.fillText(line, bubbleX + BUB_PAD_X, BUB_TOP + BUB_PAD_Y + i * QUOTE_LH));
+  ctx.font = `600 46px ${c.sans}`;
+  ctx.fillText(wholeMoney(savedAmount(kind)), pad, AMT_TOP);
 
-  ctx.fillStyle = c.sub;
+  ctx.fillStyle = c.note;
+  ctx.font = `400 13px ${c.sans}`;
+  ctx.fillText('守住的钱', pad, CAP_TOP);
+
+  ctx.fillStyle = c.gray;
   ctx.font = `400 16px ${c.sans}`;
-  ctx.fillText(`老陈 · ${quoteLabel(quote)}`, bubbleX, BUB_TOP + bubbleH + 14);
+  ctx.fillText(meta.savedCopy, pad, SAVED_TOP);
 
-  // 成绩退到这一行：结局那一档 + 你救回了多少钱。金额是这件事在现实里的记法。
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(pad, BUB_TOP + bubbleH + 62.5);
-  ctx.lineTo(W - pad, BUB_TOP + bubbleH + 62.5);
+  ctx.moveTo(pad, DIV1);
+  ctx.lineTo(W - pad, DIV1);
   ctx.stroke();
 
-  const tier = `${meta.tier} · ${meta.title}`;
-  ctx.fillStyle = tierColor(kind, c);
-  ctx.font = `600 27px ${c.sans}`;
-  ctx.fillText(tier, pad, BUB_TOP + bubbleH + 86);
-  ctx.fillStyle = c.gray;
-  ctx.font = `400 18px ${c.sans}`;
-  ctx.fillText(meta.savedCopy, pad, BUB_TOP + bubbleH + 126);
+  // 三栏统计，排法照抄正文的 statstrip
+  const stats = [
+    [String(game.trust), '最终信任度'],
+    [String(game.turns.length), '用了几轮'],
+    [best && best.delta > 0 ? `+${best.delta}` : '—',
+      best && best.delta > 0 ? `第 ${best.round} 轮最有力` : '没有一句推动他'],
+  ];
+  const colW = contentW / 3;
+  ctx.textAlign = 'center';
+  stats.forEach(([num, label], i) => {
+    const cx = pad + colW * i;
+    if (i) {
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+      ctx.beginPath();
+      ctx.moveTo(cx, STAT_TOP - 4);
+      ctx.lineTo(cx, STAT_TOP + STAT_H - 14);
+      ctx.stroke();
+    }
+    ctx.fillStyle = c.text;
+    ctx.font = `600 24px ${c.sans}`;
+    ctx.fillText(num, cx + colW / 2, STAT_TOP);
+    ctx.fillStyle = c.note;
+    ctx.font = `400 12px ${c.sans}`;
+    ctx.fillText(label, cx + colW / 2, STAT_TOP + 32);
+  });
+  ctx.textAlign = 'left';
+
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+  ctx.beginPath();
+  ctx.moveTo(pad, DIV2);
+  ctx.lineTo(W - pad, DIV2);
+  ctx.stroke();
+
+  // K 线：跟正文用的是同一个画法，复盘里看到的是什么，卡上就是什么
+  paintKline(ctx, { x: pad, y: CHART_TOP, w: contentW, h: CHART_H }, {
+    turns: game.turns,
+    threshold: game.threshold,
+    slots: Math.max(game.turns.length, 6),
+    palette: c,
+    axis: true,
+    start: game.turns.length ? game.turns[0].before : null,
+  });
+
+  ctx.fillStyle = c.note;
+  ctx.font = `400 12px ${c.sans}`;
+  ctx.fillText('一根蜡烛一轮，红涨绿跌', pad, LEGEND_TOP);
+
+  // 百分比是这张卡唯二在复盘正文里也常驻显示、但专门为"分享出去"这件事
+  // 加了视觉分量的东西——单独一块底色，跟上面素净的统计数字拉开
+  if (pct != null) {
+    ctx.fillStyle = c.brand;
+    ctx.globalAlpha = 0.1;
+    roundRect(ctx, pad, PCT_TOP, contentW, PCT_H, 10);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c.brand;
+    ctx.font = `600 20px ${c.sans}`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`这一局的信任度超过了已有记录里 ${pct}%`, pad + 18, PCT_TOP + PCT_H / 2);
+    ctx.textBaseline = 'top';
+  }
 
   // 钩子放在右下角，正好接住下一步的"接话"入口
   ctx.fillStyle = c.sub;
   ctx.font = `400 14px ${c.sans}`;
-  if (game.contestId) ctx.fillText(`参赛编号 ${game.contestId}`, pad, FOOT_TOP + 40);
+  if (game.contestId) ctx.fillText(`参赛编号 ${game.contestId}`, pad, FOOT_TOP + 22);
   ctx.textAlign = 'right';
   ctx.fillStyle = c.gray;
-  ctx.font = `500 17px ${c.sans}`;
-  ctx.fillText('你的客户这么说，你怎么接？', W - pad, FOOT_TOP + 36);
+  ctx.font = `500 16px ${c.sans}`;
+  ctx.fillText('你的客户这么说，你怎么接？', W - pad, FOOT_TOP + 18);
+  ctx.textAlign = 'left';
 
   canvas.toBlob((blob) => {
     if (!blob) return;
