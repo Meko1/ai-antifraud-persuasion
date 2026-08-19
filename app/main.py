@@ -242,7 +242,9 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
             if event.name == "score":
                 stats.record_turn(event.data.get("hits", ()))
             elif event.name == "ending":
-                stats.record_ending(event.data.get("kind", ""))
+                kind = event.data.get("kind", "")
+                stats.record_ending(kind)
+                stats.record_trust(kind, event.data.get("trust", 0))
             yield _sse(event.name, event.data)
         # 走完整轮才记消费。中途出错的那一张令牌必须还能重试——
         # 玩家刚说的那句话不该因为网关抖了一下就作废。

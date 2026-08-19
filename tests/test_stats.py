@@ -16,6 +16,7 @@ from app.stats import (
     KEY_ENDINGS,
     KEY_GAMES,
     KEY_HITS,
+    KEY_TRUST,
     KEY_TURNS,
     Stats,
     force_db0,
@@ -239,5 +240,56 @@ def test_键名带作品前缀() -> None:
     几十个作品挤在同一个 db0 里，撞名就会**互相把对方的计数器加上去**，
     谁也看不出来，而复盘里那句「别人打成什么样」会显示别人的数。
     """
-    for key in (KEY_GAMES, KEY_TURNS, KEY_ENDINGS, KEY_HITS):
+    for key in (KEY_GAMES, KEY_TURNS, KEY_ENDINGS, KEY_HITS, KEY_TRUST):
         assert key.startswith("ai-antifraud-persuasion:"), key
+
+
+# ── 信任度分布（复盘「超过百分之多少的人」用的数据源）──────────────────
+
+
+def test_被拉黑不进信任度分布() -> None:
+    """被拉黑必然信任度=0——真记进去会把所有人的百分位都顶得虚高。
+    CONTEXT.md「结局」原话："被拉黑是提前终止，不入档"，这里是同一条原则。"""
+
+    async def scenario() -> Dict[str, Any]:
+        fake = FakeRedis()
+        s = _wired(fake)
+        s.record_trust("blacklisted", 0)
+        await _drain()
+        return fake.store
+
+    assert KEY_TRUST not in asyncio.run(scenario())
+
+
+def test_四档结局的信任度落进对应的桶() -> None:
+    async def scenario() -> Dict[str, Any]:
+        fake = FakeRedis()
+        s = _wired(fake)
+        s.record_trust("persuaded", 83)   # 83 // 5 = 16
+        s.record_trust("transferred", 2)  # 2 // 5 = 0
+        s.record_trust("stalled", 100)    # 夹到最后一个桶，不是越界
+        await _drain()
+        return fake.store[KEY_TRUST]
+
+    result = asyncio.run(scenario())
+    assert result == {"16": 1, "0": 1, "19": 1}
+
+
+def test_快照的信任度分布是长度固定的数组() -> None:
+    async def scenario() -> Dict[str, Any]:
+        fake = FakeRedis()
+        s = _wired(fake)
+        s.record_trust("persuaded", 83)
+        s.record_trust("persuaded", 81)
+        await _drain()
+        return await s.snapshot()
+
+    snap = asyncio.run(scenario())
+    assert len(snap["trust_buckets"]) == 20
+    assert snap["trust_buckets"][16] == 2
+    assert sum(snap["trust_buckets"]) == 2
+
+
+def test_没有信任度记录时分布是全零数组而不是缺字段() -> None:
+    snap = asyncio.run(_wired(FakeRedis()).snapshot())
+    assert snap["trust_buckets"] == [0] * 20
