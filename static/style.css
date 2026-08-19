@@ -150,6 +150,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: 16px;
 }
 
 /* 你是谁。一行就够，但不能没有——少了它，下面那张客户卡是谁在看就没有交代 */
@@ -195,6 +196,8 @@ body {
 .alertbar b { font-weight: 600; }
 /* #b3665f 对这块淡红底只有 3.79:1，#a3554e 是 4.73:1。差别肉眼几乎看不出，
    但 12px 的字在这个位置是要被读的 */
+/* 原先是「1 条待处理 · 14:47」——时间在抬头那行已经有了一个"今天 14:47"，
+   同一屏出现两次同一个时间，读的人会以为是两件事。只留状态。 */
 .alert-sub { margin-left: auto; font-size: 12px; color: #a3554e; }
 
 /* ── 客户档案 ─────────────────────────────────────────────
@@ -271,7 +274,41 @@ body {
   box-shadow: inset 2px 0 0 var(--wx-pay);
   background: #fffdf8;
 }
-.fact.warn dd { font-weight: 600; }
+/* 牌要比背景重一档：数值放大、加粗。这三行是"这不对劲"的全部证据，
+   和「开户 19 年」用同一个字号时，玩家读完一条都记不住。 */
+.fact.warn dd .num { font-size: 16.5px; font-weight: 600; letter-spacing: -0.01em; }
+.fact.warn dt { color: #7a6a45; }
+
+/* 「其余 N 项账户信息」。做成整行的浅色条，不是链接——
+   券商 CRM 里这种"还有更多字段"的入口就长这样。 */
+.facts-more {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-top: 1px solid var(--wx-line);
+  background: #fbfbfb;
+  color: var(--wx-note);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: center;
+  cursor: pointer;
+}
+.facts-more:hover { background: #f4f4f4; }
+.facts-more::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: -2px 0 0 6px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  transform: rotate(45deg);
+  vertical-align: middle;
+  transition: transform 160ms var(--ease);
+}
+.facts-more.open::after { transform: rotate(-135deg); margin-top: 2px; }
+.facts-more[hidden] { display: none; }
 
 .desk-label {
   padding: 18px 16px 7px;
@@ -425,17 +462,21 @@ body {
    未读（首页已经不是他的手机），后者在复盘揭晓里也不该有——荐股群设成
    免打扰，和"他一天盯着群里那几条"是矛盾的。 */
 
-/* 交底那段话。它现在不再是"这是老陈的手机"式的旁白，而是把这一局的活
-   说清楚：你手上只有账户这一侧，其余只能问出来。
-   颜色从 #9a9a9a（2.7:1）换到 --wx-note（5.33:1）——这段是正文不是时间戳。 */
+/* 交底那段话。**这是整屏唯一一段说清"你要干什么、为什么难"的文字**，
+   8-18 从最底下提到了预警条正下方，权重也跟着提上来：
+   字号 13 → 14.5，颜色从 --wx-note 提到接近正文，左边一道竖线把它
+   和下面那张数据表分开。
+
+   它不做成卡片、不加底色块，是刻意的：这一屏是券商 CRM，
+   一个带边框的"引导语"会立刻露出"这是个游戏教程"的马脚。
+   竖线是批注的语法，不是营销的语法。 */
 .home-note {
-  margin: 18px 12px 16px;
-  padding: 13px 14px;
-  border-radius: 8px;
-  background: #f4f4f4;
-  font-size: 13px;
-  line-height: 1.95;
-  color: var(--wx-note);
+  margin: 14px 16px 4px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--wx-pay);
+  font-size: 14.5px;
+  line-height: 1.85;
+  color: #4a4a4a;
 }
 
 .home-note b { color: var(--wx-text); font-weight: 600; }
@@ -991,6 +1032,24 @@ body {
 
 .legend { margin: 0; padding: 0 16px 14px; font-size: 12px; line-height: 1.9; color: var(--wx-note); }
 
+/* 百分比。默认是中性灰底——原来无条件用品牌绿，15% 配一个和 95% 一样鲜亮的
+   "值得庆祝"配色，看着就是怪。只有排名真站得住脚（.good，见 percentileTier）
+   才换成 --wx-brand；两种状态共用同一份排版，只换背景和字色。 */
+.percentile {
+  margin: 0 16px 16px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  background: var(--wx-bg);
+  color: var(--wx-gray);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.percentile.good {
+  background: rgba(7, 193, 96, 0.1);
+  color: var(--wx-brand);
+}
+
 .round {
   display: grid;
   grid-template-columns: 26px 1fr auto;
@@ -1049,6 +1108,22 @@ body {
 .keyrow.unused .keynum { font-size: 12px; font-weight: 400; color: var(--wx-note); }
 .keyrow.unused .keybar { display: none; }
 .keyrow.unused .keynote { margin-top: 5px; }
+
+/* 本机训练记录（跨局）。历史行借的还是"左名右注"那个排法，三色沿用
+   .summary 的用法——保住了钱的绿、转账/拉黑的红，拖住不特殊上色，
+   跟结算卡那句"三档结局只分三种颜色"是同一条道理。 */
+.historyrow { display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; font-size: 13px; }
+.historyrow + .historyrow { box-shadow: inset 0 1px 0 var(--wx-line); }
+.historywhen { flex: none; color: var(--wx-note); }
+.historywho { flex: 1; min-width: 0; color: var(--wx-gray);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.historytier { flex: none; padding: 2px 9px; border-radius: 10px;
+  font-size: 12px; color: var(--wx-gray); background: #f2f2f2; }
+.historytier.persuaded, .historytier.intercepted { color: #0a7d3f; background: #e6f5ec; }
+.historytier.transferred, .historytier.blacklisted { color: #b3332f; background: #fdecec; }
+.historyempty { margin: 0; padding: 16px; font-size: 13px;
+  color: var(--wx-note); text-align: center; }
 
 /* 别人打成什么样。借的还是逐轮那一行的排法（左名右注），只是没有分数那一列——
    它讲的是"你站在哪"，不是"你这一句值多少"，不该长得像一条判分。 */
@@ -1111,29 +1186,6 @@ body {
 .tip .title { font-size: 14.5px; font-weight: 600; }
 .tip p { margin: 5px 0 0; font-size: 13px; line-height: 1.85; color: #6b6b6b; }
 .empty { padding: 14px 16px; font-size: 13.5px; color: var(--wx-note); }
-
-/* 名场面：他说过的话，一句一行，选中的那句上分享卡。
-   传播单元是他的台词，所以这张列表值得占一整块，而不是塞在按钮旁边。 */
-.quote {
-  display: grid;
-  grid-template-columns: 52px 1fr;
-  gap: 10px;
-  width: 100%;
-  padding: 12px 16px;
-  border: 0;
-  background: none;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
-}
-
-.quote + .quote { box-shadow: inset 0 1px 0 var(--wx-line); }
-.quote .qno { font-size: 12px; color: var(--wx-sub); padding-top: 3px; }
-.quote .qtext { font-size: 14.5px; line-height: 1.55; color: #4a4a4a; }
-.quote[aria-checked="true"] { background: #fbfaf3; }
-.quote[aria-checked="true"] .qno { color: var(--gold); }
-.quote[aria-checked="true"] .qtext { color: var(--wx-text); font-weight: 500; }
 
 .actions { display: flex; gap: 10px; padding: 20px 16px 0; }
 

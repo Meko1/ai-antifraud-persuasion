@@ -42,6 +42,22 @@ KEY_GAMES = f"{_NS}:stats:games"
 KEY_TURNS = f"{_NS}:stats:turns"
 KEY_ENDINGS = f"{_NS}:stats:endings"
 KEY_HITS = f"{_NS}:stats:hits"
+KEY_TRUST = f"{_NS}:stats:trust"
+
+# 只有走到阶梯里的四档才贡献一笔信任度分布；被拉黑「不入档」（CONTEXT.md
+# 「结局」），信任度必然是 0，混进分布会把所有人的百分位都顶得虚高——
+# 复盘里「本机训练记录」的最好成绩排名已经照这条排除过一次，这里是同一条原则。
+_LADDER_KINDS = {"persuaded", "intercepted", "stalled", "transferred"}
+
+# 5 分一档，20 个桶（0-4 … 95-100）。存分桶而不是每一局的原始信任度，
+# 是为了让这份存储的大小是常数——不会跟着局数一直长，这点在大赛共享的
+# Redis 实例上比较要紧。代价是百分位是"落在哪个区间"的近似值，不是精确排名。
+_TRUST_BUCKETS = 20
+
+
+def _trust_bucket(trust: int) -> str:
+    t = max(0, min(100, trust))
+    return str(min(_TRUST_BUCKETS - 1, t // 5))
 
 # Redis 卡住时不能把对局拖住，超时给得比正常往返大两个数量级也才半秒
 _TIMEOUT = 0.5
@@ -118,6 +134,14 @@ class Stats:
         if self.enabled:
             _spawn(self._hincr(KEY_ENDINGS, kind))
 
+    def record_trust(self, kind: str, trust: int) -> None:
+        """把最终信任度记一笔，供复盘算"超过百分之多少的人"。
+
+        只收四档正常结局；被拉黑必然是 0，见模块顶部 `_LADDER_KINDS` 的注。
+        """
+        if self.enabled and kind in _LADDER_KINDS:
+            _spawn(self._hincr(KEY_TRUST, _trust_bucket(trust)))
+
     async def _incr(self, key: str) -> None:
         try:
             await self._conn().incr(key)
@@ -154,7 +178,8 @@ class Stats:
             pipe.get(KEY_TURNS)
             pipe.hgetall(KEY_ENDINGS)
             pipe.hgetall(KEY_HITS)
-            games, turns, endings, hits = await pipe.execute()
+            pipe.hgetall(KEY_TRUST)
+            games, turns, endings, hits, trust_buckets = await pipe.execute()
         except Exception as exc:  # noqa: BLE001
             logger.warning("统计读取失败: %s", exc)
             return {"available": False}
@@ -184,6 +209,13 @@ class Stats:
                 name: {"hits": hits.get(name, 0), "rate": _ratio(hits.get(name, 0), turns)}
                 for name in (*KEY_VALUES, *ALL_PENALTIES)
             },
+            # 20 个桶（每档 5 分），下标即 trust // 5。前端拿它自己算百分位——
+            # 算法是复盘要展示的东西，不该埋进后端一个只吐一个数的接口里。
+            # 桶内计数之和就是样本数，前端用它判断够不够门槛（复盘定的是 20 局）；
+            # 不能直接拿 games 当样本数——games 含被拉黑、半途而废这些没入档的局。
+            "trust_buckets": [
+                int(trust_buckets.get(str(i), 0)) for i in range(_TRUST_BUCKETS)
+            ],
         }
 
 

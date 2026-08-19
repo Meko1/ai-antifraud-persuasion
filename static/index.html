@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="你的客户正要把三十万转给荐股骗局。十二轮对话，你怎么开口。">
 <title>AI 反诈劝阻</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="static/style.css">
 </head>
 <body>
 
@@ -49,16 +49,27 @@
     <div class="alertbar">
       <span class="alert-dot" aria-hidden="true"></span>
       <b>资产异动预警</b>
-      <span class="alert-sub">1 条待处理 · 14:47</span>
+      <span class="alert-sub">待处理</span>
     </div>
 
-    <!-- 客户档案。**内容由服务端下发**（app/scenario.py 的 payload），
-         这里只留骨架。原先这七行是写死的，第二个场景一来就得再抄一份，
-         而抄的那一份没有任何东西会提醒你和剧本对不上。
+    <!-- 交底。**2026-08-18 从整屏最底下提到了这里。**
+         原先的顺序是：预警条 → 六行客户档案 → 两条布景待办 → 这段话。
+         375×812 上量过，这段话在折叠线以下——而它是整屏唯一一段告诉玩家
+         「你要干什么、为什么难」的文字。首屏给的却是一张读不出重点的数据表。
+         一个从投票链接点进来的人，五秒内看到的是陌生人的 CRM 记录，
+         没有任何理由往下滚。**把钩子埋在折叠线以下，等于没有钩子。**
+         内容一个字没改，只是换了位置和权重。 -->
+    <p class="home-note" id="deskNote"></p>
+
+    <!-- 客户档案。**内容由服务端下发**（app/scenario.py 的 payload）。
 
          带 warn 的那几行是玩家手上的牌，与该场景 SCRIPT 里
          「账户那一侧他看得一清二楚」那份清单逐条对应。
-         但它们第一次拿出来必然判"未扎根"——扎根只认引用他上一轮说过的话。 -->
+         但它们第一次拿出来必然判"未扎根"——扎根只认引用他上一轮说过的话。
+
+         **默认只摊开 warn 那几行，其余收进「展开」。** 六行等权重地铺开时，
+         「保守型 ↔ 持仓清空 ↔ 47 笔」这组矛盾和「开户 19 年」一样重，
+         玩家读完记不住任何一条。收起来的三行是背景，不是牌，一键就能看。 -->
     <div class="ccard">
       <div class="ccard-top">
         <span class="avatar av-chen" aria-hidden="true">陈</span>
@@ -70,14 +81,18 @@
       </div>
 
       <dl class="facts" id="cFacts"></dl>
+
+      <button class="facts-more" id="factsMore" type="button" aria-expanded="false">
+        <span id="factsMoreLabel"></span>
+      </button>
     </div>
 
-    <!-- 另外两条待办不可点，纯布景。它们要说的是：这是你日常工作里的一个上午，
-         不是一个英雄时刻。少了它们，客户档案孤零零一张，像个教学弹窗。
+    <!-- 另外两条待办不可点，纯布景：这是你日常工作里的一个上午，不是英雄时刻。
+         **移到了客户档案下面。** 它们原先夹在档案和交底之间，白白占掉首屏，
+         而它们是这一屏上最不重要的东西。
 
-         **名字不能和任何一个场景的客户撞。** 原来这里是「周建国」，
-         周淑琴那一局上线之后，工作台上就并排站了两个姓周的，
-         头像还都是「周」。加场景时顺手要看一眼这两行。 -->
+         名字不能和任何一个场景的客户撞——原来叫「周建国」，
+         周淑琴那一局上线之后工作台上就并排站了两个姓周的，头像还都是「周」。 -->
     <div class="desk-label">其他待办</div>
     <ul class="chatlist">
       <li class="chatrow" aria-disabled="true">
@@ -106,14 +121,6 @@
       </li>
     </ul>
 
-    <!-- 这一屏要立住的三件事（缺一条玩家就会问"我凭什么劝他"）：
-         ① 你为什么会知道 —— 资产异动预警；
-         ② 事情有多不对劲 —— 一个保守型的老客户，持仓在一早上之内清空；
-         ③ **你知道的到底有多少** —— 这是最要紧的一条，也是这一屏这次改造的
-            全部理由。钱去了哪、他要拿去做什么、有没有人在推，账户这一侧
-            一个字都看不到。它不是设定上的偷懒，它就是这一局要干的活。 -->
-    <p class="home-note" id="deskNote"></p>
-
   </div>
 
   <!-- 底部操作栏。**这一屏唯一的动作，必须永远看得见。**
@@ -129,8 +136,13 @@
     <button class="deskcta" id="openChen" type="button"><b id="ctaLabel">给客户发消息</b></button>
     <!-- 这行小字**在按钮外面**：白字压在微信绿上只有 2.38:1，11.5px 的字
          在那上面是读不动的（微信自己的绿按钮也一样，只是它从不在按钮里放注文）。
-         挪到浅底上就能用够对比度的深灰。 -->
-    <p class="deskfoot-note" id="ctaSub">企业微信 · 会话按监管要求存档</p>
+         挪到浅底上就能用够对比度的深灰。
+
+         **文案 8-18 换掉了。** 原先写「企业微信 · 会话按监管要求存档」——
+         那句话在聊天页第一条已经出现过一次，在这儿是重复的；更要紧的是它对
+         一个刚点进来的人毫无用处。换成期待管理：要花多久、要做什么、
+         有什么限制。**投票的人决定要不要试，靠的就是这三个数。** -->
+    <p class="deskfoot-note" id="ctaSub">12 轮对话 · 约 3 分钟 · 只能问，不能替他决定</p>
   </div>
 </section>
 
@@ -168,6 +180,6 @@
   </form>
 </section>
 
-<script src="/static/app.js"></script>
+<script src="static/app.js"></script>
 </body>
 </html>
