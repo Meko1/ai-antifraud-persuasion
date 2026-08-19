@@ -265,8 +265,11 @@ function paintKline(ctx, box, opts) {
   ctx.setLineDash([]);
 
   if (opts.axis) {
-    ctx.fillStyle = c.goal;
-    ctx.font = `500 ${opts.labelSize || 10}px ${c.sans}`;
+    // 标线本身用鲜亮的 goal，字用专门配出的 goalText——同一个颜色兼职当
+    // 线又当字，字那份对比度不够看（2.42:1，门槛 4.5），这是它看着发虚的
+    // 原因之一
+    ctx.fillStyle = c.goalText || c.goal;
+    ctx.font = `600 ${opts.labelSize || 10}px ${c.sans}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillText(`劝住 ${threshold}`, x + 2, py(threshold) - 3);
@@ -274,7 +277,8 @@ function paintKline(ctx, box, opts) {
 
   const count = Math.max(slots, turns.length, 1);
   const step = w / count;
-  const width = Math.max(3, Math.min(opts.maxWidth || 18, step * 0.56));
+  const width = Math.max(4, Math.min(opts.maxWidth || 16, step * 0.5));
+  const radius = Math.min(2.5, width / 2);
 
   turns.forEach((t, i) => {
     const cx = x + step * (i + 0.5);
@@ -283,37 +287,44 @@ function paintKline(ctx, box, opts) {
     const raw = Math.max(0, Math.min(100, open + t.delta));
     const color = close > open ? c.rise : close < open ? c.fall : c.sub;
 
+    // 影线：2px、圆头——原来 1px 加透明度叠在实体上会糊成一团浅色，
+    // 换成不透明的细线，粗细不够就直接调宽度，不靠透明度撑视觉重量
     ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.5;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(Math.round(cx) + 0.5, py(Math.max(open, close, raw)));
-    ctx.lineTo(Math.round(cx) + 0.5, py(Math.min(open, close, raw)));
+    ctx.moveTo(cx, py(Math.max(open, close, raw)));
+    ctx.lineTo(cx, py(Math.min(open, close, raw)));
     ctx.stroke();
-    ctx.globalAlpha = 1;
 
+    // 实体：4px 圆角——原来是直角矩形，跟界面其余地方（气泡、徽章）
+    // 全是圆角的语言对不上，这块地方最扎眼地显得"没做完"
     const top = py(Math.max(open, close));
     const bottom = py(Math.min(open, close));
     ctx.fillStyle = color;
-    ctx.fillRect(cx - width / 2, top, width, Math.max(2, bottom - top));
+    roundRect(ctx, cx - width / 2, top, width, Math.max(3, bottom - top), radius);
+    ctx.fill();
 
-    // 判分线：只画影线的话，蓄势池「释放」那一侧会看不见
-    ctx.strokeStyle = c.text;
-    ctx.globalAlpha = 0.45;
+    // 判分线：原来是半透明叠加，颜色会随底下是实体还是空白而变深浅不一，
+    // 换成固定的中性色、不透明，同一条线在任何底色上都是同一个视觉重量。
+    // 只画影线的话，蓄势池「释放」那一侧会看不见，所以这条线不能省
+    ctx.strokeStyle = c.note;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(cx - width * 0.72, Math.round(py(raw)) + 0.5);
-    ctx.lineTo(cx + width * 0.72, Math.round(py(raw)) + 0.5);
+    ctx.moveTo(cx - width * 0.6, py(raw));
+    ctx.lineTo(cx + width * 0.6, py(raw));
     ctx.stroke();
-    ctx.globalAlpha = 1;
   });
 
   ctx.strokeStyle = c.line;
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
   for (let i = turns.length; i < count; i++) {
     const cx = x + step * (i + 0.5);
     ctx.beginPath();
-    ctx.moveTo(cx - width / 2, y + h - 0.5);
-    ctx.lineTo(cx + width / 2, y + h - 0.5);
+    ctx.moveTo(cx - width / 2, y + h);
+    ctx.lineTo(cx + width / 2, y + h);
     ctx.stroke();
   }
 
@@ -327,9 +338,10 @@ function palette() {
     rise: v('--wx-rise'), fall: v('--wx-fall'), brand: v('--wx-brand'),
     sub: v('--wx-sub'), line: v('--wx-line'), text: v('--wx-text'),
     white: v('--wx-white'), gray: v('--wx-gray'), goal: '#c9a227',
-    // 画在图上的小字要能读：--wx-sub 对白底只有 2.12:1，
-    // 门槛是 4.5。图形色照旧鲜亮，文字色单独取深的那一份
-    note: v('--wx-note'),
+    // 画在图上的小字要能读：--wx-sub 对白底只有 2.12:1、--gold 只有 2.42:1，
+    // 门槛是 4.5。图形色（线、蜡烛）照旧鲜亮，文字色单独取深的那一份——
+    // goalText 就是给"劝住 80"那行字用的，标线本身仍然用 goal
+    note: v('--wx-note'), goalText: v('--gold-text'),
     bg: v('--wx-bg'), red: v('--wx-red'),
     sans: '-apple-system, "PingFang SC", "Microsoft YaHei", sans-serif',
     mono: 'ui-monospace, Menlo, Consolas, monospace',
@@ -1474,6 +1486,42 @@ function trustPercentile(buckets, trust) {
   return Math.round(((below + within * pos) / total) * 100);
 }
 
+/** 百分位这句话，跟 verdictCopy 是同一套嘴——具体、说人话、不打鸡血。
+ *
+ * **原来的写法是"这一局的信任度超过了已有记录里 X%"**：不管 X 是 95 还是 5，
+ * 都是同一句模板换个数字，是典型的"仪表盘播报腔"。分数低的时候尤其显得假——
+ * 一个 15% 配一句语气跟 95% 一模一样的话，像是没看懂自己在说什么。
+ *
+ * 分数不同，值得说的话也不同：高分是真值得夸的一手；低分不回避那个数，
+ * 但接一句具体能改的东西，跟 verdictCopy 低分那句"下一局试着先听懂他在怕
+ * 什么"是同一个路数——情绪价值不是把烂分数说成好分数，是把冷冰冰的排名
+ * 换成一句听得出是在跟你说话的话。
+ */
+function percentileCopy(pct) {
+  if (pct >= 85) return `这一局的信任度，比 ${pct}% 打过的人都高——这一手是真稳。`;
+  if (pct >= 60) return `信任度超过了 ${pct}% 的人，这局打得比大多数人扎实。`;
+  if (pct >= 35) return `信任度超过了 ${pct}% 的人，不算亮眼，也没垫底，中间往上够一够就是了。`;
+  if (pct >= 10) return `信任度超过了 ${pct}% 的人——别急，多数人也是从这个数开始摸到门道的。`;
+  return `信任度超过了 ${pct}% 的人，这局是真难。回头看看是不是一上来就想说服他，而不是先问。`;
+}
+
+/** 百分位配色跟着分数走，不是每次都用那罐"值得庆祝"的绿——
+ *  15% 配一个和 95% 一样鲜亮的绿底，正是看着"怪"的地方。
+ *  三色沿用复盘正文其余地方的用法：够亮眼才给品牌绿，其余一律中性灰。 */
+function percentileTier(pct) {
+  return pct >= 60 ? 'good' : 'plain';
+}
+
+/** percentileCopy 的简短版，给分享卡用——卡片宽度固定，长版那句带建议的话
+ *  放不下一行，canvas 又不像 CSS 那样会自动折行。语气分级跟长版是同一套。 */
+function percentileHeadline(pct) {
+  if (pct >= 85) return `比 ${pct}% 打过的人都高`;
+  if (pct >= 60) return `超过了 ${pct}% 的人`;
+  if (pct >= 35) return `超过了 ${pct}% 的人，还有空间`;
+  if (pct >= 10) return `超过了 ${pct}% 的人，才刚起步`;
+  return `超过了 ${pct}% 的人，这局是真难`;
+}
+
 async function paintStats(view, kind) {
   let data;
   try {
@@ -1491,7 +1539,8 @@ async function paintStats(view, kind) {
     game._percentile = pct;
     const line = view.querySelector('#percentileLine');
     line.hidden = false;
-    line.innerHTML = `这一局的信任度超过了已有记录里 <b>${pct}%</b>`;
+    line.textContent = percentileCopy(pct);
+    line.classList.toggle('good', percentileTier(pct) === 'good');
   }
 
   if (!data.turns) return;
@@ -1810,18 +1859,21 @@ function makeCard(view) {
   ctx.font = `400 12px ${c.sans}`;
   ctx.fillText('一根蜡烛一轮，红涨绿跌', pad, LEGEND_TOP);
 
-  // 百分比是这张卡唯二在复盘正文里也常驻显示、但专门为"分享出去"这件事
-  // 加了视觉分量的东西——单独一块底色，跟上面素净的统计数字拉开
+  // 百分比是这张卡在复盘正文里也常驻显示的东西——配色跟正文的
+  // percentileTier 是同一条规则：够亮眼才给品牌绿，其余中性灰，
+  // 不是每次都用"值得庆祝"那罐颜色。文案用简短版（percentileHeadline），
+  // 卡片宽度有限，正文那句带具体建议的长版放不下一行
   if (pct != null) {
-    ctx.fillStyle = c.brand;
-    ctx.globalAlpha = 0.1;
+    const good = percentileTier(pct) === 'good';
+    ctx.fillStyle = good ? c.brand : c.line;
+    ctx.globalAlpha = good ? 0.1 : 1;
     roundRect(ctx, pad, PCT_TOP, contentW, PCT_H, 10);
     ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = c.brand;
+    ctx.fillStyle = good ? c.brand : c.gray;
     ctx.font = `600 20px ${c.sans}`;
     ctx.textBaseline = 'middle';
-    ctx.fillText(`这一局的信任度超过了已有记录里 ${pct}%`, pad + 18, PCT_TOP + PCT_H / 2);
+    ctx.fillText(`信任度${percentileHeadline(pct)}`, pad + 18, PCT_TOP + PCT_H / 2);
     ctx.textBaseline = 'top';
   }
 

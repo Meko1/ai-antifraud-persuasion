@@ -1032,20 +1032,23 @@ body {
 
 .legend { margin: 0; padding: 0 16px 14px; font-size: 12px; line-height: 1.9; color: var(--wx-note); }
 
-/* 百分比。跟正文其余部分素净的数字不一样，这一行故意给了色块——它是复盘
-   正文里唯一为"分享出去"这件事专门加了视觉分量的东西，颜色沿用 --wx-brand，
-   跟分享卡上那块高亮是同一份配色，两处不会看着像两套设计。 */
+/* 百分比。默认是中性灰底——原来无条件用品牌绿，15% 配一个和 95% 一样鲜亮的
+   "值得庆祝"配色，看着就是怪。只有排名真站得住脚（.good，见 percentileTier）
+   才换成 --wx-brand；两种状态共用同一份排版，只换背景和字色。 */
 .percentile {
   margin: 0 16px 16px;
   padding: 11px 14px;
   border-radius: 8px;
-  background: rgba(7, 193, 96, 0.1);
-  color: var(--wx-brand);
+  background: var(--wx-bg);
+  color: var(--wx-gray);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.6;
 }
-.percentile b { font-size: 16px; }
+.percentile.good {
+  background: rgba(7, 193, 96, 0.1);
+  color: var(--wx-brand);
+}
 
 .round {
   display: grid;
