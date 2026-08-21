@@ -1549,6 +1549,17 @@ button, input { font-family: var(--sans); }
 
 /* 复盘首屏与完整证据 */
 .review { background: var(--paper); }
+
+/* 四色语义，整屏一份（设计稿的 data-tone）。
+   **绿只给明确劝住**，不作为普遍装饰色——它在这一屏只有一个意思，
+   滥用一次，下次玩家就不信它了。金＝争取到时间或减少了损失；
+   锈红＝资金损失或联系中断；拖住给中性灰：钱没动但风险一点没解除，
+   用绿会把"还没输"说成"赢了"。
+   一屏一个 --accent，下面的百分位块直接吃它，不再自己判一套阈值。 */
+.review[data-tone="green"] { --accent: var(--success); --soft: var(--success-soft); }
+.review[data-tone="gold"]  { --accent: var(--pending); --soft: var(--pending-soft); }
+.review[data-tone="plain"] { --accent: #59635e;        --soft: #eceeea; }
+.review[data-tone="rust"]  { --accent: var(--danger);  --soft: var(--danger-soft); }
 .review-body { background: var(--paper); }
 .summary { padding: 22px 20px 19px; background: var(--paper); }
 .summary .result-kicker { color: var(--success); font-size: 11px; font-weight: 700; }
@@ -1572,17 +1583,54 @@ button, input { font-family: var(--sans); }
 .stat { padding: 15px 8px; text-align: left; }
 .stat + .stat { box-shadow: inset 1px 0 0 var(--line); padding-left: 16px; }
 .stat b { font-size: 23px; }.stat i { color: var(--muted); font-size: 10px; }
+
+/* 结算两栏（最终信任 / 使用轮次）。设计稿是两栏不是三栏——
+   原先第三栏「最有力的一句」与下面整块「本局关键转折」讲的是同一件事，
+   而它只放得下一个 +12，最显眼的槽位给了信息量最低的东西。 */
+.scoreline {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 20px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.metric { padding: 16px 0; }
+.metric + .metric { padding-left: 18px; border-left: 1px solid var(--line); }
+.metric b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+.metric span { font-size: 10px; color: var(--muted); }
+
+/* 百分位是一块：上面结论，下面口径。**"跟谁比"必须和结论待在一起**——
+   一个排名能不能被信全看这一句，拆到别处就没人读了。 */
+/* 底色跟着整屏的 tone 走（上面 .review[data-tone]），不自己判一套阈值：
+   一屏一个语义色，劝住是绿、拦下是金、转账是锈红，读者不用再学第二套规则。 */
 .percentile {
   margin: 15px 20px 0;
   padding: 14px 15px;
   border-radius: 12px;
-  background: #eceeea;
-  color: #4c5651;
-  font-size: 14px;
+  background: var(--soft, #eceeea);
+  color: var(--accent, #4c5651);
+}
+.percentile strong { display: block; font-size: 15px; line-height: 1.45; }
+.percentile p { margin: 5px 0 0; font-size: 10px; line-height: 1.55; opacity: 0.85; }
+.percentile.unranked { background: var(--danger-soft); color: var(--danger); }
+
+/* 本局复盘三行：做对了 / 可改进 / 合规。左标签右内容，不做成卡片——
+   它是一段结论，不是三个并列的功能入口。 */
+.review-block { margin: 0 20px; padding: 17px 0; border-bottom: 1px solid var(--line); }
+.review-block h3 { margin: 0; font-size: 13px; }
+.review-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  margin-top: 11px;
+  font-size: 11px;
   line-height: 1.55;
 }
-.percentile.good { background: var(--success-soft); color: var(--success); }
-.percentile.unranked { background: var(--danger-soft); color: var(--danger); }
+.review-row span { color: var(--muted); }
+.review-row b { font-weight: 650; }
+/* 踩过红线才变色。没踩就是普通一行——不给一个"合格"发绿灯，
+   那会把"没犯错"说成"做得好"。 */
+.review-row b.redline { color: var(--danger); }
 .turning-point { margin: 18px 20px 0; padding: 17px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .turning-point > b { font-size: 13px; }
 .turning-point blockquote { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; background: rgba(25, 35, 31, 0.045); font-size: 13px; line-height: 1.6; }

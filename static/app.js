@@ -170,6 +170,18 @@ const RECEIPT = {
   transferred: 'sent', blacklisted: null,
 };
 
+// 复盘页的四色语义。**绿只给明确劝住**，不做装饰色——它在这一屏只有一个
+// 意思，滥用一次，下次玩家就不信它了。金＝争取到时间或减少了损失；
+// 锈红＝资金损失或联系中断；拖住给中性灰：钱没动，但风险一点没解除，
+// 用绿会把"还没输"说成"赢了"。
+const TONES = {
+  persuaded: 'green',
+  intercepted: 'gold',
+  stalled: 'plain',
+  transferred: 'rust',
+  blacklisted: 'rust',
+};
+
 function endingMeta(kind) {
   const copy = (SCENE && SCENE.endings[kind]) || {};
   return {
@@ -1005,21 +1017,34 @@ function openReview() {
         <p class="copy"></p>
       </div>
 
-      <!-- 三个数放在最上面。原来这一屏最先给出的是一整段"我们的分是怎么算的"
-           说明文——那是辩解，不是结果。玩家打完最想知道的是：他最后信我多少、
-           我打了几轮、哪一句最管用。说明文退到最底下。 -->
-      <div class="statstrip">
-        <div class="stat"><b id="sTrust"></b><i>最终信任度</i></div>
-        <div class="stat"><b id="sRounds"></b><i>用了几轮</i></div>
-        <div class="stat"><b id="sBest"></b><i>最有力的一句</i></div>
+      <!-- 两个数，不是三个（设计稿的 scoreline）。原先第三栏是"最有力的一句"，
+           而下面「本局关键转折」整块讲的就是那一句——同一件事在一屏里说两遍，
+           第三栏还只能塞下一个 +12，信息量最低的位置占着最显眼的槽。 -->
+      <div class="scoreline">
+        <div class="metric"><b id="sTrust"></b><span>最终信任</span></div>
+        <div class="metric"><b id="sRounds"></b><span>使用轮次</span></div>
       </div>
 
-      <p class="percentile" id="percentileLine" hidden></p>
+      <!-- 百分比是一块，不是一行：一行只放得下结论，放不下口径。
+           而"跟谁比"恰恰是这个数字能不能被信的关键，所以口径跟着结论走。 -->
+      <div class="percentile" id="percentileLine" hidden>
+        <strong id="percentileTitle"></strong>
+        <p id="percentileCopy"></p>
+      </div>
 
       <div class="turning-point" id="turningPoint">
         <b>本局关键转折</b>
         <blockquote id="turningQuote"></blockquote>
         <p id="turningNote"></p>
+      </div>
+
+      <!-- 本局复盘三行。**这三行必须从真实对局里算**，不能像设计稿那样按结局
+           写死——写死的话，玩家换个打法拿到同一档结局，复盘会说一模一样的话，
+           那就成了占位符而不是复盘。判据见 reviewRows()：做对了看真实命中的
+           钥匙，可改进看没用过的那几把，合规看这一局有没有踩红线（与那张
+           合规红线卡同源，不另算一套）。 -->
+      <div class="review-block" id="reviewBlock">
+        <h3>本局复盘</h3>
       </div>
 
       <!-- 详细 K 线仍紧跟结果摘要，但退到关键转折之后。用户先知道发生了什么，
@@ -1110,6 +1135,10 @@ function openReview() {
     </div>`;
 
   document.body.appendChild(view);
+  // 四色语义（设计稿的 data-tone）：绿只给明确劝住，金表示争取到时间或
+  // 减少损失，锈红表示资金损失或联系中断，其余中性灰。**绿色不做装饰色**——
+  // 它在这一屏只有一个意思，滥用一次，下次玩家就不信它了。
+  view.dataset.tone = TONES[kind] || 'plain';
   const result = resultAmount(kind);
   view.querySelector('.summary .tierpill').textContent = meta.tier;
   view.querySelector('.summary .result-title').textContent = meta.title;
@@ -1130,25 +1159,22 @@ function openReview() {
   }
 
   if (kind === 'blacklisted') {
+    // 被拉黑不入档（CONTEXT.md「结局」），因此也不参与排行——这一块不等
+    // /api/stats 回来就先摆明口径，省得先显示一个百分位再改口。
     const rank = view.querySelector('#percentileLine');
     rank.hidden = false;
     rank.classList.add('unranked');
-    rank.textContent = '不参与排行 · 联系中断属于提前出局';
+    rank.querySelector('#percentileTitle').textContent = '不参与排行';
+    rank.querySelector('#percentileCopy').textContent =
+      '联系中断属于提前出局，不与完整对局比较。';
   }
 
-  // 三栏在 375px 上只放得下四五个字。「劝住线 80」不重复说——
-  // K 线上那条金色虚线已经标着它，写两遍反而把这一行挤成两行
+  // 两个数。「劝住线 80」不重复说——K 线上那条金色虚线已经标着它。
+  // 「最有力的一句」那一栏去掉了：下面「本局关键转折」整块讲的就是它。
   view.querySelector('#sTrust').textContent = String(game.trust);
   view.querySelector('#sRounds').textContent = String(game.turns.length);
-  const bestStat = view.querySelector('#sBest');
-  if (best && best.delta > 0) {
-    bestStat.textContent = `+${best.delta}`;
-    bestStat.nextElementSibling.textContent = `第 ${best.round} 轮最有力`;
-  } else {
-    bestStat.textContent = '—';
-    bestStat.classList.add('nil');
-    bestStat.nextElementSibling.textContent = '没有一句推动他';
-  }
+
+  paintReviewRows(view);
 
   paintBreaches(view);
   paintPhone(view);
@@ -1213,6 +1239,65 @@ function openReview() {
  * 逐条列出踩线的那一轮和原话：合规这件事上，"你说过这句话"本身就是证据，
  * 泛泛说一句"注意合规"没有任何用。
  */
+/** 本局复盘三行：做对了 / 可改进 / 合规。
+ *
+ * **设计稿里这三行是按结局写死的**（每个客户 × 每种结局一套文案）。
+ * 照抄会出一个问题：两个玩家用完全不同的打法拿到同一档结局，复盘会对他们
+ * 说一模一样的话——那是占位符，不是复盘。所以这里全部从这一局的真实数据算：
+ *
+ *   做对了 —— 真实挣分最多的那把钥匙（没有就说实话：一句都没推动）
+ *   可改进 —— 优先说踩过的坑；没踩坑就说这一局压根没用过的那几把
+ *   合规   —— 直接看 `breachTurns()`，与那张合规红线卡同源，不另算一套
+ */
+function reviewRows() {
+  const gains = {};
+  game.turns.forEach((t) => t.hits.forEach((h) => {
+    if (KEYS[h]) gains[h] = (gains[h] || 0) + Math.max(0, t.delta);
+  }));
+  const bestKey = Object.keys(gains).sort((a, b) => gains[b] - gains[a])[0];
+
+  const didRight = bestKey
+    ? `${KEYS[bestKey].name}用得最见效，共挣 ${gains[bestKey]} 分`
+    : '识别到了资产异动，并且开口问了';
+
+  const penalties = Object.keys(PENALTIES).filter(
+    (p) => game.turns.some((t) => t.hits.includes(p)));
+  const unused = Object.keys(KEYS).filter(
+    (k) => !game.turns.some((t) => t.hits.includes(k)));
+  const canImprove = penalties.length
+    ? `${penalties.map((p) => PENALTIES[p].name).join('、')}顶高了${peerPronoun()}的防备`
+    : unused.length
+      ? `这一局没用过${unused.slice(0, 2).map((k) => KEYS[k].name).join('、')}`
+      : '七把钥匙都用到了，下一局可以试着更早读准时机';
+
+  const breaches = breachTurns();
+  const compliance = breaches.length
+    ? `踩了 ${breaches.length} 次合规红线`
+    : '未触碰合规红线';
+
+  return [
+    ['做对了', didRight, false],
+    ['可改进', canImprove, false],
+    ['合规', compliance, breaches.length > 0],
+  ];
+}
+
+function paintReviewRows(view) {
+  const box = view.querySelector('#reviewBlock');
+  if (!box) return;
+  reviewRows().forEach(([label, text, bad]) => {
+    const row = document.createElement('div');
+    row.className = 'review-row';
+    const dt = document.createElement('span');
+    dt.textContent = label;
+    const dd = document.createElement('b');
+    if (bad) dd.className = 'redline';
+    dd.textContent = text;
+    row.append(dt, dd);
+    box.appendChild(row);
+  });
+}
+
 function paintBreaches(view) {
   const turns = breachTurns();
   if (!turns.length) return;
@@ -1533,19 +1618,17 @@ function trustPercentile(buckets, trust) {
   return Math.round(((below + within * pos) / total) * 100);
 }
 
-/** 百分位这句话，跟 verdictCopy 是同一套嘴——具体、说人话、不打鸡血。
+/** 百分位下面那行小字：**口径**，不是第二句夸奖。
  *
- * **原来的写法是"这一局的信任度超过了已有记录里 X%"**：不管 X 是 95 还是 5，
- * 都是同一句模板换个数字，是典型的"仪表盘播报腔"。分数低的时候尤其显得假——
- * 一个 15% 配一句语气跟 95% 一模一样的话，像是没看懂自己在说什么。
- *
- * 分数不同，值得说的话也不同：高分是真值得夸的一手；低分不回避那个数，
- * 但接一句具体能改的东西，跟 verdictCopy 低分那句"下一局试着先听懂他在怕
- * 什么"是同一个路数——情绪价值不是把烂分数说成好分数，是把冷冰冰的排名
- * 换成一句听得出是在跟你说话的话。
+ * 设计稿把它固定成「只比较相同客户、相同规则版本的有效记录」，用意是
+ * 让"跟谁比"跟结论待在一起——一个排名能不能被信，全看这一句。
+ * 这里在此之上多说一件同样属于口径的事：低样本时这个数会跳，别当成定论。
+ * （门槛是每场景 20 局，见 TRUST_SAMPLE_MIN；不到门槛整块不出现。）
  */
 function percentileCopy(pct) {
-  return `高于同场景 ${pct}% 的已完成对局`;
+  return pct >= 90 || pct <= 10
+    ? '只比较相同客户、相同规则版本的有效记录。样本越少，两端的名次越会跳。'
+    : '只比较相同客户、相同规则版本的有效记录。';
 }
 
 /** 百分位配色跟着分数走，不是每次都用那罐"值得庆祝"的绿——
@@ -1570,7 +1653,10 @@ async function paintStats(view, kind) {
   if (kind === 'blacklisted') return;
   let data;
   try {
-    data = await (await fetch('api/stats')).json();
+    // **带上 sid**：信任度分布按场景分开存（app/stats.py `key_trust`）。
+    // 四个场景难度不一样，混着比，量出来的是"你抽到的场景是难是易"。
+    const sid = encodeURIComponent(SCENE ? SCENE.id : '');
+    data = await (await fetch(`api/stats?sid=${sid}`)).json();
   } catch (e) {
     return;
   }
@@ -1584,8 +1670,13 @@ async function paintStats(view, kind) {
     game._percentile = pct;
     const line = view.querySelector('#percentileLine');
     line.hidden = false;
-    line.textContent = percentileCopy(pct);
-    line.classList.toggle('good', percentileTier(pct) === 'good');
+    // 底色不在这儿判：它跟着整屏的 data-tone 走（style.css 的 .review[data-tone]）。
+    // 一屏一个语义色，玩家不用再学第二套规则。
+    line.querySelector('#percentileTitle').textContent =
+      `高于同场景 ${pct}% 的已完成对局`;
+    // 口径跟着结论走：**"跟谁比"是这个数能不能被信的关键**。
+    // 只比同一个场景，且只比走到四档结局的局（被拉黑不入档，见 stats.py）。
+    line.querySelector('#percentileCopy').textContent = percentileCopy(pct);
   }
 
   if (!data.turns) return;

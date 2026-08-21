@@ -42,7 +42,17 @@ KEY_GAMES = f"{_NS}:stats:games"
 KEY_TURNS = f"{_NS}:stats:turns"
 KEY_ENDINGS = f"{_NS}:stats:endings"
 KEY_HITS = f"{_NS}:stats:hits"
-KEY_TRUST = f"{_NS}:stats:trust"
+# 信任度分布**按场景分开存**。
+#
+# 原先是一个全局哈希，四个场景混在一起算百分位。场景之间难度并不一样
+# （`balance_sim` 实测 expert 胜率 45.8%~54.0%），混着比会让"你超过了多少人"
+# 变成"你抽到的场景是难是易"。复盘页那句口径写的是「只比较相同客户、
+# 相同规则版本的有效记录」，要让这句话是真的，键上就得带场景。
+#
+# 代价是样本攒得慢了四倍（门槛仍是每场景 20 局），这是对的取舍：
+# 宁可不显示，也不显示一个不成立的排名。
+def key_trust(sid: str) -> str:
+    return f"{_NS}:stats:trust:{sid or 'default'}"
 
 # 只有走到阶梯里的四档才贡献一笔信任度分布；被拉黑「不入档」（CONTEXT.md
 # 「结局」），信任度必然是 0，混进分布会把所有人的百分位都顶得虚高——
@@ -134,13 +144,14 @@ class Stats:
         if self.enabled:
             _spawn(self._hincr(KEY_ENDINGS, kind))
 
-    def record_trust(self, kind: str, trust: int) -> None:
-        """把最终信任度记一笔，供复盘算"超过百分之多少的人"。
+    def record_trust(self, kind: str, trust: int, sid: str = "") -> None:
+        """把最终信任度记一笔，供复盘算"超过同场景百分之多少的人"。
 
         只收四档正常结局；被拉黑必然是 0，见模块顶部 `_LADDER_KINDS` 的注。
+        `sid` 决定记进哪个场景的分布，见 `key_trust`。
         """
         if self.enabled and kind in _LADDER_KINDS:
-            _spawn(self._hincr(KEY_TRUST, _trust_bucket(trust)))
+            _spawn(self._hincr(key_trust(sid), _trust_bucket(trust)))
 
     async def _incr(self, key: str) -> None:
         try:
@@ -166,9 +177,13 @@ class Stats:
 
     # ── 读取（只有 /api/stats 调用）────────────────────────
 
-    async def snapshot(self) -> Dict[str, Any]:
+    async def snapshot(self, sid: str = "") -> Dict[str, Any]:
         """读不到就返回 available=false，不编造零值——
-        「还没人玩过」和「统计挂了」是两件事，看板上不能混为一谈。"""
+        「还没人玩过」和「统计挂了」是两件事，看板上不能混为一谈。
+
+        `sid` 只影响信任度分布那一项：复盘要的是**同场景**的排名，
+        其余几项（总局数、结局占比、钥匙命中率）仍然是全局口径。
+        """
         if not self.enabled:
             return {"available": False}
         try:
@@ -178,7 +193,7 @@ class Stats:
             pipe.get(KEY_TURNS)
             pipe.hgetall(KEY_ENDINGS)
             pipe.hgetall(KEY_HITS)
-            pipe.hgetall(KEY_TRUST)
+            pipe.hgetall(key_trust(sid))
             games, turns, endings, hits, trust_buckets = await pipe.execute()
         except Exception as exc:  # noqa: BLE001
             logger.warning("统计读取失败: %s", exc)

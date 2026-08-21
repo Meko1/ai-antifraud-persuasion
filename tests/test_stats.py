@@ -16,7 +16,7 @@ from app.stats import (
     KEY_ENDINGS,
     KEY_GAMES,
     KEY_HITS,
-    KEY_TRUST,
+    key_trust,
     KEY_TURNS,
     Stats,
     force_db0,
@@ -240,7 +240,7 @@ def test_键名带作品前缀() -> None:
     几十个作品挤在同一个 db0 里，撞名就会**互相把对方的计数器加上去**，
     谁也看不出来，而复盘里那句「别人打成什么样」会显示别人的数。
     """
-    for key in (KEY_GAMES, KEY_TURNS, KEY_ENDINGS, KEY_HITS, KEY_TRUST):
+    for key in (KEY_GAMES, KEY_TURNS, KEY_ENDINGS, KEY_HITS, key_trust('chen')):
         assert key.startswith("ai-antifraud-persuasion:"), key
 
 
@@ -254,22 +254,22 @@ def test_被拉黑不进信任度分布() -> None:
     async def scenario() -> Dict[str, Any]:
         fake = FakeRedis()
         s = _wired(fake)
-        s.record_trust("blacklisted", 0)
+        s.record_trust("blacklisted", 0, "chen")
         await _drain()
         return fake.store
 
-    assert KEY_TRUST not in asyncio.run(scenario())
+    assert key_trust('chen') not in asyncio.run(scenario())
 
 
 def test_四档结局的信任度落进对应的桶() -> None:
     async def scenario() -> Dict[str, Any]:
         fake = FakeRedis()
         s = _wired(fake)
-        s.record_trust("persuaded", 83)   # 83 // 5 = 16
-        s.record_trust("transferred", 2)  # 2 // 5 = 0
-        s.record_trust("stalled", 100)    # 夹到最后一个桶，不是越界
+        s.record_trust("persuaded", 83, "chen")   # 83 // 5 = 16
+        s.record_trust("transferred", 2, "chen")  # 2 // 5 = 0
+        s.record_trust("stalled", 100, "chen")    # 夹到最后一个桶，不是越界
         await _drain()
-        return fake.store[KEY_TRUST]
+        return fake.store[key_trust('chen')]
 
     result = asyncio.run(scenario())
     assert result == {"16": 1, "0": 1, "19": 1}
@@ -279,10 +279,10 @@ def test_快照的信任度分布是长度固定的数组() -> None:
     async def scenario() -> Dict[str, Any]:
         fake = FakeRedis()
         s = _wired(fake)
-        s.record_trust("persuaded", 83)
-        s.record_trust("persuaded", 81)
+        s.record_trust("persuaded", 83, "chen")
+        s.record_trust("persuaded", 81, "chen")
         await _drain()
-        return await s.snapshot()
+        return await s.snapshot("chen")
 
     snap = asyncio.run(scenario())
     assert len(snap["trust_buckets"]) == 20
@@ -293,3 +293,33 @@ def test_快照的信任度分布是长度固定的数组() -> None:
 def test_没有信任度记录时分布是全零数组而不是缺字段() -> None:
     snap = asyncio.run(_wired(FakeRedis()).snapshot())
     assert snap["trust_buckets"] == [0] * 20
+
+
+def test_信任度分布按场景分开互不串味() -> None:
+    """复盘那句口径写的是「只比较相同客户、相同规则版本的有效记录」。
+
+    四个场景难度并不一样（balance_sim 实测 expert 胜率 45.8%~54.0%），
+    混在一个桶里算百分位，量出来的是"你抽到的场景是难是易"，不是你打得好不好。
+    这条守的就是那句文案与数据口径必须对得上。
+    """
+
+    async def scenario() -> Dict[str, Any]:
+        fake = FakeRedis()
+        s = _wired(fake)
+        s.record_trust("persuaded", 83, "chen")   # 桶 16
+        s.record_trust("persuaded", 12, "zhou")   # 桶 2
+        s.record_trust("persuaded", 13, "zhou")   # 桶 2
+        await _drain()
+        return {
+            "chen": await s.snapshot("chen"),
+            "zhou": await s.snapshot("zhou"),
+            "liu": await s.snapshot("liu"),
+        }
+
+    snaps = asyncio.run(scenario())
+    assert sum(snaps["chen"]["trust_buckets"]) == 1
+    assert snaps["chen"]["trust_buckets"][16] == 1
+    assert sum(snaps["zhou"]["trust_buckets"]) == 2
+    assert snaps["zhou"]["trust_buckets"][2] == 2
+    # 没人玩过的场景是干净的全零，不该借到别人的样本
+    assert sum(snaps["liu"]["trust_buckets"]) == 0

@@ -244,7 +244,9 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
             elif event.name == "ending":
                 kind = event.data.get("kind", "")
                 stats.record_ending(kind)
-                stats.record_trust(kind, event.data.get("trust", 0))
+                # sid 从令牌里的会话取，不从事件里取——事件不带场景，
+                # 而信任度分布是按场景分开存的（app/stats.py `key_trust`）
+                stats.record_trust(kind, event.data.get("trust", 0), session.sid)
             yield _sse(event.name, event.data)
         # 走完整轮才记消费。中途出错的那一张令牌必须还能重试——
         # 玩家刚说的那句话不该因为网关抖了一下就作废。
@@ -283,9 +285,13 @@ async def healthz(probe: int = 0) -> JSONResponse:
 
 
 @app.get("/api/stats")
-async def api_stats() -> JSONResponse:
-    """全局统计。Redis 是旁路，不可用时返回 available=false（§7.1）。"""
-    return JSONResponse(await stats.snapshot())
+async def api_stats(sid: str = "") -> JSONResponse:
+    """全局统计。Redis 是旁路，不可用时返回 available=false（§7.1）。
+
+    `sid` 只影响信任度分布：复盘那句「高于同场景 X% 的已完成对局」要成立，
+    比较的必须是同一个场景。不传就落到默认场景，与旧前端兼容。
+    """
+    return JSONResponse(await stats.snapshot(sid))
 
 
 async def _demo_tokens() -> AsyncIterator[str]:
