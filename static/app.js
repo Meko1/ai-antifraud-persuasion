@@ -170,6 +170,15 @@ const RECEIPT = {
   transferred: 'sent', blacklisted: null,
 };
 
+// 复盘页的四色语义（设计稿的 data-tone）。见 openReview 里那段注。
+const TONES = {
+  persuaded: 'green',
+  intercepted: 'gold',
+  stalled: 'plain',
+  transferred: 'rust',
+  blacklisted: 'rust',
+};
+
 function endingMeta(kind) {
   const copy = (SCENE && SCENE.endings[kind]) || {};
   return {
@@ -816,9 +825,10 @@ function verdictCopy() {
   else parts.push(`${meta.savedCopy}。`);
 
   if (best && best.delta > 0) {
-    parts.push(
-      `全场最有力的一句在第 <em>${best.round}</em> 轮——你说「${best.utterance}」，` +
-      `信任度那一下涨了 ${best.delta}。`);
+    // **"最有力的一句"这句不在这儿说了。** 上面「本局关键转折」整块讲的
+    // 就是它：同一个轮次、同一句原话、同一个涨幅，紧挨着说两遍。
+    // 这一段只留它独有的东西——追问窗口接没接住、最后一公里。
+    //
     // **这句话以前是无条件说的**——只要没劝住就说"你没乘胜追击"，
     // 哪怕玩家每一次窗口都追上了。追问窗口这个机制本来就是为了让这句话
     // 变成真的（TECH-DESIGN §3.4），现在才真正接上线：错过了才说。
@@ -1022,9 +1032,14 @@ function openReview() {
         <p id="turningNote"></p>
       </section>
 
+      <!-- 本局复盘：一句结论 + 三行可扫的要点（做对了 / 可改进 / 合规）。
+           三行**从真实对局里算**，不按结局写死——写死的话，两个玩家用完全
+           不同的打法拿到同一档结局，复盘会说一模一样的话，那是占位符不是复盘。
+           判据见 reviewRows()。 -->
       <section class="result-review">
         <h3>本局复盘</h3>
         <p class="copy"></p>
+        <div class="review-rows" id="reviewRows"></div>
       </section>
 
       <div class="result-actions">
@@ -1086,6 +1101,11 @@ function openReview() {
     </div>`;
 
   document.querySelector('.app-shell').appendChild(view);
+  // 四色语义（设计稿的 data-tone）：绿只给明确劝住，金＝争取到时间或减少了
+  // 损失，锈红＝资金损失或联系中断，拖住给中性灰——钱没动但风险一点没解除，
+  // 用绿会把"还没输"说成"赢了"。**绿不做装饰色**：它在这一屏只有一个意思，
+  // 滥用一次，下次玩家就不信它了。一屏一个 --accent，百分位块直接吃它。
+  view.dataset.tone = TONES[kind] || 'plain';
   const result = resultAmount(kind);
   view.querySelector('#reviewScene').textContent = SCENE ? SCENE.name : '风险劝阻';
   view.querySelector('.summary .tierpill').textContent = meta.tier;
@@ -1094,6 +1114,7 @@ function openReview() {
   view.querySelector('.summary .savedcap').textContent = result.label;
   view.querySelector('.summary .saved').textContent = meta.savedCopy;
   view.querySelector('.result-review .copy').innerHTML = verdictCopy();
+  paintReviewRows(view);
 
   const turning = view.querySelector('#turningPoint');
   if (best && best.delta > 0) {
@@ -1184,6 +1205,67 @@ function openReview() {
  * 逐条列出踩线的那一轮和原话：合规这件事上，"你说过这句话"本身就是证据，
  * 泛泛说一句"注意合规"没有任何用。
  */
+/** 本局复盘三行：做对了 / 可改进 / 合规。
+ *
+ * **设计稿里这三行是按结局写死的**（每个客户 × 每种结局一套文案）。
+ * 照抄会出一个问题：两个玩家用完全不同的打法拿到同一档结局，复盘会对他们
+ * 说一模一样的话——那是占位符，不是复盘。所以这里全部从这一局的真实数据算：
+ *
+ *   做对了 —— 真实挣分最多的那把钥匙（一把都没挣到就说实话）
+ *   可改进 —— 优先说踩过的坑；没踩坑才说这一局压根没用过的那几把
+ *   合规   —— 直接读 `breachTurns()`，与那张合规红线卡同源，不另算一套口径
+ */
+function reviewRows() {
+  const gains = {};
+  game.turns.forEach((t) => t.hits.forEach((h) => {
+    if (KEYS[h]) gains[h] = (gains[h] || 0) + Math.max(0, t.delta);
+  }));
+  const bestKey = Object.keys(gains)
+    .filter((k) => gains[k] > 0)
+    .sort((a, b) => gains[b] - gains[a])[0];
+
+  const didRight = bestKey
+    ? `${KEYS[bestKey].name}用得最见效，这一局靠它挣了 ${gains[bestKey]} 分`
+    : '识别到了资产异动，并且开口问了';
+
+  const penalties = Object.keys(PENALTIES).filter(
+    (p) => game.turns.some((t) => t.hits.includes(p)));
+  const unused = Object.keys(KEYS).filter(
+    (k) => !game.turns.some((t) => t.hits.includes(k)));
+  const canImprove = penalties.length
+    ? `${penalties.map((p) => PENALTIES[p].name).join('、')}顶高了${peerPronoun()}的防备`
+    : unused.length
+      ? `这一局没用过${unused.slice(0, 2).map((k) => KEYS[k].name).join('、')}`
+      : `七把钥匙都用到了，下一局试着更早读准${peerPronoun()}的档位`;
+
+  const breaches = breachTurns();
+  const compliance = breaches.length
+    ? `踩了 ${breaches.length} 次执业红线，这在现实里是要被问话的`
+    : '未触碰敏感信息红线';
+
+  return [
+    ['做对了', didRight, false],
+    ['可改进', canImprove, false],
+    ['合规', compliance, breaches.length > 0],
+  ];
+}
+
+function paintReviewRows(view) {
+  const box = view.querySelector('#reviewRows');
+  if (!box) return;
+  reviewRows().forEach(([label, text, bad]) => {
+    const row = document.createElement('div');
+    row.className = 'review-row';
+    const dt = document.createElement('span');
+    dt.textContent = label;
+    const dd = document.createElement('b');
+    if (bad) dd.className = 'redline';
+    dd.textContent = text;
+    row.append(dt, dd);
+    box.appendChild(row);
+  });
+}
+
 function paintBreaches(view) {
   const turns = breachTurns();
   if (!turns.length) return;
@@ -1562,7 +1644,8 @@ async function paintStats(view, kind) {
     const line = view.querySelector('#percentileLine');
     line.hidden = false;
     line.textContent = percentileCopy(pct);
-    line.classList.toggle('good', percentileTier(pct) === 'good');
+    // 底色不在这儿判：它跟着整屏的 data-tone 走（style.css 的 .review[data-tone]），
+    // 与上面那个大数同色。一屏一个语义色，玩家不用学第二套规则。
   }
 
   if (!data.turns) return;
@@ -1977,6 +2060,28 @@ function paintOpening() {
   $('openingMoney').textContent = wholeMoney(TOTAL());
   $('openingHint').textContent = SCENE.incident.hint;
   $('openingAlert').textContent = '资金异动 · 等待处理';
+  paintTodayCount();
+}
+
+/** 抬头那行「今日第 N 位客户」。
+ *
+ * **原先写死成「今日 1 / 3」。** 那个分母是假的：客户由系统随机派发，
+ * 一局一位，没有"今天一共三位"这回事，四个场景上线之后更对不上。
+ * 界面上任何一个数都该有出处——这里的出处是本机训练记录里今天的局数
+ * （localStorage，与复盘那一节同源）。读不到就退回"今日第 1 位客户"，
+ * 不因为一个装饰性的数字让开场屏崩掉。
+ */
+function paintTodayCount() {
+  const el = $('todayCount');
+  if (!el) return;
+  let n = 1;
+  try {
+    const today = new Date().toDateString();
+    n = loadHistory().filter((e) => new Date(e.ts).toDateString() === today).length + 1;
+  } catch {
+    n = 1;
+  }
+  el.textContent = `今日第 ${n} 位客户`;
 }
 
 /** 客户档案里的一行。 */

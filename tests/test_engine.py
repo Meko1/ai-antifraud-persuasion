@@ -374,9 +374,13 @@ class 分类卡住的Gateway(FakeGateway):
     def __init__(self, **kwargs: str) -> None:
         super().__init__(**kwargs)
         self.分类被取消 = False
+        # 分类协程**真的开始执行**的信号。`create_task` 只是排期，
+        # 不保证已经进门——测试要等的是这个，不是"调度器什么时候轮到它"。
+        self.分类已进门 = asyncio.Event()
 
     async def classify(self, **kwargs: object) -> str:
         self.分类调用次数 += 1
+        self.分类已进门.set()
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -486,6 +490,13 @@ async def test_玩家中途走人时分类请求不会变成孤儿() -> None:
 
     不收这一手，分类请求就没人认领：日志刷 "Task exception was never
     retrieved"，网关额度也白花。
+
+    **2026-08-21：这条在 Python 3.12 上红过一次，是测试的锅，不是产品的。**
+    原先消费完两个事件就直接 `aclose()`，默认此时分类协程已经在跑了——
+    可 `create_task` 只是把它排进队列，什么时候真正开始执行由调度器决定。
+    3.10/3.11 上凑巧已经进门，3.12 改了调度时机就没有，于是两条断言一起挂。
+    修法是等一个明确的信号（`分类已进门`），把"调度器什么时候轮到它"这个
+    与本测试无关的变量彻底拿掉——**要验的是取消，不是排队顺序**。
     """
     gateway = 分类卡住的Gateway(
         台词="别劝我。", 分类结果="用不上"
@@ -500,6 +511,9 @@ async def test_玩家中途走人时分类请求不会变成孤儿() -> None:
     )
     await events.__anext__()  # meta
     await events.__anext__()  # 第一句台词——此时分类已经发车
+    # 等它真的进门再关，否则取消的是一个还没开始跑的任务，
+    # 走的是另一条分支，验不到 CancelledError 那一手。
+    await asyncio.wait_for(gateway.分类已进门.wait(), timeout=1)
     await events.aclose()
     await asyncio.sleep(0)
 

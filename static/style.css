@@ -1491,7 +1491,13 @@ button:disabled { cursor: not-allowed; }
 .sysnote.bad { color: var(--danger); }
 .sysnote .sep { padding: 0 5px; color: #b5bbb7; }
 .sysnote button { margin-left: 5px; padding: 2px 7px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; }
-.composer { flex: none; padding: 11px 12px calc(13px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--paper); }
+/* **display 必须显式写成 block。** 上面还留着一条同名的旧规则
+   （`.composer { display: flex }`），这条新规则没写 display，于是那句
+   flex 一直生效：`.inputrow` 和下面那行提示被拉成了同一行的两个 flex 子项，
+   桌面宽度下最明显——输入框被挤窄，"不要提供密码、验证码"跑到发送键右边。
+   提示本身不删：它是这个作品的安全约束，不是装饰。
+   （`.composer[hidden] { display:none }` 仍然赢：属性选择器特指度更高。） */
+.composer { flex: none; display: block; padding: 11px 12px calc(13px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--paper); }
 .inputrow { display: grid; grid-template-columns: 1fr 46px; gap: 8px; }
 .composer input { width: 100%; height: 47px; padding: 0 14px; border: 1px solid #d2d7d3; border-radius: 12px; outline: 0; background: #fff; color: var(--ink); font-size: 15px; }
 .composer input::placeholder { color: #858d88; }
@@ -1532,8 +1538,10 @@ button:disabled { cursor: not-allowed; }
 .metric + .metric { padding-left: 18px; border-left: 1px solid var(--line); }
 .metric b { display: block; font-size: 24px; line-height: 1.25; }
 .metric span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
-.percentile { margin: 14px 19px 0; padding: 13px 14px; border-radius: 11px; background: #eceeea; color: #4c5651; font-size: 14px; line-height: 1.55; font-weight: 700; }
-.percentile.good { background: var(--success-soft); color: var(--success); }
+/* 底色跟着整屏的 tone 走（下面的 .review[data-tone]），不自己判阈值：
+   劝住是绿、拦下是金、转账是锈红，与上面那个大数同色，读者一眼对得上。
+   还没攒够样本时落到中性灰的默认值。 */
+.percentile { margin: 14px 19px 0; padding: 13px 14px; border-radius: 11px; background: var(--soft, #eceeea); color: var(--accent, #4c5651); font-size: 14px; line-height: 1.55; font-weight: 700; }
 .percentile.unranked { background: var(--danger-soft); color: var(--danger); }
 .turning-point, .result-review { margin: 16px 19px 0; padding: 15px 0; border-bottom: 1px solid var(--line); }
 .turning-point > b, .result-review h3 { margin: 0; font-size: 14px; }
@@ -1541,6 +1549,30 @@ button:disabled { cursor: not-allowed; }
 .turning-point p, .result-review .copy { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
 .result-review .copy { padding: 0; border: 0; }
 .result-review .copy em { color: var(--ink); font-style: normal; font-weight: 700; }
+
+/* 本局复盘三行：左标签右内容。做成一段结论下面的要点，不是三张卡片——
+   它们是"这局你怎么打的"的摘要，不是三个并列的功能入口。 */
+.review-rows { margin-top: 11px; }
+.review-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  margin-top: 9px;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.review-row span { color: var(--muted); }
+.review-row b { font-weight: 650; }
+/* 踩过红线才变色。没踩就是普通一行——不给"没犯错"发绿灯，
+   那会把"合格"说成"做得好"。 */
+.review-row b.redline { color: var(--danger); }
+
+/* 四色语义，整屏一份（设计稿的 data-tone）。一屏一个 --accent，
+   百分位块直接吃它，不再自己判一套阈值——玩家不用学第二套配色规则。 */
+.review[data-tone="green"] { --accent: var(--success); --soft: var(--success-soft); }
+.review[data-tone="gold"]  { --accent: var(--pending); --soft: var(--pending-soft); }
+.review[data-tone="plain"] { --accent: #59635e;        --soft: #eceeea; }
+.review[data-tone="rust"]  { --accent: var(--danger);  --soft: var(--danger-soft); }
 .result-actions { padding: 17px 19px 0; }
 .review-details { margin: 0; }
 .review-details > summary { min-height: 49px; display: grid; place-items: center; border-radius: 12px; background: var(--navy); color: #fff; font-size: 15px; font-weight: 760; list-style: none; cursor: pointer; }
