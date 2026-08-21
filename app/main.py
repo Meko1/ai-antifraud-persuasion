@@ -15,7 +15,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -316,9 +316,39 @@ async def demo_stream() -> StreamingResponse:
     )
 
 
+# 静态资源一律**必须回源校验**。
+#
+# 起因是一次真实的排查：部署之后首页是新的、复盘页还是旧的，看着像合并把
+# 代码弄丢了，实际上代码好好的——`index.html` 走 FileResponse（没有缓存头，
+# 浏览器每次都要），而 `/static/app.js` 由 StaticFiles 下发，**带 ETag 却不带
+# Cache-Control**。缺了 Cache-Control 时浏览器按启发式规则自己决定能缓存多久
+# （常见做法是拿 Last-Modified 的时间差乘 10%），这段时间内根本不回源问一句。
+# 于是新 HTML 配旧 JS：首页是 index.html 里的静态结构，所以看着更新了；
+# 复盘页整个由 app.js 生成，于是停在旧版。**同一次部署，两个文件新旧不一致。**
+#
+# `no-cache` 不是"不缓存"，是"可以缓存，但用之前必须回源校验一次"。
+# ETag 还在，校验命中就是一个 304（空body），带宽几乎不花，但永远不会
+# 拿旧文件糊到用户脸上。这比给文件名加版本号（app.js?v=xxx）简单：
+# 那个要改 HTML、要有构建步骤，而这个作品没有构建步骤。
+_NO_CACHE = "no-cache"
+
+
+class RevalidatedStatic(StaticFiles):
+    """带 no-cache 的静态目录。除此之外与 StaticFiles 完全一致。"""
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Any:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = _NO_CACHE
+        return response
+
+
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    # 首页本来就没有缓存头，这里显式写上——省得下一个人看见 /static 有、
+    # 这里没有，以为是漏了。
+    return FileResponse(
+        STATIC_DIR / "index.html", headers={"Cache-Control": _NO_CACHE}
+    )
 
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/static", RevalidatedStatic(directory=STATIC_DIR), name="static")
