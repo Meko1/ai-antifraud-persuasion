@@ -170,18 +170,6 @@ const RECEIPT = {
   transferred: 'sent', blacklisted: null,
 };
 
-// 复盘页的四色语义。**绿只给明确劝住**，不做装饰色——它在这一屏只有一个
-// 意思，滥用一次，下次玩家就不信它了。金＝争取到时间或减少了损失；
-// 锈红＝资金损失或联系中断；拖住给中性灰：钱没动，但风险一点没解除，
-// 用绿会把"还没输"说成"赢了"。
-const TONES = {
-  persuaded: 'green',
-  intercepted: 'gold',
-  stalled: 'plain',
-  transferred: 'rust',
-  blacklisted: 'rust',
-};
-
 function endingMeta(kind) {
   const copy = (SCENE && SCENE.endings[kind]) || {};
   return {
@@ -591,6 +579,9 @@ async function playTurn(utterance) {
     mine.remove();
     game.remaining = prevRemaining;
     $('remaining').textContent = String(prevRemaining);
+    const current = Math.min(game.maxRounds, Math.max(1, game.maxRounds - prevRemaining + 1));
+    $('turnCurrent').textContent = String(current);
+    $('roundFill').style.width = `${(current / game.maxRounds) * 100}%`;
     // 话还给他，省得重打一遍
     const input = $('say');
     if (!input.value) input.value = utterance;
@@ -626,6 +617,8 @@ async function playTurn(utterance) {
         round = ev.data.round;
         game.remaining = ev.data.remaining;
         $('remaining').textContent = String(ev.data.remaining);
+        $('turnCurrent').textContent = String(round);
+        $('roundFill').style.width = `${(round / game.maxRounds) * 100}%`;
       } else if (ev.name === 'sentence') {
         spoken.push(ev.data.text);
         queue.push(ev.data.text);
@@ -1001,184 +994,133 @@ function openReview() {
   view.setAttribute('role', 'dialog');
   view.setAttribute('aria-label', '复盘');
   view.innerHTML = `
-    <header class="navbar">
-      <button class="navback" id="reviewBack" type="button" aria-label="返回"></button>
-      <h1>复盘</h1>
+    <div class="osbar"><span>14:56</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <header class="appbar">
+      <button class="brandmark review-mark" id="reviewBack" type="button" aria-label="返回对话">复</button>
+      <strong>本局复盘</strong>
+      <span class="quiet" id="reviewScene"></span>
     </header>
     <div class="review-body">
-      <!-- 先说结局，再说资金状态。拖住时展示“暂未转出”而不是“守住”，
-           被拉黑时展示未知，不拿虚假的 ¥0 填补已经断掉的信息。 -->
-      <div class="summary ${kind}">
+      <section class="summary ${kind}">
         <span class="result-kicker">本局结果 · <b class="tierpill"></b></span>
         <h2 class="result-title"></h2>
         <div class="savedamt num"></div>
         <div class="savedcap"></div>
         <div class="saved"></div>
-        <p class="copy"></p>
-      </div>
+      </section>
 
-      <!-- 两个数，不是三个（设计稿的 scoreline）。原先第三栏是"最有力的一句"，
-           而下面「本局关键转折」整块讲的就是那一句——同一件事在一屏里说两遍，
-           第三栏还只能塞下一个 +12，信息量最低的位置占着最显眼的槽。 -->
       <div class="scoreline">
-        <div class="metric"><b id="sTrust"></b><span>最终信任</span></div>
-        <div class="metric"><b id="sRounds"></b><span>使用轮次</span></div>
+        <div class="metric"><b class="num" id="sTrust"></b><span>最终信任</span></div>
+        <div class="metric"><b class="num" id="sRounds"></b><span>使用轮次</span></div>
       </div>
 
-      <!-- 百分比是一块，不是一行：一行只放得下结论，放不下口径。
-           而"跟谁比"恰恰是这个数字能不能被信的关键，所以口径跟着结论走。 -->
-      <div class="percentile" id="percentileLine" hidden>
-        <strong id="percentileTitle"></strong>
-        <p id="percentileCopy"></p>
-      </div>
+      <p class="percentile" id="percentileLine">排行样本积累中 · 暂不显示百分位</p>
 
-      <div class="turning-point" id="turningPoint">
-        <b>本局关键转折</b>
+      <section class="turning-point" id="turningPoint">
+        <b id="turningTitle"></b>
         <blockquote id="turningQuote"></blockquote>
         <p id="turningNote"></p>
-      </div>
+      </section>
 
-      <!-- 本局复盘三行。**这三行必须从真实对局里算**，不能像设计稿那样按结局
-           写死——写死的话，玩家换个打法拿到同一档结局，复盘会说一模一样的话，
-           那就成了占位符而不是复盘。判据见 reviewRows()：做对了看真实命中的
-           钥匙，可改进看没用过的那几把，合规看这一局有没有踩红线（与那张
-           合规红线卡同源，不另算一套）。 -->
-      <div class="review-block" id="reviewBlock">
+      <section class="result-review">
         <h3>本局复盘</h3>
-      </div>
+        <p class="copy"></p>
+      </section>
 
-      <!-- 详细 K 线仍紧跟结果摘要，但退到关键转折之后。用户先知道发生了什么，
-           再决定是否深入查看每轮判分。 -->
-      <div class="panel">
-        <canvas id="chart"></canvas>
-        <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分给出的分——它和实体端点的落差就是每轮的信任流失。</p>
-      </div>
+      <div class="result-actions">
+        <details class="review-details" id="reviewDetails">
+          <summary>查看逐轮证据</summary>
+          <div class="evidence-content">
+            <div class="panel">
+              <canvas id="chart"></canvas>
+              <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分，实体端点是计入流失后的信任度。</p>
+            </div>
 
-      <!-- 合规红线。**排在所有内容之前**（结算卡与三栏统计之后），
-           因为在一个投顾训练系统里，这是复盘要说的第一件事：
-           你可能把三十万全保住了，而这场对话在现实里已经是一起合规事件。
-           这个反差就是这一节全部的教学价值，所以它不能排在"踩过的坑"里
-           跟责骂说教并列——那三条是"没劝动他"，这一条是"你自己要出事"。
-           一次都没踩就整块不出现，不留一个空着的绿勾。 -->
-      <div class="group" id="breachWrap" hidden>
-        <div class="group-title">合规红线</div>
-        <div class="panel" id="breachList"></div>
-      </div>
+            <div class="group" id="breachWrap" hidden>
+              <div class="group-title">合规红线</div>
+              <div class="panel" id="breachList"></div>
+            </div>
 
-      <!-- 揭晓老陈的手机。**这五条原来是首页**——开局就把启航财经、三点截止、
-           家里等着这笔钱、女儿查过工商全给了玩家，而这一局的玩法恰恰是
-           "这些都得从他嘴里问出来"（CONTEXT.md「对局」）。搬到这里之后
-           它们从剧透变成记分卡。
+            <div class="group">
+              <div class="group-title" id="phoneTitle">这一局你没看见的</div>
+              <div class="panel" id="phoneList"></div>
+            </div>
 
-           位置刻意排在结算与三栏统计、K 线这块之后：它回答的是
-           "刚才那十二轮为什么那么难"，先看到它，后面每一节读起来都不一样。 -->
-      <div class="group">
-        <div class="group-title" id="phoneTitle">这一局你没看见的</div>
-        <div class="panel" id="phoneList"></div>
-      </div>
+            <div class="group">
+              <div class="group-title">关键方法 · 你这一局用得怎么样</div>
+              <div class="panel" id="keyBars"></div>
+            </div>
 
-      <!-- 三把钥匙的维度条。**同类产品（AI 陪练那一类）人人都有维度评分，
-           而我们原先只在「没用上的钥匙」里列了个清单**——明明判分引擎按
-           三把钥匙 × 四个情绪档位算了一整局，玩家却看不到自己在每一把上
-           站在哪儿。这一节把它摊开：用了几次、挣了多少分、时机对不对。
+            <div class="group">
+              <div class="group-title">逐轮 · 挣了多少 / 掉了多少 / 剩多少</div>
+              <div class="panel" id="roundsList"></div>
+            </div>
 
-           调研里最硬的一条（Key Lime 对 PUBG 后置屏的 N=12 研究）：
-           **玩家不会为了看懂一个指标去别处找解释，看不懂就直接忽略。**
-           所以每一行自带一句人话，不靠页面底部那段说明。 -->
-      <div class="group">
-        <div class="group-title">三把钥匙 · 你这一局用得怎么样</div>
-        <div class="panel" id="keyBars"></div>
-      </div>
+            <div class="group" id="penaltyWrap" hidden>
+              <div class="group-title">踩过的坑</div>
+              <div class="panel" id="penaltyList"></div>
+            </div>
 
-      <div class="group">
-        <div class="group-title">逐轮 · 挣了多少 / 掉了多少 / 剩多少</div>
-        <div class="panel" id="roundsList"></div>
-      </div>
+            <div class="group" id="statsWrap" hidden>
+              <div class="group-title">别人打成什么样</div>
+              <div class="panel" id="statsList"></div>
+            </div>
 
-      <div class="group" id="penaltyWrap" hidden>
-        <div class="group-title">踩过的坑</div>
-        <div class="panel" id="penaltyList"></div>
-      </div>
+            <div class="group" id="historyWrap" hidden>
+              <div class="group-title">这台设备上的训练记录</div>
+              <div class="panel statstrip" id="historyStrip"></div>
+              <div class="panel" id="historyList"></div>
+              <div class="panel keyrow" id="historyWeak" hidden>
+                <div class="keyhead"><span class="keyname"></span><span class="keynum"></span></div>
+                <div class="keynote"></div>
+              </div>
+            </div>
 
-      <div class="group" id="statsWrap" hidden>
-        <div class="group-title">别人打成什么样</div>
-        <div class="panel" id="statsList"></div>
-      </div>
-
-      <!-- 本机训练记录。只存在这台设备的 localStorage——不上传、不识别身份、
-           不能跨设备同步，因此也不是排行榜（ADR-0003：排行榜需要服务端权威
-           状态，与"服务端无状态"直接冲突）。它回答的是同一个练习者自己会问
-           的问题："我是不是在变好"，答案只对这台设备上打过的局负责。 -->
-      <div class="group" id="historyWrap" hidden>
-        <div class="group-title">你在这台设备上的训练记录</div>
-        <div class="panel statstrip" id="historyStrip"></div>
-        <div class="panel" id="historyList"></div>
-        <div class="panel keyrow" id="historyWeak" hidden>
-          <div class="keyhead">
-            <span class="keyname"></span>
-            <span class="keynum"></span>
+            <div class="actions"><button id="makeCard">生成分享卡</button></div>
+            <div id="cardWrap"></div>
+            <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>。同一句话在客户不同的情绪档位上值不同的分，结果可复现。</p>
           </div>
-          <div class="keynote"></div>
-        </div>
+        </details>
+        <button class="restart-action" id="restart" type="button">开始一位新客户</button>
       </div>
-
-      <div class="actions">
-        <button id="makeCard">生成分享卡</button>
-        <button class="plain" id="restart">再来一局</button>
-      </div>
-      <div id="cardWrap"></div>
-
-      <!-- 它是脚注，不是开场白。放在最后，玩家想知道"这分靠不靠谱"时才读到 -->
-      <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>。
-      同一句话在他不同的情绪档位上值不同的分，这套参数跑过两万局蒙特卡洛校准——
-      换句话说，你这一局的分数是可复现的。</p>
     </div>`;
 
-  document.body.appendChild(view);
-  // 四色语义（设计稿的 data-tone）：绿只给明确劝住，金表示争取到时间或
-  // 减少损失，锈红表示资金损失或联系中断，其余中性灰。**绿色不做装饰色**——
-  // 它在这一屏只有一个意思，滥用一次，下次玩家就不信它了。
-  view.dataset.tone = TONES[kind] || 'plain';
+  document.querySelector('.app-shell').appendChild(view);
   const result = resultAmount(kind);
+  view.querySelector('#reviewScene').textContent = SCENE ? SCENE.name : '风险劝阻';
   view.querySelector('.summary .tierpill').textContent = meta.tier;
   view.querySelector('.summary .result-title').textContent = meta.title;
   view.querySelector('.summary .savedamt').textContent = result.value;
   view.querySelector('.summary .savedcap').textContent = result.label;
   view.querySelector('.summary .saved').textContent = meta.savedCopy;
-  view.querySelector('.summary .copy').innerHTML = verdictCopy();
+  view.querySelector('.result-review .copy').innerHTML = verdictCopy();
 
   const turning = view.querySelector('#turningPoint');
   if (best && best.delta > 0) {
+    turning.querySelector('#turningTitle').textContent =
+      `真正改变${peerPronoun()}的是第 ${best.round} 轮`;
     turning.querySelector('#turningQuote').textContent = `“${best.utterance}”`;
     turning.querySelector('#turningNote').textContent =
       `第 ${best.round} 轮让信任上升 ${best.delta} 分，这是本局最有力的一句。`;
   } else {
+    turning.querySelector('#turningTitle').textContent = '本局尚未出现关键转折';
     turning.querySelector('#turningQuote').textContent = '这一局没有一句真正推动客户。';
     turning.querySelector('#turningNote').textContent =
       '下一局先确认客户在怕什么、相信什么，再尝试给出判断。';
   }
 
   if (kind === 'blacklisted') {
-    // 被拉黑不入档（CONTEXT.md「结局」），因此也不参与排行——这一块不等
-    // /api/stats 回来就先摆明口径，省得先显示一个百分位再改口。
     const rank = view.querySelector('#percentileLine');
     rank.hidden = false;
     rank.classList.add('unranked');
-    rank.querySelector('#percentileTitle').textContent = '不参与排行';
-    rank.querySelector('#percentileCopy').textContent =
-      '联系中断属于提前出局，不与完整对局比较。';
+    rank.textContent = '不参与排行 · 联系中断属于提前出局';
   }
 
-  // 两个数。「劝住线 80」不重复说——K 线上那条金色虚线已经标着它。
-  // 「最有力的一句」那一栏去掉了：下面「本局关键转折」整块讲的就是它。
   view.querySelector('#sTrust').textContent = String(game.trust);
   view.querySelector('#sRounds').textContent = String(game.turns.length);
 
-  paintReviewRows(view);
-
   paintBreaches(view);
   paintPhone(view);
-  paintChart(view);
 
   const list = view.querySelector('#roundsList');
   game.turns.forEach((t) => {
@@ -1228,6 +1170,9 @@ function openReview() {
   view.querySelector('#restart').onclick = startNewClient;
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
+  view.querySelector('#reviewDetails').addEventListener('toggle', (event) => {
+    if (event.currentTarget.open) paintChart(view);
+  }, { once: true });
 }
 
 /** 合规红线那一节。
@@ -1239,65 +1184,6 @@ function openReview() {
  * 逐条列出踩线的那一轮和原话：合规这件事上，"你说过这句话"本身就是证据，
  * 泛泛说一句"注意合规"没有任何用。
  */
-/** 本局复盘三行：做对了 / 可改进 / 合规。
- *
- * **设计稿里这三行是按结局写死的**（每个客户 × 每种结局一套文案）。
- * 照抄会出一个问题：两个玩家用完全不同的打法拿到同一档结局，复盘会对他们
- * 说一模一样的话——那是占位符，不是复盘。所以这里全部从这一局的真实数据算：
- *
- *   做对了 —— 真实挣分最多的那把钥匙（没有就说实话：一句都没推动）
- *   可改进 —— 优先说踩过的坑；没踩坑就说这一局压根没用过的那几把
- *   合规   —— 直接看 `breachTurns()`，与那张合规红线卡同源，不另算一套
- */
-function reviewRows() {
-  const gains = {};
-  game.turns.forEach((t) => t.hits.forEach((h) => {
-    if (KEYS[h]) gains[h] = (gains[h] || 0) + Math.max(0, t.delta);
-  }));
-  const bestKey = Object.keys(gains).sort((a, b) => gains[b] - gains[a])[0];
-
-  const didRight = bestKey
-    ? `${KEYS[bestKey].name}用得最见效，共挣 ${gains[bestKey]} 分`
-    : '识别到了资产异动，并且开口问了';
-
-  const penalties = Object.keys(PENALTIES).filter(
-    (p) => game.turns.some((t) => t.hits.includes(p)));
-  const unused = Object.keys(KEYS).filter(
-    (k) => !game.turns.some((t) => t.hits.includes(k)));
-  const canImprove = penalties.length
-    ? `${penalties.map((p) => PENALTIES[p].name).join('、')}顶高了${peerPronoun()}的防备`
-    : unused.length
-      ? `这一局没用过${unused.slice(0, 2).map((k) => KEYS[k].name).join('、')}`
-      : '七把钥匙都用到了，下一局可以试着更早读准时机';
-
-  const breaches = breachTurns();
-  const compliance = breaches.length
-    ? `踩了 ${breaches.length} 次合规红线`
-    : '未触碰合规红线';
-
-  return [
-    ['做对了', didRight, false],
-    ['可改进', canImprove, false],
-    ['合规', compliance, breaches.length > 0],
-  ];
-}
-
-function paintReviewRows(view) {
-  const box = view.querySelector('#reviewBlock');
-  if (!box) return;
-  reviewRows().forEach(([label, text, bad]) => {
-    const row = document.createElement('div');
-    row.className = 'review-row';
-    const dt = document.createElement('span');
-    dt.textContent = label;
-    const dd = document.createElement('b');
-    if (bad) dd.className = 'redline';
-    dd.textContent = text;
-    row.append(dt, dd);
-    box.appendChild(row);
-  });
-}
-
 function paintBreaches(view) {
   const turns = breachTurns();
   if (!turns.length) return;
@@ -1618,17 +1504,19 @@ function trustPercentile(buckets, trust) {
   return Math.round(((below + within * pos) / total) * 100);
 }
 
-/** 百分位下面那行小字：**口径**，不是第二句夸奖。
+/** 百分位这句话，跟 verdictCopy 是同一套嘴——具体、说人话、不打鸡血。
  *
- * 设计稿把它固定成「只比较相同客户、相同规则版本的有效记录」，用意是
- * 让"跟谁比"跟结论待在一起——一个排名能不能被信，全看这一句。
- * 这里在此之上多说一件同样属于口径的事：低样本时这个数会跳，别当成定论。
- * （门槛是每场景 20 局，见 TRUST_SAMPLE_MIN；不到门槛整块不出现。）
+ * **原来的写法是"这一局的信任度超过了已有记录里 X%"**：不管 X 是 95 还是 5，
+ * 都是同一句模板换个数字，是典型的"仪表盘播报腔"。分数低的时候尤其显得假——
+ * 一个 15% 配一句语气跟 95% 一模一样的话，像是没看懂自己在说什么。
+ *
+ * 分数不同，值得说的话也不同：高分是真值得夸的一手；低分不回避那个数，
+ * 但接一句具体能改的东西，跟 verdictCopy 低分那句"下一局试着先听懂他在怕
+ * 什么"是同一个路数——情绪价值不是把烂分数说成好分数，是把冷冰冰的排名
+ * 换成一句听得出是在跟你说话的话。
  */
 function percentileCopy(pct) {
-  return pct >= 90 || pct <= 10
-    ? '只比较相同客户、相同规则版本的有效记录。样本越少，两端的名次越会跳。'
-    : '只比较相同客户、相同规则版本的有效记录。';
+  return `高于同场景 ${pct}% 的已完成对局`;
 }
 
 /** 百分位配色跟着分数走，不是每次都用那罐"值得庆祝"的绿——
@@ -1653,8 +1541,11 @@ async function paintStats(view, kind) {
   if (kind === 'blacklisted') return;
   let data;
   try {
-    // **带上 sid**：信任度分布按场景分开存（app/stats.py `key_trust`）。
-    // 四个场景难度不一样，混着比，量出来的是"你抽到的场景是难是易"。
+    // **必须带 sid**：信任度分布按场景分开存（app/stats.py `key_trust`）。
+    // 四个场景难度并不一样（balance_sim 实测 expert 胜率 45.8%~54.0%），
+    // 混在一起比，量出来的是"你抽到的场景是难是易"，不是你打得好不好。
+    // 不带这个参数会读到空的默认桶，百分位于是永远不显示——**静默失效**，
+    // 页面上看不出任何异常，所以这行不能省。
     const sid = encodeURIComponent(SCENE ? SCENE.id : '');
     data = await (await fetch(`api/stats?sid=${sid}`)).json();
   } catch (e) {
@@ -1670,13 +1561,8 @@ async function paintStats(view, kind) {
     game._percentile = pct;
     const line = view.querySelector('#percentileLine');
     line.hidden = false;
-    // 底色不在这儿判：它跟着整屏的 data-tone 走（style.css 的 .review[data-tone]）。
-    // 一屏一个语义色，玩家不用再学第二套规则。
-    line.querySelector('#percentileTitle').textContent =
-      `高于同场景 ${pct}% 的已完成对局`;
-    // 口径跟着结论走：**"跟谁比"是这个数能不能被信的关键**。
-    // 只比同一个场景，且只比走到四档结局的局（被拉黑不入档，见 stats.py）。
-    line.querySelector('#percentileCopy').textContent = percentileCopy(pct);
+    line.textContent = percentileCopy(pct);
+    line.classList.toggle('good', percentileTier(pct) === 'good');
   }
 
   if (!data.turns) return;
@@ -2056,6 +1942,9 @@ async function loadGame() {
   game.threshold = data.win_threshold;
   game.maxRounds = data.remaining;
   game.remaining = data.remaining;
+  $('turnCurrent').textContent = '1';
+  $('turnTotal').textContent = String(game.maxRounds);
+  $('roundFill').style.width = `${100 / game.maxRounds}%`;
   game.contestId = data.contest_id || '';
   SCENE = data.scenario || null;
   if (!SCENE) throw new Error('start response missing scenario');
@@ -2127,38 +2016,13 @@ function paintDesk() {
   // 这段交底带 <b> 强调，是文案的一部分（"账户这一侧一个字都看不到"）。
   // 内容来自我们自己的场景表，不是用户输入
   $('deskNote').innerHTML = SCENE.note.join('<br>');
-  document.querySelector('.st-label').textContent = `${SCENE.pronoun}现在`;
   $('say').setAttribute('aria-label', `跟${SCENE.peer}说`);
   $('say').setAttribute('placeholder', `输入你想对${SCENE.pronoun}说的话`);
 
-  // warn 的几行是牌，默认摊开；其余是背景，收进「展开」。
-  // 六行等权重铺开时，那组矛盾和"开户 19 年"一样重，玩家一条都记不住。
   const box = $('cFacts');
-  const warn = c.facts.filter((f) => f.warn);
-  const rest = c.facts.filter((f) => !f.warn);
   box.innerHTML = '';
-  warn.forEach((f) => box.appendChild(factRow(f)));
-
-  const more = $('factsMore');
-  const label = $('factsMoreLabel');
-  if (!rest.length) {
-    more.hidden = true;
-    return;
-  }
-  more.hidden = false;
-  let open = false;
-  const paint = () => {
-    label.textContent = open ? '收起' : `其余 ${rest.length} 项账户信息`;
-    more.setAttribute('aria-expanded', String(open));
-    more.classList.toggle('open', open);
-  };
-  more.onclick = () => {
-    open = !open;
-    if (open) rest.forEach((f) => box.appendChild(factRow(f)));
-    else warn.length && [...box.children].slice(warn.length).forEach((n) => n.remove());
-    paint();
-  };
-  paint();
+  c.facts.forEach((f) => box.appendChild(factRow(f)));
+  $('factsMore').hidden = true;
 }
 
 function showScreen(id) {
@@ -2181,6 +2045,8 @@ async function enterGame() {
   game.entered = true;
   showScreen('chat');
   $('remaining').textContent = String(game.remaining);
+  $('turnCurrent').textContent = '1';
+  $('roundFill').style.width = `${100 / game.maxRounds}%`;
   paintMood(game.mood);
   divider('下午 2:47');
   say('me', PING());
@@ -2194,7 +2060,7 @@ function startNewClient() {
 
 // 它现在是个真 <button>，回车与空格由浏览器自己管，不用再补 keydown
 $('openChen').addEventListener('click', enterGame);
-$('backHome').addEventListener('click', () => showScreen('home'));
+$('backHome')?.addEventListener('click', () => showScreen('home'));
 $('openProfile').addEventListener('click', () => showScreen('home'));
 $('backOpening').addEventListener('click', () => showScreen('opening'));
 $('retryStart').addEventListener('click', startNewClient);
