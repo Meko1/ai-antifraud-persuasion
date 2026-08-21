@@ -107,6 +107,9 @@ class Scenario:
     client_name: str
     client_sub: str
     client_tag: str
+    incident_title: str
+    incident_lead: str
+    incident_hint: str
     facts: Tuple[FactRow, ...]
     desk_note: Tuple[str, ...]   # 工作台底部那段交底，逐行
     phone: Tuple[PhoneRow, ...]
@@ -160,6 +163,11 @@ class Scenario:
                      "note": f.note, "warn": f.warn}
                     for f in self.facts
                 ],
+            },
+            "incident": {
+                "title": self.incident_title,
+                "lead": self.incident_lead,
+                "hint": self.incident_hint,
             },
             "note": list(self.desk_note),
             "phone": [
@@ -318,6 +326,9 @@ CHEN = Scenario(
     client_name="陈国栋",
     client_sub="52 岁 · 熟人都叫他老陈",
     client_tag="风测：保守型",
+    incident_title="陈国栋刚刚清空了全部持仓。",
+    incident_lead="账户已经转出 10 万元，还有 20 万元可能继续流出。你不知道钱去了哪里。",
+    incident_hint="近三个月 47 笔交易，此前年均只有 3 笔",
     facts=(
         FactRow("今日转出", "¥100,000.00", "占账户资产 78%", warn=True),
         FactRow("账户余额", "¥28,000.00"),
@@ -527,6 +538,9 @@ ZHOU = Scenario(
     client_name="周淑琴",
     client_sub="58 岁 · 退休教师 · 教了三十二年",
     client_tag="风测：稳健型",
+    incident_title="周淑琴今天赎回了全部基金。",
+    incident_lead="48 万元已经进入活期。账户记录无法解释，她为什么突然这样做。",
+    incident_hint="平均持有 6 年，从不做短线",
     # **「待转出」那一行 8-18 删了。** 它和「今日赎回」是同一个 ¥480,000.00，
     # 同一张卡上把同一个数印两遍，看着像数据出错，而且白占一行首屏。
     # 「已在活期，随时可划」这句信息量是真的（钱随时能走），并进上面那行的注文。
