@@ -1,199 +1,109 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="系统随机接入一位高风险客户。十二轮对话，你能不能让客户停下来。">
-<title>AI 反诈劝阻</title>
-<link rel="stylesheet" href="static/style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="系统随机接入一位高风险客户。十二轮对话，你能不能让客户停下来。">
+  <title>AI 反诈劝阻</title>
+  <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
-
-<!-- 系统随机派发客户。这里只表达真实的等待，不做抽卡或客户选择器。 -->
-<section class="screen on assignment" id="assignment" aria-live="polite">
-  <div class="assignment-visual" aria-hidden="true">
-    <span class="radar-ring radar-ring-outer"></span>
-    <span class="radar-ring radar-ring-inner"></span>
-    <span class="radar-core"></span>
-    <span class="radar-sweep"></span>
-  </div>
-  <div class="assignment-copy">
-    <p class="live-label"><i></i>正在接入高风险客户</p>
-    <h1 id="assignmentTitle">一条异常记录<br>刚刚进入队列。</h1>
-    <p id="assignmentCopy">系统正在整理账户异动信息。客户由系统随机分配，本局开始后不会更换。</p>
-    <div class="assignment-progress" id="assignmentProgress"><i></i></div>
-    <button class="retry-start" id="retryStart" type="button" hidden>重新连接</button>
-  </div>
-</section>
-
-<!-- 服务端返回随机客户后，先给事件而不是直接丢一张 CRM 表。 -->
-<section class="screen opening" id="opening">
-  <header class="productbar">
-    <span class="desk-me"><i class="avatar av-li" aria-hidden="true">李</i>客户风险协作</span>
-    <span class="desk-time">今日待办</span>
-  </header>
-  <main class="opening-body">
-    <p class="live-label"><i></i><span id="openingAlert">资金异动 · 等待处理</span></p>
-    <span class="opening-rule" aria-hidden="true"></span>
-    <h1 id="openingTitle"></h1>
-    <p class="opening-lead" id="openingLead"></p>
-    <dl class="opening-record">
-      <dt>本次异常资金</dt>
-      <dd class="num" id="openingMoney"></dd>
-      <dd class="opening-hint" id="openingHint"></dd>
-    </dl>
-  </main>
-  <div class="primary-foot">
-    <button class="primary-action" id="openProfile" type="button">查看异常记录</button>
-    <p>约 3 分钟 · 最多 12 轮</p>
-  </div>
-</section>
-
-<!-- 冷开场 = **李经理的工作台**（企业微信 + 券商 CRM 的语法）。
-     2026-08-17 从"老陈的手机"改过来的，理由是这一屏原先在拆自己的玩法。
-
-     原先那一屏是老陈的手机，六条会话把启航财经、王老师三点截止、划走十万、
-     家里等钱、女儿查过工商、反诈中心提醒**一次性全给了**。而 CONTEXT.md
-     「对局」写的是：「开局时投资顾问只知道客户账户转出过一笔钱，骗局的一切
-     都得从他嘴里挖出来。信息差不是设定上的偷懒，它就是玩法。」
-     两份定义文件当面打架。
-
-     **危害是机制性的，不只是剧透。** 玩家读完六条，第 1 轮最自然的开口是
-     "您女儿查过那家公司，工商上查不到"——老陈还什么都没说，`grounded=false`
-     打 0.45 折，同时大概率判 `bare_assertion` 扣分并顶起防御姿态。
-     被夸得最多的一屏，是一台"未扎根打法"生成器。
-
-     现在这一屏只给李经理真正看得到的东西：一条资产异动预警，加一张客户档案。
-     档案里那几行不是布景，是**牌**——「风险测评保守型」对「三个月 47 笔、
-     持仓清空」本身就是一组现成的矛盾，而且是投顾独有、家属和反诈中心都拿不出的
-     角度。它与 gateway.py 的 SCAM_SCRIPT「他手里有你的账户，没有你的生活」
-     那份清单逐条对应。用它仍然得等老陈自己开口才算扎根。
-
-     六条会话没有删，移到了**复盘**（app.js 的 paintPhone）：逐条揭晓 + 打勾，
-     从剧透变成记分卡。而"「这是诈骗」四个字没用"这个教学点，从开局提前告知
-     变成结束时才发现他女儿早说过了——教学效果是反过来的强。 -->
-<section class="screen profile-screen" id="home">
-  <header class="navbar">
-    <button class="navback" id="backOpening" type="button" aria-label="返回异常事件"></button>
-    <h1>客户档案</h1>
-    <span class="nav-status">实时</span>
-  </header>
-
-  <div class="deskhead">
-    <span class="desk-me"><i class="avatar av-li" aria-hidden="true">李</i>李经理 · 投资顾问</span>
-    <span class="desk-time">今天 14:47</span>
-  </div>
-
-  <div class="desk-body">
-    <!-- 预警条。**措辞是"资产异动"不是"风控"**：银证转出到本人绑定卡是最
-         正常的操作，风控与反洗钱不会为它报警，报的是营销条线的资产流失预警。
-         这样也更有戏——李经理最初的动机是挽留资产，聊着聊着才发现不对。 -->
-    <div class="alertbar">
-      <span class="alert-dot" aria-hidden="true"></span>
-      <b>资产异动预警</b>
-      <span class="alert-sub">待处理</span>
-    </div>
-
-    <!-- 交底。**2026-08-18 从整屏最底下提到了这里。**
-         原先的顺序是：预警条 → 六行客户档案 → 两条布景待办 → 这段话。
-         375×812 上量过，这段话在折叠线以下——而它是整屏唯一一段告诉玩家
-         「你要干什么、为什么难」的文字。首屏给的却是一张读不出重点的数据表。
-         一个从投票链接点进来的人，五秒内看到的是陌生人的 CRM 记录，
-         没有任何理由往下滚。**把钩子埋在折叠线以下，等于没有钩子。**
-         内容一个字没改，只是换了位置和权重。 -->
-    <p class="home-note" id="deskNote"></p>
-
-    <!-- 客户档案。**内容由服务端下发**（app/scenario.py 的 payload）。
-
-         带 warn 的那几行是玩家手上的牌，与该场景 SCRIPT 里
-         「账户那一侧他看得一清二楚」那份清单逐条对应。
-         但它们第一次拿出来必然判"未扎根"——扎根只认引用他上一轮说过的话。
-
-         **默认只摊开 warn 那几行，其余收进「展开」。** 六行等权重地铺开时，
-         「保守型 ↔ 持仓清空 ↔ 47 笔」这组矛盾和「开户 19 年」一样重，
-         玩家读完记不住任何一条。收起来的三行是背景，不是牌，一键就能看。 -->
-    <div class="ccard">
-      <div class="ccard-top">
-        <span class="avatar av-chen" aria-hidden="true">陈</span>
-        <span class="ccard-id">
-          <b id="cName"></b>
-          <i id="cSub"></i>
-        </span>
-        <span class="ctag" id="cTag"></span>
+<main class="app-shell" aria-label="AI 反诈劝阻训练">
+  <section class="screen on assignment" id="assignment" aria-live="polite">
+    <div class="osbar"><span>14:47</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <div class="assignment-main">
+      <div class="assignment-visual" aria-hidden="true">
+        <span class="radar-ring radar-ring-outer"></span>
+        <span class="radar-ring radar-ring-inner"></span>
+        <span class="radar-core"></span>
+        <span class="radar-sweep"></span>
       </div>
-
-      <dl class="facts" id="cFacts"></dl>
-
-      <button class="facts-more" id="factsMore" type="button" aria-expanded="false">
-        <span id="factsMoreLabel"></span>
-      </button>
+      <div class="assignment-copy">
+        <p class="live-label"><i></i>正在接入高风险客户</p>
+        <h1 id="assignmentTitle">一条异常记录<br>刚刚进入队列。</h1>
+        <p id="assignmentCopy">系统正在整理账户异动信息。客户由系统随机分配，本局开始后不会更换。</p>
+        <div class="assignment-progress" id="assignmentProgress"><i></i></div>
+        <button class="retry-start" id="retryStart" type="button" hidden>重新连接</button>
+      </div>
     </div>
+  </section>
 
-    <!-- 另外两条待办不可点，纯布景：这是你日常工作里的一个上午，不是英雄时刻。
-         **移到了客户档案下面。** 它们原先夹在档案和交底之间，白白占掉首屏，
-         而它们是这一屏上最不重要的东西。
+  <section class="screen opening" id="opening">
+    <div class="osbar"><span>14:47</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <header class="appbar">
+      <div class="brand"><span class="brandmark" aria-hidden="true">李</span>客户风险协作</div>
+      <span class="quiet">今日 1 / 3</span>
+    </header>
+    <main class="opening-body">
+      <p class="live-label"><i></i><span id="openingAlert">资金异动 · 等待处理</span></p>
+      <span class="opening-rule" aria-hidden="true"></span>
+      <h1 id="openingTitle"></h1>
+      <p class="opening-lead" id="openingLead"></p>
+      <dl class="opening-record">
+        <dt>本次异常金额</dt>
+        <dd class="num" id="openingMoney"></dd>
+        <dd class="opening-hint" id="openingHint"></dd>
+      </dl>
+    </main>
+    <div class="primary-foot">
+      <button class="primary-action" id="openProfile" type="button">查看异常记录</button>
+      <p>约 3 分钟 · 最多 12 轮</p>
+    </div>
+  </section>
 
-         名字不能和任何一个场景的客户撞——原来叫「周建国」，
-         周淑琴那一局上线之后工作台上就并排站了两个姓周的，头像还都是「周」。 -->
-  </div>
+  <section class="screen profile-screen" id="home">
+    <div class="osbar"><span>14:48</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <header class="appbar appbar-centered">
+      <button class="back-button" id="backOpening" type="button">返回</button>
+      <strong>客户档案</strong>
+      <span class="quiet">实时</span>
+    </header>
+    <div class="desk-body">
+      <div class="alertbar"><span>资产异动预警</span><b>待处理</b></div>
+      <p class="home-note" id="deskNote"></p>
+      <div class="ccard">
+        <div class="ccard-top">
+          <span class="avatar" aria-hidden="true">客</span>
+          <span class="ccard-id"><b id="cName"></b><i id="cSub"></i></span>
+          <span class="ctag" id="cTag"></span>
+        </div>
+        <dl class="facts" id="cFacts"></dl>
+        <button class="facts-more" id="factsMore" type="button" aria-expanded="false" hidden>
+          <span id="factsMoreLabel"></span>
+        </button>
+      </div>
+    </div>
+    <div class="deskfoot">
+      <button class="deskcta" id="openChen" type="button"><b id="ctaLabel">联系客户</b></button>
+    </div>
+  </section>
 
-  <!-- 底部操作栏。**这一屏唯一的动作，必须永远看得见。**
-       实测 375×812 上内容有 913px、可视区只有 664px——按钮跟着内容滚，
-       落地第一眼看不到它。券商 App 的客户详情页本来也是这么排的：
-       内容滚动，操作固定在底下。
-
-       原先这里是一条微信式的四格标签栏（消息/通讯录/发现/我），去掉了：
-       那是**微信首页**的部件，而这一屏已经不是微信了；把它和操作栏叠在一起，
-       375px 上光是底部就吃掉 116px。这一屏的"真在用的系统"感由抬头那行
-       李经理、预警条、客户档案和其他待办撑着，不缺这一条。 -->
-  <div class="deskfoot">
-    <button class="deskcta" id="openChen" type="button"><b id="ctaLabel">给客户发消息</b></button>
-    <!-- 这行小字**在按钮外面**：白字压在微信绿上只有 2.38:1，11.5px 的字
-         在那上面是读不动的（微信自己的绿按钮也一样，只是它从不在按钮里放注文）。
-         挪到浅底上就能用够对比度的深灰。
-
-         **文案 8-18 换掉了。** 原先写「企业微信 · 会话按监管要求存档」——
-         那句话在聊天页第一条已经出现过一次，在这儿是重复的；更要紧的是它对
-         一个刚点进来的人毫无用处。换成期待管理：要花多久、要做什么、
-         有什么限制。**投票的人决定要不要试，靠的就是这三个数。** -->
-    <p class="deskfoot-note" id="ctaSub">最多 12 轮 · 只能问，不能替客户决定</p>
-  </div>
-</section>
-
-<!-- 聊天页 -->
-<section class="screen" id="chat">
-  <header class="navbar chat-nav">
-    <button class="navback" id="backHome" type="button" aria-label="返回"></button>
-    <h1 id="peer"></h1>
-    <span class="navmore" aria-hidden="true"></span>
-  </header>
-
-  <!-- 微信在导航栏下方放群公告条，这里借那个位置放对局状态。
-       只有一个情绪词，没有分数——分数在对局中出现，等于把攻略印在屏幕上。
-       要读出他到了哪一档，只能看他说的话。逐轮判分留到复盘。 -->
-  <div class="statusbar">
-    <span class="st-label">他现在</span>
-    <b class="st-mood" id="mood" role="status" aria-live="polite">烦躁</b>
-    <span class="st-track">
-      <i class="st-fill" id="trustFill"></i>
-      <i class="st-goal" id="trustGoal" title="劝住线"></i>
-    </span>
-    <span class="st-rounds">还剩 <b class="num" id="remaining">12</b> 轮</span>
-  </div>
-
-  <!-- 这一侧是企业微信：说话的是投资顾问，不是陌生人。借的还是微信那条
-       系统提示的槽位，但它现在同时干两件事——交代关系（他是你的客户），
-       以及把"只能问，不能荐"变成看得见的约束：你说的每一句都在存档里。 -->
-  <main class="thread" id="thread" aria-live="polite" aria-label="对话">
-    <p class="strangertip">对方是你的客户。本会话已按监管要求存档。</p>
-  </main>
-
-  <form class="composer" id="composer" autocomplete="off">
-    <input id="say" maxlength="120" enterkeyhint="send" aria-label="跟他说">
-    <button id="send" type="submit">发送</button>
-  </form>
-</section>
-
+  <section class="screen chat-screen" id="chat">
+    <div class="osbar"><span>14:50</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <header class="chat-top">
+      <div class="chat-name-line">
+        <strong id="peer"></strong>
+        <span class="chat-mood"><i></i><b id="mood" role="status" aria-live="polite">戒备</b></span>
+      </div>
+      <div class="turn-line">
+        <span>第 <b class="num" id="turnCurrent">1</b> 轮 / <span class="num" id="turnTotal">12</span></span>
+        <span class="round-meter" aria-hidden="true"><i id="roundFill"></i></span>
+        <span class="legacy-trust-track" hidden><i id="trustFill"></i><i id="trustGoal"></i></span>
+        <span id="remaining" hidden>12</span>
+      </div>
+    </header>
+    <main class="thread" id="thread" aria-live="polite" aria-label="对话">
+      <p class="strangertip">对方是你的客户。本次内容仅用于模拟训练。</p>
+    </main>
+    <form class="composer" id="composer" autocomplete="off">
+      <div class="inputrow">
+        <input id="say" maxlength="120" enterkeyhint="send" aria-label="跟客户说">
+        <button id="send" type="submit" aria-label="发送消息">↑</button>
+      </div>
+      <p>不要提供密码、验证码或要求客户提供敏感信息</p>
+    </form>
+  </section>
+</main>
 <script src="static/app.js"></script>
 </body>
 </html>
