@@ -2118,16 +2118,48 @@ function paintDesk() {
   document.querySelector('.ccard-top .avatar').textContent = c.name.slice(0, 1);
   $('peer').textContent = SCENE.peer;
   $('ctaLabel').textContent = `给${SCENE.peer}发消息`;
-  // 这段交底带 <b> 强调，是文案的一部分（"账户这一侧一个字都看不到"）。
-  // 内容来自我们自己的场景表，不是用户输入
+  // 交底文案来自我们自己的场景表，不是用户输入
   $('deskNote').innerHTML = SCENE.note.join('<br>');
   $('say').setAttribute('aria-label', `跟${SCENE.peer}说`);
   $('say').setAttribute('placeholder', `输入你想对${SCENE.pronoun}说的话`);
 
+  // **warn 的那几行是牌，默认摊开；其余是背景，收进「展开」。**
+  // 这是 app/scenario.py 里写着的设计意图，之前被改成"六行一次全铺开"了。
+  // 全铺开有两处代价：一是那组矛盾（保守型 × 持仓清空 × 47 笔）和
+  // 「开户 19 年」变成一样重，玩家一条都记不住；二是 375px 上把档案顶到
+  // 折叠线以下，最后一行正好被切在屏幕边缘——**看着像坏了，不像能滚**。
   const box = $('cFacts');
+  const warn = c.facts.filter((f) => f.warn);
+  const rest = c.facts.filter((f) => !f.warn);
   box.innerHTML = '';
-  c.facts.forEach((f) => box.appendChild(factRow(f)));
-  $('factsMore').hidden = true;
+  warn.forEach((f) => box.appendChild(factRow(f)));
+
+  const more = $('factsMore');
+  const label = $('factsMoreLabel');
+  if (!rest.length) {
+    more.hidden = true;
+    return;
+  }
+
+  more.hidden = false;
+  let open = false;
+  let extra = [];
+  const paint = () => {
+    label.textContent = open ? '收起' : `其余 ${rest.length} 项账户信息`;
+    more.setAttribute('aria-expanded', String(open));
+    more.classList.toggle('open', open);
+  };
+  more.onclick = () => {
+    open = !open;
+    if (open) {
+      extra = rest.map((f) => box.appendChild(factRow(f)));
+    } else {
+      extra.forEach((el) => el.remove());
+      extra = [];
+    }
+    paint();
+  };
+  paint();
 }
 
 function showScreen(id) {

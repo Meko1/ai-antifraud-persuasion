@@ -1459,6 +1459,48 @@ button:disabled { cursor: not-allowed; }
 .facts-more.open::after { transform: rotate(-135deg); }
 .deskcta.dead { background: #d7dad7; color: #873f37; }
 
+/* ── 客户档案：把上面那版遗留规则的三处残留掐掉 ────────────────────────
+ *
+ * 与 .composer 是同一类问题：这次重做只**追加**了新规则，没有覆盖旧规则里
+ * 那几条 display / background / border，于是新旧两套叠在一起显示。
+ * 三处都是肉眼可见的：
+ *
+ * 一、`.ccard` 旧规则带 background + 1px 边框 + 8px 圆角，新规则只写了
+ *     margin-top 和 border-top，于是"卡片"底纹还在。设计稿这一屏是**平的**：
+ *     交底、身份、事实清单靠发丝线分隔，不套卡片。套着卡片时它和外层
+ *     .desk-body 构成卡中卡，正是最该避免的那种容器嵌套。
+ *
+ * 二、`.fact.warn` 同时挂着新规则的 `border-left: 2px 红` 和旧规则的
+ *     `box-shadow: inset 2px 0 橙`，**两条不同颜色的竖条并排**，再加一层
+ *     旧的米色底。这是"太丑"最直接的来源。只留一条：照设计稿用 inset 阴影
+ *     （它不占布局，行与行之间不会因为多一条边框而错位）。
+ *
+ * 三、`.ccard-id i` 的 `white-space: nowrap` 让副标题溢出自己的盒子——
+ *     实测「58 岁 · 退休教师 · 教了三十二年」比盒子宽 19px，末尾
+ *     **压在右边那枚风测标签底下 7px**，这就是"有些字显示不出来"。
+ *     不截断（那几个字是玩家能用的牌），改成允许换行。
+ */
+.ccard {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  overflow: visible;
+}
+.ccard-top { align-items: flex-start; gap: 12px; }
+/* 允许换行，但**只在分隔点断**。中文默认哪儿都能断，实测会断成
+   「…教了三十」/「二年」，把一个词劈成两半；keep-all 之后断在
+   「退休教师 ·」后面，两行分别 102px / 72px，读起来是完整的两段。 */
+.ccard-id i { white-space: normal; word-break: keep-all; }
+/* 标签跟名字顶端对齐，不再跟着副标题的高度浮动 */
+.ctag { align-self: flex-start; margin-top: 2px; }
+.fact.warn {
+  padding-left: 12px;
+  border-left: 0;
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--signal);
+}
+
 /* 对话 */
 .chat-screen { background: var(--chat) !important; }
 .chat-screen .osbar { background: var(--paper); }
