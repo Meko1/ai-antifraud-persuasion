@@ -3,11 +3,51 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="你的客户正要把三十万转给荐股骗局。十二轮对话，你怎么开口。">
+<meta name="description" content="系统随机接入一位高风险客户。十二轮对话，你能不能让客户停下来。">
 <title>AI 反诈劝阻</title>
 <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
+
+<!-- 系统随机派发客户。这里只表达真实的等待，不做抽卡或客户选择器。 -->
+<section class="screen on assignment" id="assignment" aria-live="polite">
+  <div class="assignment-visual" aria-hidden="true">
+    <span class="radar-ring radar-ring-outer"></span>
+    <span class="radar-ring radar-ring-inner"></span>
+    <span class="radar-core"></span>
+    <span class="radar-sweep"></span>
+  </div>
+  <div class="assignment-copy">
+    <p class="live-label"><i></i>正在接入高风险客户</p>
+    <h1 id="assignmentTitle">一条异常记录<br>刚刚进入队列。</h1>
+    <p id="assignmentCopy">系统正在整理账户异动信息。客户由系统随机分配，本局开始后不会更换。</p>
+    <div class="assignment-progress" id="assignmentProgress"><i></i></div>
+    <button class="retry-start" id="retryStart" type="button" hidden>重新连接</button>
+  </div>
+</section>
+
+<!-- 服务端返回随机客户后，先给事件而不是直接丢一张 CRM 表。 -->
+<section class="screen opening" id="opening">
+  <header class="productbar">
+    <span class="desk-me"><i class="avatar av-li" aria-hidden="true">李</i>客户风险协作</span>
+    <span class="desk-time">今日待办</span>
+  </header>
+  <main class="opening-body">
+    <p class="live-label"><i></i><span id="openingAlert">资金异动 · 等待处理</span></p>
+    <span class="opening-rule" aria-hidden="true"></span>
+    <h1 id="openingTitle"></h1>
+    <p class="opening-lead" id="openingLead"></p>
+    <dl class="opening-record">
+      <dt>本次异常资金</dt>
+      <dd class="num" id="openingMoney"></dd>
+      <dd class="opening-hint" id="openingHint"></dd>
+    </dl>
+  </main>
+  <div class="primary-foot">
+    <button class="primary-action" id="openProfile" type="button">查看异常记录</button>
+    <p>约 3 分钟 · 最多 12 轮</p>
+  </div>
+</section>
 
 <!-- 冷开场 = **李经理的工作台**（企业微信 + 券商 CRM 的语法）。
      2026-08-17 从"老陈的手机"改过来的，理由是这一屏原先在拆自己的玩法。
@@ -32,9 +72,11 @@
      六条会话没有删，移到了**复盘**（app.js 的 paintPhone）：逐条揭晓 + 打勾，
      从剧透变成记分卡。而"「这是诈骗」四个字没用"这个教学点，从开局提前告知
      变成结束时才发现他女儿早说过了——教学效果是反过来的强。 -->
-<section class="screen on" id="home">
+<section class="screen profile-screen" id="home">
   <header class="navbar">
-    <h1>客户管理</h1>
+    <button class="navback" id="backOpening" type="button" aria-label="返回异常事件"></button>
+    <h1>客户档案</h1>
+    <span class="nav-status">实时</span>
   </header>
 
   <div class="deskhead">
@@ -93,34 +135,6 @@
 
          名字不能和任何一个场景的客户撞——原来叫「周建国」，
          周淑琴那一局上线之后工作台上就并排站了两个姓周的，头像还都是「周」。 -->
-    <div class="desk-label">其他待办</div>
-    <ul class="chatlist">
-      <li class="chatrow" aria-disabled="true">
-        <span class="avatar av-c1" aria-hidden="true">王</span>
-        <span class="row-main">
-          <span class="row-top">
-            <span class="row-name">王秀兰</span>
-            <span class="row-time">11:02</span>
-          </span>
-          <span class="row-bottom">
-            <span class="row-preview">定投扣款失败，需回访确认</span>
-          </span>
-        </span>
-      </li>
-      <li class="chatrow" aria-disabled="true">
-        <span class="avatar av-c2" aria-hidden="true">郑</span>
-        <span class="row-main">
-          <span class="row-top">
-            <span class="row-name">郑建国</span>
-            <span class="row-time">昨天</span>
-          </span>
-          <span class="row-bottom">
-            <span class="row-preview">风险测评到期，提醒重做</span>
-          </span>
-        </span>
-      </li>
-    </ul>
-
   </div>
 
   <!-- 底部操作栏。**这一屏唯一的动作，必须永远看得见。**
@@ -142,7 +156,7 @@
          那句话在聊天页第一条已经出现过一次，在这儿是重复的；更要紧的是它对
          一个刚点进来的人毫无用处。换成期待管理：要花多久、要做什么、
          有什么限制。**投票的人决定要不要试，靠的就是这三个数。** -->
-    <p class="deskfoot-note" id="ctaSub">12 轮对话 · 约 3 分钟 · 只能问，不能替他决定</p>
+    <p class="deskfoot-note" id="ctaSub">最多 12 轮 · 只能问，不能替客户决定</p>
   </div>
 </section>
 

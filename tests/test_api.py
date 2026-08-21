@@ -51,6 +51,10 @@ def test_开局返回预生成开场白与初始签名状态() -> None:
     assert body["opening"], "开场白不能为空"
     assert body["token"], "必须带回初始签名状态"
     assert body["remaining"] == 12
+    incident = body["scenario"]["incident"]
+    assert body["scenario"]["client"]["name"] in incident["title"]
+    assert incident["lead"]
+    assert incident["hint"]
 
 
 def test_开局带上初始信任度与劝住阈值() -> None:
