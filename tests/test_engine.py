@@ -9,10 +9,12 @@
 import asyncio
 from typing import AsyncIterator, List
 
+import dataclasses
+
 from app.engine import play_turn
 from app.scenario import DEFAULT
 from app.safety import INJECTION_REPLY, SAFE_FALLBACK
-from app.scoring import MAX_ROUNDS, Ending, GameState
+from app.scoring import MAX_ROUNDS, Ending, GameState, new_game
 from app.state_token import Session, TurnRecord, new_session, verify_token
 
 SECRET = "test-secret-not-a-real-key"
@@ -548,6 +550,52 @@ async def test_训练语料样板话不许下发且兜底台词一轮只发一�
     assert not any("免费下载" in s or "原文链接" in s for s in 台词)
     assert sum(1 for s in 台词 if s == SAFE_FALLBACK) <= 1, "兜底台词一轮只发一条"
     assert any("账面上一万五" in s for s in 台词), "他自己的话要留下"
+
+
+async def test_兜底台词整局只发一条_不是一轮只发一条() -> None:
+    """上一版的去重只在本轮内生效——`seen_fallback` 每轮从空集合起步。
+
+    于是安全层这一轮替出一句「反正老师推的那只，我心里有数」，
+    下一轮又撞上同一条规则，玩家会在**同一局**里看到两次一模一样的话。
+    这与网关健不健康无关，纯粹是去重的作用域切错了——而且是"看着像
+    在念稿"最直接的证据：同一句话在十二轮里出现两次，比留个空档还像坏了。
+
+    服务端不存会话（ADR-0003），但 `session.history` 本来就带着这一局
+    已发生的台词随令牌回来，不用为这条去重新开一个字段。
+    """
+    session = Session(
+        gid="01JTESTGID",
+        # round/trust 与这一局是否连贯不重要，测试只关心这条去重逻辑；
+        # 唯一要紧的是 history 里已经有一条 reply 含 SAFE_FALLBACK
+        state=dataclasses.replace(new_game(), round=1),
+        history=(
+            TurnRecord(
+                round=1, utterance="上一轮问的什么不重要",
+                reply=SAFE_FALLBACK, hits=(), grounded=False, delta=0,
+            ),
+        ),
+    )
+    gateway = 吐训练语料的Gateway(
+        台词="用不上", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    events = [
+        event
+        async for event in play_turn(
+            session,
+            "陈叔，那十万原本是打算做什么用的",
+            gateway=gateway,
+            secret=SECRET,
+            now=NOW,
+        )
+    ]
+    台词 = [e.data["text"] for e in events if e.name == "sentence"]
+
+    assert not any(s == SAFE_FALLBACK for s in 台词), (
+        "上一轮已经发过一次兜底台词，这一轮触发同一条安全规则时应该把这句"
+        "整句丢掉（走 L1 降级换一条 mood 台词），而不是把同一句话再发一遍"
+    )
+    assert any("账面上一万五" in s for s in 台词), "他自己的话依然要留下"
 
 
 async def test_第一轮的演绎指示与后面几轮不同() -> None:

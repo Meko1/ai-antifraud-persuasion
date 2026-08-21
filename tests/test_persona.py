@@ -10,7 +10,9 @@
 import pytest
 
 from app.persona import (
+    BEN_PERSONAS,
     CHEN_PERSONAS,
+    LIU_PERSONAS,
     ZHOU_PERSONAS,
     Persona,
     opening_for,
@@ -19,10 +21,11 @@ from app.persona import (
 from app.safety import screen_sentence
 from tools.act_eval import FORMAL_MARKS, FORMAL_WORDS
 
-# **两组变体分开测。** 例句质量、安全、长度、开场白手感这几条对所有场景
-# 都成立；而"干了二十年""跟了三个月"那种骨架检查只对老陈那一组成立——
+# **四组变体分开测。** 例句质量、安全、长度、开场白手感这几条对所有场景
+# 都成立；而"干了二十年""跟了三个月"那种骨架检查只对各自那一组成立——
 # 周淑琴教了三十二年书，拿老陈的骨架去量她，量出来的是假红。
-所有变体 = (*CHEN_PERSONAS, *ZHOU_PERSONAS)
+所有变体 = (*CHEN_PERSONAS, *ZHOU_PERSONAS, *LIU_PERSONAS, *BEN_PERSONAS)
+所有变体组 = (CHEN_PERSONAS, ZHOU_PERSONAS, LIU_PERSONAS, BEN_PERSONAS)
 
 # 与"跟了三个月""干了二十年"打架的说法。首页那六条会话与四十条兜底台词
 # 都建立在这两个数字上，改一个字，穿帮的不是这一句，是整整一屏。
@@ -35,12 +38,11 @@ def test_同一局永远是同一个人() -> None:
     这一条塌了的症状很好认——他的口头禅每轮换一次，比 AI 味更糟。
     """
     for gid in ("abc123", "0" * 32, "长的中文 gid 也得行"):
-        for 组 in (CHEN_PERSONAS, ZHOU_PERSONAS):
+        for 组 in 所有变体组:
             assert {persona_for(gid, 组).id for _ in range(20)} == {persona_for(gid, 组).id}
 
 
-@pytest.mark.parametrize("变体组", (CHEN_PERSONAS, ZHOU_PERSONAS),
-                         ids=("chen", "zhou"))
+@pytest.mark.parametrize("变体组", 所有变体组, ids=("chen", "zhou", "liu", "ben"))
 def test_每个变体都摊得到人(变体组) -> None:
     """哈希取模的分布。某个变体一局都摊不到，等于白写了一份人设。"""
     counts = {p.id: 0 for p in 变体组}
@@ -50,8 +52,7 @@ def test_每个变体都摊得到人(变体组) -> None:
     assert min(counts.values()) > 4000 / len(变体组) * 0.8, counts
 
 
-@pytest.mark.parametrize("变体组", (CHEN_PERSONAS, ZHOU_PERSONAS),
-                         ids=("chen", "zhou"))
+@pytest.mark.parametrize("变体组", 所有变体组, ids=("chen", "zhou", "liu", "ben"))
 def test_开场白与变体同源(变体组) -> None:
     """开场自称电工、后面变成钳工，第一句就穿帮。"""
     for i in range(200):
@@ -115,6 +116,35 @@ def test_周淑琴那组不碰故事骨架(变体: Persona) -> None:
     text = "".join((变体.facts, 变体.habits, *变体.samples, *变体.openings))
     for 说法 in ("二十年", "三十年", "四十年", "三个月", "王老师", "启航"):
         assert 说法 not in text, f"{说法} 与周淑琴那组的骨架打架"
+
+
+@pytest.mark.parametrize("变体", LIU_PERSONAS, ids=lambda p: p.id)
+def test_老刘那组不碰故事骨架(变体: Persona) -> None:
+    """骨架冻结表见 LIU_SCRIPT：老伴三年前走的，五个月前认识沐晴。
+
+    changzhang 曾经写成离婚而不是丧偶——同一个"孤独"的成因，剧本里已经
+    钉死是丧偶，变体给出另一个成因，复盘揭晓那几条phone reveal就穿帮。
+    """
+    assert "老伴" in 变体.facts, "每个变体的孤独都得来自丧偶，不是离婚或别的"
+
+    text = "".join((变体.facts, 变体.habits, *变体.samples, *变体.openings))
+    for 说法 in ("离婚", "前妻", "二十年", "三十二年", "王老师", "启航", "公安", "通缉"):
+        assert 说法 not in text, f"{说法} 与老刘那组的骨架打架"
+
+
+@pytest.mark.parametrize("变体", BEN_PERSONAS, ids=lambda p: p.id)
+def test_月娥姐那组不碰故事骨架(变体: Persona) -> None:
+    """骨架冻结表见 BEN_SCRIPT：十一万八、做到第 47 单、做满 50 单能提现。
+
+    这一组最容易犯的错是让每个变体的垫付金额各说各话——那不是"具体细节"
+    的自由变化，是跟工作台账户预警上印着的数字对不上。
+    """
+    assert "十一万八" in 变体.facts, "每个变体垫进去的都得是同一个数：十一万八"
+    assert "47" in 变体.facts, "每个变体都得是做到第 47 单"
+
+    text = "".join((变体.facts, 变体.habits, *变体.samples, *变体.openings))
+    for 说法 in ("九万六", "六万三", "八万五", "王老师", "启航", "公安", "通缉", "沐晴"):
+        assert 说法 not in text, f"{说法} 与月娥姐那组的骨架打架"
 
 
 @pytest.mark.parametrize("变体", 所有变体, ids=lambda p: p.id)

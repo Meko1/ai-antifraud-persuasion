@@ -1,6 +1,1230 @@
 :root {
   color-scheme: light;
-  --canvas: #d9d8d3;
+
+  --wx-bg: #ededed;        /* 会话列表与聊天背景 */
+  --wx-white: #ffffff;
+  --wx-green: #95ec69;     /* 自己发出的气泡 */
+  --wx-brand: #07c160;     /* 微信绿：按钮、进度 */
+  --wx-text: #191919;
+  --wx-sub: #b2b2b2;       /* 次要文字：时间、预览 */
+  --wx-gray: #7f7f7f;      /* 系统提示文字 */
+  --wx-line: #e3e3e3;
+  --wx-field: #ededed;     /* 搜索框底色 */
+  --wx-red: #fa5151;       /* 未读红点、拒收 */
+  --wx-pay: #fa9d3b;       /* 转账卡片橙 */
+  --wx-rise: #e64340;      /* 涨：信任上升 */
+  --wx-fall: #09bb07;      /* 跌：信任下降 */
+  --gold: #c9a227;         /* 游戏层专用 */
+
+  /* ── 同一批颜色的"能当正文用"的深色版 ────────────────────────────────
+   *
+   * 微信那几个灰是给**时间戳和会话预览**用的，当次要信息一闪而过没问题。
+   * 但复盘页拿它们写的是**正文**——图例、时机说明、每轮掉了多少分。
+   * 实测对白底的对比度：`--wx-sub` 2.12:1、`--wx-fall` 2.59:1、`--gold` 2.42:1，
+   * 而正常字号的门槛是 4.5:1。**三个都不到一半。**
+   *
+   * 做法是把"图形色"和"文字色"分开，而不是把整套灰调暗：
+   * K 线的蜡烛、劝住线那条金色虚线继续用鲜亮的原色（它们是大色块，
+   * 红涨绿跌正是这个产品的视觉根），小字一律换成下面这几个。
+   * 色相没动，看上去还是同一套颜色。
+   */
+  --wx-note: #6b6b6b;      /* 5.33:1 —— 复盘里的说明文字 */
+  --rise-text: #cc302d;    /* 5.21:1 —— 涨，小字用 */
+  --fall-text: #0a8006;    /* 5.12:1 —— 跌，小字用 */
+  --gold-text: #8a6d10;    /* 4.91:1 —— 游戏层，小字用 */
+
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(0.22, 0.8, 0.28, 1);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: #dcdcdc;
+  color: var(--wx-text);
+  font: 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+
+:focus-visible { outline: 2px solid var(--wx-brand); outline-offset: 1px; }
+
+/* 单栏，最宽 480 —— 投票日大家都在手机上玩 */
+.screen { display: none; }
+
+.screen.on {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--wx-bg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+/* ── 导航栏 ───────────────────────────────────────────────── */
+
+.navbar {
+  flex: none;
+  position: relative;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f7f7f7;
+  border-bottom: 1px solid #d8d8d8;
+}
+
+.navbar h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.navback {
+  position: absolute;
+  left: 4px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* 返回箭头用边框拼，不引外部图标 */
+.navback::before {
+  content: "";
+  display: block;
+  width: 10px;
+  height: 10px;
+  margin-left: 15px;
+  border-left: 2px solid #444;
+  border-bottom: 2px solid #444;
+  transform: rotate(45deg);
+}
+
+.navmore {
+  position: absolute;
+  right: 16px;
+  width: 18px;
+  height: 4px;
+  background:
+    radial-gradient(circle, #444 1.6px, transparent 1.7px) 0 50%/6px 6px repeat-x;
+}
+
+/* ── 首页：李经理的工作台 ─────────────────────────────────────
+ *
+ * 语法是企业微信 + 券商 CRM，不是微信——这一屏属于**你**，不属于老陈。
+ * 聊天页那一侧才回到微信。两边用不同的语法，是为了让"我在自己的系统里看客户"
+ * 和"我在跟一个活人聊天"能被一眼分开。
+ *
+ * 会话列表那套（.chatlist / .chatrow / .avatar / .row-*）没有删：
+ * 这里的"其他待办"还在用，复盘里揭晓老陈手机的那一节也在用。
+ */
+
+.desk-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 16px;
+}
+
+/* 你是谁。一行就够，但不能没有——少了它，下面那张客户卡是谁在看就没有交代 */
+.deskhead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 16px;
+  background: #f7f7f7;
+  border-bottom: 1px solid #e6e6e6;
+  font-size: 13px;
+  color: var(--wx-note);
+}
+
+.desk-me { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.desk-me .avatar { width: 24px; height: 24px; border-radius: 4px; font-size: 12px; }
+.desk-time { flex: none; font-size: 12.5px; color: var(--wx-sub); }
+
+/* 预警条。红点 + 一行字，借的是各家 CRM 的待办条 */
+.alertbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 12px 0;
+  padding: 11px 13px;
+  border-radius: 8px;
+  background: #fdf0ee;
+  border: 1px solid #f6d9d4;
+  font-size: 14px;
+  color: #a8352f;
+}
+
+.alert-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wx-red);
+}
+
+.alertbar b { font-weight: 600; }
+/* #b3665f 对这块淡红底只有 3.79:1，#a3554e 是 4.73:1。差别肉眼几乎看不出，
+   但 12px 的字在这个位置是要被读的 */
+/* 原先是「1 条待处理 · 14:47」——时间在抬头那行已经有了一个"今天 14:47"，
+   同一屏出现两次同一个时间，读的人会以为是两件事。只留状态。 */
+.alert-sub { margin-left: auto; font-size: 12px; color: #a3554e; }
+
+/* ── 客户档案 ─────────────────────────────────────────────
+ *
+ * 这张卡是玩家开局手上的**全部**牌。每一行都能在 gateway.py 的
+ * SCAM_SCRIPT「账户那一侧他看得一清二楚」清单里找到对应，一条不多一条不少。
+ */
+.ccard {
+  margin: 10px 12px 0;
+  border-radius: 8px;
+  background: var(--wx-white);
+  border: 1px solid var(--wx-line);
+  overflow: hidden;
+}
+
+.ccard-top {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--wx-line);
+}
+
+.ccard-id { flex: 1; min-width: 0; line-height: 1.35; }
+.ccard-id b { display: block; font-size: 16.5px; font-weight: 600; }
+.ccard-id i { display: block; margin-top: 2px; font-style: normal; font-size: 12px; color: var(--wx-note); }
+
+/* 风测等级单独拎成标签。它是这张卡上唯一一处"投顾才懂"的行话，
+   也是那组矛盾的一半（保守型 × 三个月 47 笔） */
+.ctag {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  color: #6a5a1f;
+  background: #f7f1dc;
+  border: 1px solid #ebdfb8;
+}
+
+.facts { margin: 0; padding: 4px 0; }
+
+.fact {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+}
+
+.fact dt { flex: none; font-size: 13.5px; color: var(--wx-note); }
+
+.fact dd {
+  margin: 0;
+  text-align: right;
+  font-size: 14.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 注文跟在数字下面而不是后面：375px 上「¥100,000.00 占账户资产 78%」
+   一行放不下，折行之后右对齐会碎成两截 */
+.fact dd em {
+  display: block;
+  margin-top: 1px;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--wx-note);
+}
+
+/* 不对劲的那三行。**不用红色**——红色在这一屏上已经被预警条占了，
+   再红一次就分不出"系统在报警"和"这个数不对劲"。用一道左边线，
+   它说的是"这几行你该多看两眼"，而不是"这几行是答案"。 */
+.fact.warn {
+  box-shadow: inset 2px 0 0 var(--wx-pay);
+  background: #fffdf8;
+}
+/* 牌要比背景重一档：数值放大、加粗。这三行是"这不对劲"的全部证据，
+   和「开户 19 年」用同一个字号时，玩家读完一条都记不住。 */
+.fact.warn dd .num { font-size: 16.5px; font-weight: 600; letter-spacing: -0.01em; }
+.fact.warn dt { color: #7a6a45; }
+
+/* 「其余 N 项账户信息」。做成整行的浅色条，不是链接——
+   券商 CRM 里这种"还有更多字段"的入口就长这样。 */
+.facts-more {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-top: 1px solid var(--wx-line);
+  background: #fbfbfb;
+  color: var(--wx-note);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: center;
+  cursor: pointer;
+}
+.facts-more:hover { background: #f4f4f4; }
+.facts-more::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: -2px 0 0 6px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  transform: rotate(45deg);
+  vertical-align: middle;
+  transition: transform 160ms var(--ease);
+}
+.facts-more.open::after { transform: rotate(-135deg); margin-top: 2px; }
+.facts-more[hidden] { display: none; }
+
+.desk-label {
+  padding: 18px 16px 7px;
+  font-size: 12.5px;
+  color: var(--wx-note);   /* --wx-gray 在 #ededed 上只有 3.42:1 */
+}
+
+/* 唯一能点的东西。**它不是一条未读消息，是一个动作**——从李经理这一侧看，
+   老陈没有找过你，是你要去找他。原来那条带红点 (1) 的会话行属于老陈的手机，
+   在这一屏上没有位置了。 */
+/* 固定在底下的操作栏。内容有 913px、可视区 664px，按钮跟着内容滚就看不见了 */
+.deskfoot {
+  flex: none;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  background: #f7f7f7;
+  border-top: 1px solid #d8d8d8;
+}
+
+.deskcta {
+  display: block;
+  width: 100%;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--wx-brand);
+  color: #fff;
+  font-family: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: filter 140ms var(--ease);
+}
+
+.deskcta:hover { filter: brightness(1.05); }
+.deskcta:active { filter: brightness(0.93); }
+.deskcta:disabled { cursor: not-allowed; }
+.deskcta b { display: block; font-size: 16px; font-weight: 600; }
+
+.deskfoot-note {
+  margin: 7px 0 0;
+  text-align: center;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--wx-note);
+}
+
+/* 连不上服务时按钮不该还是一颗诱人的绿 */
+.deskcta.dead { background: #d8d8d8; color: #7a2e2a; }
+.deskfoot-note.dead { color: #8a2f2b; }
+
+.chatlist {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--wx-white);
+}
+
+.chatrow {
+  position: relative;
+  display: flex;
+  gap: 11px;
+  padding: 9px 16px;
+  background: var(--wx-white);
+  transition: background 140ms var(--ease);
+}
+
+/* 分隔线从头像右侧起，微信就是这么切的 */
+.chatrow + .chatrow::before {
+  content: "";
+  position: absolute;
+  left: 73px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--wx-line);
+}
+
+.avatar {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.av-chen { background: #6f8bb5; }
+/* 李经理＝你。用一个更正式的蓝，跟老陈那一侧的人区分 */
+.av-li { background: #3f5a80; }
+/* 下面这几个只在复盘揭晓老陈手机那一节出现（首页已经不是他的手机了） */
+.av-bank { background: #c0392b; }
+.av-wife { background: #b7845c; }
+.av-daughter { background: #7d9f7a; }
+.av-gov { background: #4a6fa5; }
+/* 工作台上的另外两个客户，纯布景。灰调，不跟当局的客户抢注意力 */
+.av-c1 { background: #9a9a9a; }
+.av-c2 { background: #8e9aa6; }
+/* 场景二（冒充公检法）揭晓里那两条：伪造的通缉令、深圳的儿子。
+   **加场景时头像色是最容易漏的一处**——漏了就是一个白方块，
+   而它不会报错，只会难看。 */
+.av-doc { background: #8a6d3b; }
+.av-son { background: #5f7f8f; }
+/* 场景三（杀猪盘）与场景四（刷单返利）揭晓里新增的几条。
+   同一句提醒重复一遍：加场景时头像色最容易漏，漏了就是一个白方块。 */
+.av-lover { background: #a85c72; }
+.av-plat { background: #3d8b8f; }
+.av-husband { background: #6b5b4f; }
+
+/* 群头像是九宫格，这里取四格——不写"群"字也一眼认得出 */
+.av-group {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  place-items: stretch;
+  gap: 2px;
+  padding: 3px;
+  background: #d6d6d6;
+}
+
+.av-group i { display: block; border-radius: 1px; }
+.av-group i:nth-child(1) { background: #b8a06a; }
+.av-group i:nth-child(2) { background: #8fa8c4; }
+.av-group i:nth-child(3) { background: #c49a8f; }
+.av-group i:nth-child(4) { background: #9db08c; }
+
+.row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;
+  justify-content: center; line-height: 1.2; }
+
+.row-top { align-items: baseline; }
+.row-bottom { align-items: center; }
+
+.row-top, .row-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.row-name { font-size: 17px; overflow: hidden; white-space: nowrap;
+  text-overflow: ellipsis; }
+.row-time { flex: none; font-size: 12.5px; color: var(--wx-sub); }
+
+.row-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--wx-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 未读红点 .badge 与免打扰铃铛 .mutebell 一并删了：前者属于老陈手机上那条
+   未读（首页已经不是他的手机），后者在复盘揭晓里也不该有——荐股群设成
+   免打扰，和"他一天盯着群里那几条"是矛盾的。 */
+
+/* 交底那段话。**这是整屏唯一一段说清"你要干什么、为什么难"的文字**，
+   8-18 从最底下提到了预警条正下方，权重也跟着提上来：
+   字号 13 → 14.5，颜色从 --wx-note 提到接近正文，左边一道竖线把它
+   和下面那张数据表分开。
+
+   它不做成卡片、不加底色块，是刻意的：这一屏是券商 CRM，
+   一个带边框的"引导语"会立刻露出"这是个游戏教程"的马脚。
+   竖线是批注的语法，不是营销的语法。 */
+.home-note {
+  margin: 14px 16px 4px;
+  padding: 2px 0 2px 12px;
+  border-top: 1px solid var(--wx-pay);
+  font-size: 14.5px;
+  line-height: 1.85;
+  color: #4a4a4a;
+}
+
+.home-note b { color: var(--wx-text); font-weight: 600; }
+
+/* 首页那条微信式四格标签栏（.tabbar / .tab / .tabdot）2026-08-17 随
+   "老陈的手机 → 李经理的工作台" 一起删了：它是**微信首页**的部件，
+   而这一屏已经不是微信。底部现在归 .deskfoot 那条操作栏。 */
+
+/* ── 对局状态条（借微信群公告的位置）────────────────────────── */
+
+.statusbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #fbfbfb;
+  border-bottom: 1px solid var(--wx-line);
+  font-size: 12px;
+  color: var(--wx-gray);
+}
+
+/* 情绪词。它是对局中唯一的状态显示，所以要稳：宽度固定，
+   换词时不能把后面的进度条挤得来回跳。 */
+.st-mood {
+  flex: none;
+  min-width: 4.5em;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wx-text);
+}
+
+.st-mood.turn { animation: moodturn 620ms var(--ease) both; }
+
+@keyframes moodturn {
+  0% { opacity: 0.25; transform: translateY(-3px); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-mood.turn { animation: none; }
+}
+
+.st-track {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: #e0e0e0;
+}
+
+.st-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 32%;
+  border-radius: 2px;
+  background: var(--wx-brand);
+  transition: background 300ms var(--ease);
+}
+
+.st-fill.low { background: #f0a020; }
+.st-fill.danger { background: var(--wx-red); }
+
+/* 劝住线：80 那一格。金色是游戏层专用色，跟微信的任何东西都不撞 */
+.st-goal {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--gold);
+}
+
+.st-rounds { flex: none; }
+.st-rounds b { color: var(--wx-text); font-size: 13px; }
+
+/* ── 对话 ─────────────────────────────────────────────────── */
+
+/* 不做贴底：这是一段刚开始的对话，微信里新会话的第一条就在顶上。
+   贴底会在第 1 轮留出七百像素的空白，看着像没加载出来。 */
+.thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  scroll-behavior: smooth;
+}
+
+.strangertip {
+  align-self: center;
+  max-width: 88%;
+  margin: 4px 0 2px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.045);
+  color: var(--wx-gray);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.timedivider {
+  align-self: center;
+  font-size: 12px;
+  color: var(--wx-sub);
+  padding: 2px 0;
+}
+
+.msg { display: flex; gap: 9px; align-items: flex-start; max-width: 100%; }
+.msg.me { flex-direction: row-reverse; }
+
+.msg .avatar { width: 38px; height: 38px; font-size: 16px; border-radius: 4px; }
+.msg.me .avatar { background: #7ea86b; }
+
+.bubble {
+  position: relative;
+  max-width: calc(100% - 100px);
+  padding: 9px 13px;
+  border-radius: 5px;
+  font-size: 16.5px;
+  line-height: 1.5;
+  word-break: break-word;
+  animation: pop 220ms var(--ease) both;
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.msg.them .bubble { background: var(--wx-white); }
+.msg.me .bubble { background: var(--wx-green); }
+
+/* 气泡小尖角 */
+.bubble::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  border: 5px solid transparent;
+}
+
+.msg.them .bubble::before {
+  left: -5px;
+  border-left: 0;
+  border-right-color: var(--wx-white);
+}
+
+.msg.me .bubble::before {
+  right: -5px;
+  border-right: 0;
+  border-left-color: var(--wx-green);
+}
+
+.bubble.typing::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--wx-sub);
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 判分卡＝微信的系统提示。就是显示"你撤回了一条消息"的那个位置 */
+.sysnote {
+  align-self: center;
+  max-width: 92%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.045);
+  color: var(--wx-gray);
+  font-size: 12px;
+  line-height: 1.5;
+  animation: pop 220ms var(--ease) both;
+}
+
+/* #c85a5a 在 #ededed 上只有 3.54:1。这条槽位原先只放判分卡里的坏消息，
+   而判分卡在对局中根本不出现——它实际上一直没被人读过。合规红线进了这条槽
+   之后它变成了要读的正文，颜色跟着换成 4.5 以上的深红。 */
+.sysnote.bad { color: #a33b3b; }
+
+/* 剧情旁白（李老师又催了一遍）。它不是判分反馈，所以不带底色，
+   在时间线上像一条被顺手记下的事，而不像一张成绩单。 */
+.sysnote.push {
+  background: none;
+  color: var(--wx-sub);
+  font-size: 11.5px;
+}
+
+.sysnote .delta { font-weight: 600; font-size: 13px; }
+.sysnote .delta.up { color: var(--wx-rise); }
+.sysnote .delta.down { color: var(--wx-fall); }
+.sysnote .delta.flat { color: var(--wx-gray); }
+
+.tag { color: var(--wx-gray); }
+.tag.key { color: var(--wx-rise); }
+.tag.penalty { color: var(--wx-fall); }
+
+/* 合规红线在对局中就要比失误扎眼一点：它不是"这一轮没劝动他"，
+   是"你自己要出事"。给个描边药丸，跟那几个纯文字标签分开。 */
+.tag.breach {
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #8a2f2b;
+  background: #fdecec;
+  border: 1px solid #f3cfcb;
+  font-weight: 600;
+}
+
+.sysnote .sep { color: #cfcfcf; }
+
+.sysnote button {
+  margin-left: 4px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--wx-brand);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ── 结局 ─────────────────────────────────────────────────── */
+
+/* 结局不另起一块 UI，它就是这段对话里的最后一件东西。
+   微信本来就有这三个东西，玩家不用学就知道自己看到了什么：
+   转账凭证（他截图发过来）、同一张凭证的作废态、以及消息被拒收的红叹号。
+   劝住和转走共用一张卡，只翻一个位——整局游戏赌的就是这一位。 */
+
+.bubble.photo { padding: 0; background: transparent !important; }
+.bubble.photo::before { display: none; }
+
+.receipt {
+  width: 216px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--wx-pay);
+  color: #fff;
+}
+
+.receipt-body { display: flex; align-items: center; gap: 11px; padding: 14px; }
+
+.receipt-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.26);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.receipt-amt { font-size: 19px; font-weight: 600; letter-spacing: 0.01em; }
+.receipt-to { margin-top: 2px; font-size: 12.5px; color: rgba(255, 255, 255, 0.85); }
+
+.receipt-foot {
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.09);
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* 作废态（劝住）与待发态（拖住）：同一张卡，灰掉。
+   文字转深色——橙卡上的白字挪到灰底上就成了 1.9:1，读不出来。
+   两者只差一道删除线：劝住是他把转账撤了，拖住是那一页还停在他手机上没点。 */
+.receipt.void, .receipt.hold { background: #d6d6d6; color: #5a5a5a; }
+.receipt.void .receipt-icon, .receipt.hold .receipt-icon { background: rgba(0, 0, 0, 0.08); }
+.receipt.void .receipt-amt { text-decoration: line-through; text-decoration-thickness: 1px; }
+.receipt.void .receipt-to, .receipt.hold .receipt-to { color: #6e6e6e; }
+.receipt.void .receipt-foot, .receipt.hold .receipt-foot {
+  background: rgba(0, 0, 0, 0.06);
+  color: #6e6e6e;
+}
+
+.endcta {
+  align-self: center;
+  margin: 6px 0 4px;
+  padding: 9px 26px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--wx-brand);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  animation: pop 260ms var(--ease) both;
+}
+
+/* ── 输入栏 ───────────────────────────────────────────────── */
+
+.composer {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  background: #f7f7f7;
+  border-top: 1px solid #d8d8d8;
+}
+
+/* **少了这一条，`hidden` 属性对它完全无效**——浏览器给 [hidden] 的
+   `display:none` 来自 UA 样式表，优先级压不过上面这个类选择器的 `display:flex`。
+   于是 `composer.hidden = true` 在三处都没生效：对局结束、令牌过期、令牌重放。
+   最后一屏上因此一直挂着一个禁用的输入框，里面可能还留着一句没发出去的话。 */
+.composer[hidden] { display: none; }
+
+.composer input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--wx-white);
+  color: var(--wx-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.composer button {
+  flex: none;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--wx-brand);
+  color: #fff;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 140ms var(--ease);
+}
+
+.composer button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── 复盘（微信的二级页面）─────────────────────────────────── */
+
+.review {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--wx-bg);
+  animation: slidein 260ms var(--ease) both;
+}
+
+@keyframes slidein {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+.review-body { flex: 1; overflow-y: auto;
+  padding-bottom: calc(36px + env(safe-area-inset-bottom)); }
+
+.group { margin-top: 14px; }
+
+.group-title {
+  padding: 8px 16px 6px;
+  font-size: 12.5px;
+  color: var(--wx-gray);
+}
+
+.panel { background: var(--wx-white); border-top: 1px solid var(--wx-line);
+  border-bottom: 1px solid var(--wx-line); }
+
+.summary { padding: 24px 16px 20px; background: var(--wx-white); }
+
+/* 档位退成一枚小徽章，金额上位当主角——借的是微信「账单详情」那个槽。
+   阶梯四档只分三种颜色：保住了钱的、只争到时间的、什么也没留下的。
+   给四个档各配一个色会让这一块看着像评级表，而结局不是评级。 */
+.summary .tierpill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--wx-gray);
+  background: #f2f2f2;
+}
+.summary.persuaded .tierpill,
+.summary.intercepted .tierpill { color: #0a7d3f; background: #e6f5ec; }
+.summary.blacklisted .tierpill,
+.summary.transferred .tierpill { color: #b3332f; background: #fdecec; }
+
+/* 一个大数，压住整屏。三档结局它是 ¥0——那正是它该有的分量 */
+.summary .savedamt {
+  margin-top: 12px;
+  font-size: 38px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+.summary.persuaded .savedamt,
+.summary.intercepted .savedamt { color: #0a7d3f; }
+.summary.stalled .savedamt,
+.summary.blacklisted .savedamt,
+.summary.transferred .savedamt { color: var(--wx-text); }
+
+.summary .savedcap { margin-top: 4px; font-size: 12.5px; color: var(--wx-note); }
+.summary .saved { margin-top: 10px; font-size: 14px; color: var(--wx-gray); }
+
+/* 一条细线把"结果"和"讲评"隔开：上面是发生了什么，下面是为什么。
+   原来两段挨着，读起来是一坨。 */
+.summary .copy { margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--wx-line);
+  font-size: 14.5px; line-height: 1.9; color: #4a4a4a; }
+.summary .copy em { font-style: normal; font-weight: 600; color: var(--wx-text); }
+
+/* 三个数的横条。借的是微信"支付/账单"里那种一行三栏——玩家一眼要拿到的
+   是结果，不是我们对判分方法的辩解。 */
+.statstrip {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--wx-white);
+  border-bottom: 1px solid var(--wx-line);
+}
+.stat { padding: 16px 10px 15px; text-align: center; }
+.stat + .stat { box-shadow: inset 1px 0 0 var(--wx-line); }
+.stat b {
+  display: block;
+  font-size: 25px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.stat b.nil { color: var(--wx-sub); font-weight: 400; }
+.stat i { display: block; margin-top: 5px; font-size: 11.5px; font-style: normal; color: var(--wx-note); }
+
+/* ── 复盘 · 合规红线 ──────────────────────────────────────────
+ *
+ * 全作品唯一一处与输赢无关的判定。整块用淡红底而不是白底：复盘其余每一节
+ * 都在回答"你劝没劝住他"，这一节问的是另一件事，视觉上必须一眼分得开。
+ * 一次都没踩就整块不出现——不留空着的绿勾，那会把它变成一枚成就徽章。
+ */
+#breachList { background: #fdf5f4; }
+
+.breach-lead {
+  margin: 0;
+  padding: 13px 16px;
+  border-bottom: 1px solid #f0dcd9;
+  font-size: 13px;
+  line-height: 1.9;
+  color: #7a3b36;
+}
+.breach-lead b { color: #8a2f2b; font-weight: 600; }
+
+.breachrow { padding: 12px 16px; }
+.breachrow + .breachrow { box-shadow: inset 0 1px 0 #f0dcd9; }
+
+.breachhead { display: flex; align-items: baseline; gap: 7px; }
+
+.breachname {
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: #8a2f2b;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.breachno { margin-left: auto; font-size: 11.5px; color: #8a5a55; }
+
+/* 原话要原样摆出来。合规这件事上「你说过这句话」本身就是证据，
+   泛泛提醒一句"注意合规"没有任何用。 */
+.breachsaid {
+  margin-top: 7px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1px solid #f0dcd9;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.breachwhy { margin-top: 6px; font-size: 12px; line-height: 1.75; color: #7a3b36; }
+
+/* ── 复盘 · 揭晓老陈的手机 ────────────────────────────────────
+ *
+ * 这五条会话原来是**首页**——开局就把启航财经、三点截止、家里等钱、
+ * 女儿查过工商全给了玩家，而这一局的玩法恰恰是"这些都得从他嘴里问出来"。
+ * 搬到复盘之后它们从剧透变成记分卡：哪几条他跟你说了，哪几条到最后你也不知道。
+ *
+ * 排法照抄会话列表（.chatrow 那一套）不另起炉灶——玩家一眼就认出
+ * "这是一台手机"，不需要解释。变的只是右边多了一列状态。
+ */
+.phone-lead {
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--wx-line);
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--wx-note);
+}
+.phone-lead b { color: var(--wx-text); font-weight: 600; }
+
+.phone-lead .got { color: var(--rise-text); }
+
+/* 会话行本体用 .chatrow，这里只补状态与线索两行 */
+#phoneList .chatrow { padding: 11px 16px; }
+
+/* 会话列表会把预览截断成一行（微信就是这么干的），但在这里被截掉的
+   恰好是内容本身——小雨那条的重点在句尾。让它换行。 */
+#phoneList .row-preview {
+  white-space: normal;
+  overflow: visible;
+  color: var(--wx-note);
+}
+
+.phone-state {
+  flex: none;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.phone-state.yes { color: var(--rise-text); }
+/* **不用 --wx-sub。** 那是给时间戳的灰（2.12:1），而「他没提」是这一节的
+   结论，是正文。这一页在 8-17 已经因为同一个病返工过一次。 */
+.phone-state.no { color: var(--wx-note); }
+.phone-state.own { color: var(--wx-note); }
+
+/* 这一条藏着什么。**每一行自带一句人话**——玩家不会为了看懂一屏
+   跑去别处找解释（Key Lime 对 PUBG 后置屏的 N=12 研究）。 */
+.phone-clue {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--wx-note);
+}
+
+/* 没问出来的那几条整体压暗一档。**不用 opacity**：11.5px 的字叠透明度
+   会掉到 2:1 以下（复盘上一版在 .loss 上栽过一次）。压的是行本身，
+   字色仍然取够对比度的那几个。 */
+#phoneList .chatrow.missed { background: #fafafa; }
+#phoneList .chatrow.missed .row-name { color: var(--wx-note); }
+
+#chart { display: block; width: 100%; height: 176px; padding: 12px 8px 4px; }
+
+.legend { margin: 0; padding: 0 16px 14px; font-size: 12px; line-height: 1.9; color: var(--wx-note); }
+
+/* 百分比。默认是中性灰底——原来无条件用品牌绿，15% 配一个和 95% 一样鲜亮的
+   "值得庆祝"配色，看着就是怪。只有排名真站得住脚（.good，见 percentileTier）
+   才换成 --wx-brand；两种状态共用同一份排版，只换背景和字色。 */
+.percentile {
+  margin: 0 16px 16px;
+  padding: 11px 14px;
+  border-radius: 8px;
+  background: var(--wx-bg);
+  color: var(--wx-gray);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+.percentile.good {
+  background: rgba(7, 193, 96, 0.1);
+  color: var(--wx-brand);
+}
+
+.round {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  gap: 10px;
+  padding: 12px 16px;
+  align-items: start;
+}
+
+.round + .round { box-shadow: inset 0 1px 0 var(--wx-line); }
+.round.pivot { background: #fbfaf3; }
+.round .no { font-size: 12px; color: var(--wx-sub); padding-top: 2px; }
+.round.pivot .no { color: var(--gold); }
+.round .said { font-size: 14.5px; line-height: 1.55; }
+.round .tags { margin-top: 5px; font-size: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* 时机。竞品判"说得标不标准"，这一行判"用得是不是时候"——
+   全作品唯一一处别人没有的判据，值得单独占一行而不是挤进标签里 */
+.round .timing { margin-top: 5px; font-size: 12px; color: var(--wx-note); }
+.round .timing.good { color: var(--gold-text); }
+.round .timing.bad { color: var(--fall-text); }
+
+/* 三把钥匙的维度条。
+   同类的 AI 陪练产品人人都有维度评分，我们原先只有一张"没用上的钥匙"清单。
+   条长按"这一局挣得最多的那把"归一：绝对分值没有天花板，拿一个想象出来的
+   满分去除，条会长期趴在左边，什么也说明不了。 */
+.keyrow { padding: 13px 16px; }
+.keyrow + .keyrow { box-shadow: inset 0 1px 0 var(--wx-line); }
+.keyhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.keyname { font-size: 14.5px; }
+.keynum { font-size: 14px; font-weight: 600; color: var(--rise-text); }
+
+.keybar {
+  height: 5px;
+  margin: 8px 0 7px;
+  border-radius: 3px;
+  background: var(--wx-line);
+  overflow: hidden;
+}
+.keybar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--wx-rise);
+  /* 条是从左边长出来的，不是凭空出现 */
+  animation: growbar 420ms var(--ease) both;
+  transform-origin: left center;
+}
+@keyframes growbar { from { transform: scaleX(0); } to { transform: none; } }
+
+.keynote { font-size: 12px; line-height: 1.75; color: var(--wx-note); }
+
+/* 没用过的那几把沉底、去掉条：它们不是成绩，是"下一局试试这个"。
+   注文换成这把钥匙本身的说明——**玩家不会为了看懂一个指标去别处翻**，
+   看不懂就直接忽略（Key Lime 对 PUBG 后置屏的 N=12 研究）。 */
+.keyrow.unused .keyname { color: var(--wx-note); }
+.keyrow.unused .keynum { font-size: 12px; font-weight: 400; color: var(--wx-note); }
+.keyrow.unused .keybar { display: none; }
+.keyrow.unused .keynote { margin-top: 5px; }
+
+/* 本机训练记录（跨局）。历史行借的还是"左名右注"那个排法，三色沿用
+   .summary 的用法——保住了钱的绿、转账/拉黑的红，拖住不特殊上色，
+   跟结算卡那句"三档结局只分三种颜色"是同一条道理。 */
+.historyrow { display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; font-size: 13px; }
+.historyrow + .historyrow { box-shadow: inset 0 1px 0 var(--wx-line); }
+.historywhen { flex: none; color: var(--wx-note); }
+.historywho { flex: 1; min-width: 0; color: var(--wx-gray);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.historytier { flex: none; padding: 2px 9px; border-radius: 10px;
+  font-size: 12px; color: var(--wx-gray); background: #f2f2f2; }
+.historytier.persuaded, .historytier.intercepted { color: #0a7d3f; background: #e6f5ec; }
+.historytier.transferred, .historytier.blacklisted { color: #b3332f; background: #fdecec; }
+.historyempty { margin: 0; padding: 16px; font-size: 13px;
+  color: var(--wx-note); text-align: center; }
+
+/* 别人打成什么样。借的还是逐轮那一行的排法（左名右注），只是没有分数那一列——
+   它讲的是"你站在哪"，不是"你这一句值多少"，不该长得像一条判分。 */
+/* flex + wrap，不用 grid 的 1fr auto：右边那条注在窄屏上会挤爆左边的名字
+   （实测 375px 下「空口说“这是诈骗”」被拦腰折断，注文压了上去）。
+   换成可换行的 flex 之后，放不下就整条掉到下一行，仍然右对齐。 */
+.statrow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 11px 16px;
+  align-items: baseline;
+}
+.statrow + .statrow { box-shadow: inset 0 1px 0 var(--wx-line); }
+.statname { font-size: 14px; }
+.statnote { font-size: 12px; color: var(--wx-note); text-align: right; margin-left: auto; }
+
+/* 追问窗口。它捕捉的是"该推进时退回安全区"——同类产品的评分捕捉不到这种
+   回避行为，反而因为对话时长给正面激励。用金色是因为它属于游戏层。 */
+.round .window { margin-top: 4px; font-size: 12px; color: var(--wx-note); }
+.round .window.good { color: var(--gold-text); }
+.round .window.bad { color: var(--fall-text); }
+
+/* 脚注体。它以前顶在最上面占了一屏，现在退到最底下、去掉白底 */
+.howscored { margin: 22px 0 0; padding: 0 16px; font-size: 12.5px; line-height: 1.9;
+  color: #6b6b6b; }
+.howscored b { color: var(--wx-text); }
+/* 一轮的账，三段竖着摊开：挣了多少 / 掉了多少 / 剩多少。
+   原来只有"挣了多少"和"剩多少"两段，中间那段是隐形的——于是
+   「23 分 → +18 → 39」在玩家眼里是一道算错的题（少的那 2 分是信任流失）。 */
+.round .ledger {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.round .ledger .gain { font-size: 14px; font-weight: 600; color: var(--wx-note); }
+.round .ledger .gain.up { color: var(--rise-text); }
+.round .ledger .gain.down { color: var(--fall-text); }
+/* 流失永远是往下的，用跌色但不加粗：它是背景音，不是玩家干的事。
+   **不再用 opacity 压淡**——11.5px 的字配 0.75 透明度实测只有 2.10:1，
+   等于把刚刚才让它现身的这一列又藏了回去。改用字号和字重拉开层次。 */
+.round .ledger .loss { font-size: 11.5px; color: var(--fall-text); }
+.round .ledger .pool { font-size: 11.5px; color: var(--gold-text); }
+.round .ledger .after {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--wx-text);
+  padding-top: 2px;
+  border-top: 1px solid var(--wx-line);
+  min-width: 2.2em;
+  text-align: right;
+}
+
+.tip { padding: 13px 16px; }
+.tip + .tip { box-shadow: inset 0 1px 0 var(--wx-line); }
+.tip .title { font-size: 14.5px; font-weight: 600; }
+.tip p { margin: 5px 0 0; font-size: 13px; line-height: 1.85; color: #6b6b6b; }
+.empty { padding: 14px 16px; font-size: 13.5px; color: var(--wx-note); }
+
+.actions { display: flex; gap: 10px; padding: 20px 16px 0; }
+
+.actions button {
+  flex: 1;
+  padding: 11px;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--wx-brand);
+  color: #fff;
+}
+
+.actions button.plain { background: var(--wx-white); color: var(--wx-text);
+  border: 1px solid var(--wx-line); }
+
+.actions button:disabled { background: #d6d6d6; color: #6e6e6e; cursor: default; }
+
+#cardWrap { padding: 16px; }
+
+#card {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.savehint { margin: 10px 0 0; text-align: center; font-size: 12.5px; color: var(--wx-sub); }
+.savelink { color: var(--wx-brand); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── 2026-08 多客户参与式体验 ─────────────────────────────────
+ *
+ * 视觉从“微信仿真”收束到“真实业务协作”：微信语法仍留在对话层，事件、档案和
+ * 复盘改用同一套暖灰纸面与墨蓝操作色。颜色只表达状态，不负责装饰。
+ */
+:root {
   --paper: #f7f6f1;
   --paper-strong: #fffefa;
   --chat: #eceeea;
