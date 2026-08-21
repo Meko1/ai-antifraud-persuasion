@@ -133,6 +133,27 @@ function savedAmount(kind) {
   return 0;
 }
 
+/** 复盘首屏展示的资金状态。
+ *
+ * 拖住的钱还在账户里，但客户并未放弃转账，所以它不能叫“守住”；
+ * 被拉黑后连资金是否已转出都无法确认，也不能用一个虚假的 ¥0 代替未知。
+ */
+function resultAmount(kind) {
+  if (kind === 'persuaded') {
+    return { value: wholeMoney(TOTAL()), label: '本局确认保住的资金' };
+  }
+  if (kind === 'intercepted') {
+    return { value: wholeMoney(TOTAL() - TEST_TRANSFER()), label: '其余资金已被拦下' };
+  }
+  if (kind === 'stalled') {
+    return { value: wholeMoney(TOTAL()), label: '暂未转出，风险尚未解除' };
+  }
+  if (kind === 'blacklisted') {
+    return { value: '状态未知', label: '客户仍可能继续转账，你已无法跟进' };
+  }
+  return { value: '¥0', label: `${wholeMoney(TOTAL())} 已全部转出` };
+}
+
 // 结局是一道阶梯，不是胜负（CONTEXT.md「结局」）。四档量的是他最后有多信你，
 // 对玩家呈现为"你救回了多少钱"——金额是这件事在现实里的记法。
 // 排序的反直觉之处：拖住一分没转，仍排在已转出一小笔的拦下之下，
@@ -973,14 +994,13 @@ function openReview() {
       <h1>复盘</h1>
     </header>
     <div class="review-body">
-      <!-- 借的是微信「账单详情」那个槽：一枚小徽章说这是什么，
-           一个大数说结果，下面一行小字说细节。**金额当主角**——
-           这件事在现实里的记法就是钱，而不是"档位名称"。
-           三档结局这个数是 ¥0，那正是它该有的分量。 -->
+      <!-- 先说结局，再说资金状态。拖住时展示“暂未转出”而不是“守住”，
+           被拉黑时展示未知，不拿虚假的 ¥0 填补已经断掉的信息。 -->
       <div class="summary ${kind}">
-        <span class="tierpill"></span>
+        <span class="result-kicker">本局结果 · <b class="tierpill"></b></span>
+        <h2 class="result-title"></h2>
         <div class="savedamt num"></div>
-        <div class="savedcap">守住的钱</div>
+        <div class="savedcap"></div>
         <div class="saved"></div>
         <p class="copy"></p>
       </div>
@@ -994,13 +1014,19 @@ function openReview() {
         <div class="stat"><b id="sBest"></b><i>最有力的一句</i></div>
       </div>
 
-      <!-- K 线紧跟着结算卡与三栏统计，中间不隔一个 group-title——三块本来说的
-           是同一件事（这一局的信任度），断成三个标题反而像三个不相干的板块。
-           百分比也放在这儿，跟统计数据本身待在一起，不单独开一节。 -->
+      <p class="percentile" id="percentileLine" hidden></p>
+
+      <div class="turning-point" id="turningPoint">
+        <b>本局关键转折</b>
+        <blockquote id="turningQuote"></blockquote>
+        <p id="turningNote"></p>
+      </div>
+
+      <!-- 详细 K 线仍紧跟结果摘要，但退到关键转折之后。用户先知道发生了什么，
+           再决定是否深入查看每轮判分。 -->
       <div class="panel">
         <canvas id="chart"></canvas>
         <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分给出的分——它和实体端点的落差就是每轮的信任流失。</p>
-        <p class="percentile" id="percentileLine" hidden></p>
       </div>
 
       <!-- 合规红线。**排在所有内容之前**（结算卡与三栏统计之后），
@@ -1084,10 +1110,31 @@ function openReview() {
     </div>`;
 
   document.body.appendChild(view);
-  view.querySelector('.summary .tierpill').textContent = `${meta.tier} · ${meta.title}`;
-  view.querySelector('.summary .savedamt').textContent = wholeMoney(savedAmount(kind));
+  const result = resultAmount(kind);
+  view.querySelector('.summary .tierpill').textContent = meta.tier;
+  view.querySelector('.summary .result-title').textContent = meta.title;
+  view.querySelector('.summary .savedamt').textContent = result.value;
+  view.querySelector('.summary .savedcap').textContent = result.label;
   view.querySelector('.summary .saved').textContent = meta.savedCopy;
   view.querySelector('.summary .copy').innerHTML = verdictCopy();
+
+  const turning = view.querySelector('#turningPoint');
+  if (best && best.delta > 0) {
+    turning.querySelector('#turningQuote').textContent = `“${best.utterance}”`;
+    turning.querySelector('#turningNote').textContent =
+      `第 ${best.round} 轮让信任上升 ${best.delta} 分，这是本局最有力的一句。`;
+  } else {
+    turning.querySelector('#turningQuote').textContent = '这一局没有一句真正推动客户。';
+    turning.querySelector('#turningNote').textContent =
+      '下一局先确认客户在怕什么、相信什么，再尝试给出判断。';
+  }
+
+  if (kind === 'blacklisted') {
+    const rank = view.querySelector('#percentileLine');
+    rank.hidden = false;
+    rank.classList.add('unranked');
+    rank.textContent = '不参与排行 · 联系中断属于提前出局';
+  }
 
   // 三栏在 375px 上只放得下四五个字。「劝住线 80」不重复说——
   // K 线上那条金色虚线已经标着它，写两遍反而把这一行挤成两行
@@ -1152,7 +1199,7 @@ function openReview() {
   paintStats(view, kind);
   paintHistory(view, kind);
 
-  view.querySelector('#restart').onclick = () => location.reload();
+  view.querySelector('#restart').onclick = startNewClient;
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
 }
@@ -1498,11 +1545,7 @@ function trustPercentile(buckets, trust) {
  * 换成一句听得出是在跟你说话的话。
  */
 function percentileCopy(pct) {
-  if (pct >= 85) return `这一局的信任度，比 ${pct}% 打过的人都高——这一手是真稳。`;
-  if (pct >= 60) return `信任度超过了 ${pct}% 的人，这局打得比大多数人扎实。`;
-  if (pct >= 35) return `信任度超过了 ${pct}% 的人，不算亮眼，也没垫底，中间往上够一够就是了。`;
-  if (pct >= 10) return `信任度超过了 ${pct}% 的人——别急，多数人也是从这个数开始摸到门道的。`;
-  return `信任度超过了 ${pct}% 的人，这局是真难。回头看看是不是一上来就想说服他，而不是先问。`;
+  return `高于同场景 ${pct}% 的已完成对局`;
 }
 
 /** 百分位配色跟着分数走，不是每次都用那罐"值得庆祝"的绿——
@@ -1523,6 +1566,8 @@ function percentileHeadline(pct) {
 }
 
 async function paintStats(view, kind) {
+  // 被拉黑是提前出局，不属于四档完整对局，不拿 0 分和完成对局比较。
+  if (kind === 'blacklisted') return;
   let data;
   try {
     data = await (await fetch('api/stats')).json();
@@ -1903,10 +1948,15 @@ function makeCard(view) {
 
 // ── 开局 ────────────────────────────────────────────────────
 
-// 请求在首页就发出去了。玩家点开会话时开场白通常已经到手，
-// 「首屏 ≤3 秒」是被会话列表那一屏顺手买的单。
-const ready = (async () => {
+// 随机派发页至少停留一个短节拍：让用户知道这是一位由系统分配的真实客户，
+// 又不把等待演成抽卡。低动态偏好下不增加人为等待。
+showScreen('assignment');
+const assignmentStartedAt = Date.now();
+let startError = null;
+
+async function loadGame() {
   const resp = await fetch('api/game/start', { method: 'POST' });
+  if (!resp.ok) throw new Error(`start failed: ${resp.status}`);
   const data = await resp.json();
   game.token = data.token;
   game.opening = data.opening;
@@ -1917,8 +1967,37 @@ const ready = (async () => {
   game.remaining = data.remaining;
   game.contestId = data.contest_id || '';
   SCENE = data.scenario || null;
+  if (!SCENE) throw new Error('start response missing scenario');
   paintDesk();
+  paintOpening();
+}
+
+const ready = (async () => {
+  try {
+    await loadGame();
+    const elapsed = Date.now() - assignmentStartedAt;
+    if (!REDUCED && elapsed < 850) await sleep(850 - elapsed);
+    showScreen('opening');
+    return true;
+  } catch (error) {
+    startError = error;
+    $('assignmentTitle').textContent = '暂时无法接入客户。';
+    $('assignmentCopy').textContent = '请检查网络或服务状态后重新连接，本局尚未开始。';
+    $('assignmentProgress').hidden = true;
+    $('retryStart').hidden = false;
+    return false;
+  }
 })();
+
+/** 事件开场只讲账户这一侧能确认的事实，不提前泄露诈骗类型。 */
+function paintOpening() {
+  if (!SCENE) return;
+  $('openingTitle').textContent = SCENE.incident.title;
+  $('openingLead').textContent = SCENE.incident.lead;
+  $('openingMoney').textContent = wholeMoney(TOTAL());
+  $('openingHint').textContent = SCENE.incident.hint;
+  $('openingAlert').textContent = '资金异动 · 等待处理';
+}
 
 /** 客户档案里的一行。 */
 function factRow(f) {
@@ -1958,6 +2037,8 @@ function paintDesk() {
   // 内容来自我们自己的场景表，不是用户输入
   $('deskNote').innerHTML = SCENE.note.join('<br>');
   document.querySelector('.st-label').textContent = `${SCENE.pronoun}现在`;
+  $('say').setAttribute('aria-label', `跟${SCENE.peer}说`);
+  $('say').setAttribute('placeholder', `输入你想对${SCENE.pronoun}说的话`);
 
   // warn 的几行是牌，默认摊开；其余是背景，收进「展开」。
   // 六行等权重铺开时，那组矛盾和"开户 19 年"一样重，玩家一条都记不住。
@@ -1994,26 +2075,20 @@ function showScreen(id) {
 }
 
 async function enterGame() {
-  showScreen('chat');
-  if (game.entered) return;
+  if (game.entered) {
+    showScreen('chat');
+    $('say').focus();
+    return;
+  }
 
-  const cta = $('openChen');
-  try {
-    await ready;
-  } catch (e) {
-    // 开局请求是在玩家读工作台那一屏时就发出去的，通常早已到手；
-    // 走到这里说明服务真的没起来，把话说在按钮上，别把人扔进一个空聊天窗
-    showScreen('home');
-    cta.classList.add('dead');
-    cta.disabled = true;
-    cta.querySelector('b').textContent = '连不上服务';
-    const sub = $('ctaSub');
-    sub.classList.add('dead');
-    sub.textContent = '确认服务已启动后刷新页面';
+  const started = await ready;
+  if (!started || startError) {
+    showScreen('assignment');
     return;
   }
 
   game.entered = true;
+  showScreen('chat');
   $('remaining').textContent = String(game.remaining);
   paintMood(game.mood);
   divider('下午 2:47');
@@ -2022,9 +2097,16 @@ async function enterGame() {
   $('say').focus();
 }
 
+function startNewClient() {
+  location.reload();
+}
+
 // 它现在是个真 <button>，回车与空格由浏览器自己管，不用再补 keydown
 $('openChen').addEventListener('click', enterGame);
 $('backHome').addEventListener('click', () => showScreen('home'));
+$('openProfile').addEventListener('click', () => showScreen('home'));
+$('backOpening').addEventListener('click', () => showScreen('opening'));
+$('retryStart').addEventListener('click', startNewClient);
 
 $('composer').addEventListener('submit', (e) => {
   e.preventDefault();
