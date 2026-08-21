@@ -19,6 +19,7 @@ import random
 import sys
 from collections import Counter
 from dataclasses import dataclass
+from itertools import combinations
 from typing import Dict, List, Sequence, Tuple
 
 from app.scenario import SCENARIOS, Scenario
@@ -458,33 +459,53 @@ def format_best_keys() -> str:
 
     这张表是 POSITIONING 第 5 步的验收判据，也是这个产品最核心那句主张
     唯一一处能被直接验证的地方：**换场景之后最优解必须跟着变**。
-    两列一模一样，就说明第二个场景只是换了套皮，白做。
+    某两列一模一样，就说明后一个场景只是换了套皮，白做。
+
+    场景多于两个之后，"四档里有几档不同"这个总数不够用了：四个场景在
+    同一档上给出三种答案也算"不同"，可其中两个仍可能互为换皮。所以下面
+    额外按**两两配对**报一次最小差异档数，与 `test_换了场景最优解必须跟着变`
+    的判据一致。
     """
     from app.scoring import KEY_VALUES
 
     moods = (Mood.GUARDED, Mood.IRRITATED, Mood.WAVERING, Mood.SOFTENING)
     labels = {Mood.GUARDED: "戒备", Mood.IRRITATED: "烦躁",
               Mood.WAVERING: "动摇", Mood.SOFTENING: "松动"}
-    head = "".join(f"{s.id:>22}" for s in SCENARIOS)
+    width = 22
+    head = "".join(f"{s.id:>{width}}" for s in SCENARIOS)
+    rule = "─" * (8 + width * len(SCENARIOS))
     lines = ["每档最优解（基值 × 档位效力，未钝化）",
-             f"{'档位':<8}{head}", "─" * (8 + 22 * len(SCENARIOS))]
+             f"{'档位':<8}{head}", rule]
+
+    picks: Dict[str, List[str]] = {s.id: [] for s in SCENARIOS}
     flips = 0
     for mood in moods:
         cells = []
-        picks = []
+        row = []
         for scene in SCENARIOS:
             table = scene.efficacy
             best = max(KEY_VALUES, key=lambda k: KEY_VALUES[k] * table[k][mood])
-            picks.append(best)
-            cells.append(f"{best:>22}")
-        if len(set(picks)) > 1:
+            row.append(best)
+            picks[scene.id].append(best)
+            cells.append(f"{best:>{width}}")
+        if len(set(row)) > 1:
             flips += 1
         lines.append(f"{labels[mood]:<7}{''.join(cells)}")
-    lines.append("─" * (8 + 22 * len(SCENARIOS)))
+    lines.append(rule)
+    lines.append(f"四档里有 {flips} 档的最优解不止一种。")
+
+    pairs = [
+        (a, b, sum(x != y for x, y in zip(picks[a], picks[b])))
+        for a, b in combinations(picks, 2)
+    ]
+    worst = min(pairs, key=lambda p: p[2])
+    lines.append("两两之间不同的档数：" + "、".join(
+        f"{a}/{b} {n}/4" for a, b, n in pairs
+    ))
     lines.append(
-        f"四档里有 {flips} 档的最优解不同。"
-        + ("✅ 场景是可迁移的" if flips >= 2
-           else "✗ 两个场景最优解几乎一样——第二个场景没有存在的必要")
+        f"最接近的一对是 {worst[0]}/{worst[1]}（{worst[2]}/4）。"
+        + ("✅ 场景是可迁移的" if worst[2] >= 2
+           else "✗ 这两个场景最优解几乎一样——后一个没有存在的必要")
     )
     return "\n".join(lines)
 

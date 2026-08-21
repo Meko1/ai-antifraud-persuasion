@@ -8,6 +8,7 @@
 """
 
 import random
+from itertools import combinations
 
 import pytest
 
@@ -169,6 +170,12 @@ def test_换了场景最优解必须跟着变() -> None:
 
     这里只要求"多数档位不同"而不是"全部不同"：全部不同是现在的实际情况，
     但把它钉死会让以后微调某一格时收到一条无关的红灯。
+
+    **2026-08-21 起这条覆盖所有场景两两之间**，不再只比 chen 与 zhou。
+    原先写死那两个，加进来的第三、第四个场景**一个字都不会被检查**——
+    而"新场景其实是旧场景换层皮"正是这条测试要挡的东西。实测也确实挡下过：
+    ben 的第一版在四档里有三档与 zhou 撞车（都是"规则/权威"类骗局，
+    直觉上很容易写成同一条弧线）。
     """
     picks = {
         scene.id: [
@@ -177,10 +184,13 @@ def test_换了场景最优解必须跟着变() -> None:
         ]
         for scene in SCENARIOS
     }
-    chen, zhou = picks["chen"], picks["zhou"]
 
-    不同 = sum(a != b for a, b in zip(chen, zhou))
-    assert 不同 >= 3, f"两个场景的最优解几乎一样，第二个场景没有存在的必要：{picks}"
+    for a, b in combinations(picks, 2):
+        不同 = sum(x != y for x, y in zip(picks[a], picks[b]))
+        assert 不同 >= 2, (
+            f"[{a}] 与 [{b}] 的最优解只有 {不同}/4 档不同，"
+            f"后一个场景基本是前一个换层皮：{picks[a]} vs {picks[b]}"
+        )
 
 
 @pytest.mark.parametrize("场景", SCENARIOS, ids=lambda s: s.id)

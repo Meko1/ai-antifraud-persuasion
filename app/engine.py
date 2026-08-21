@@ -174,8 +174,19 @@ async def play_turn(
         # 演绎携带的是【上一轮结束时】的情绪档位——台词落后一轮正是从这里来的
         mood = mood_for(state.trust)
         buffer = SentenceBuffer()
-        # 同一轮内的兜底台词只发一条（见 _screened）
-        seen_fallback: set = set()
+        # 兜底台词整局只发一条，不是一轮只发一条（见 _screened 的文档字符串）。
+        # **这里原来只在本轮内去重**：`seen_fallback` 每轮从空集合起步，于是安全层
+        # 在第 3 轮替出一句「反正老师推的那只，我心里有数」、第 7 轮又撞上同一条
+        # 规则，玩家会在同一局里看到两次一模一样的话——这正是"看着像兜底文案"
+        # 最直接的证据，且与网关健不健康无关，纯粹是这个去重的作用域切错了。
+        # 服务端不存会话（ADR-0003），但 `session.history` 本来就带着这一局
+        # 全部已发生的台词随令牌走，不用为此新开一个字段——直接扫一遍就知道
+        # 这一局用过没有。
+        seen_fallback: set = (
+            {SAFE_FALLBACK}
+            if any(SAFE_FALLBACK in record.reply for record in session.history)
+            else set()
+        )
         try:
             try:
                 async for chunk in _act_with_deadline(

@@ -415,6 +415,11 @@ body {
    而它不会报错，只会难看。 */
 .av-doc { background: #8a6d3b; }
 .av-son { background: #5f7f8f; }
+/* 场景三（杀猪盘）与场景四（刷单返利）揭晓里新增的几条。
+   同一句提醒重复一遍：加场景时头像色最容易漏，漏了就是一个白方块。 */
+.av-lover { background: #a85c72; }
+.av-plat { background: #3d8b8f; }
+.av-husband { background: #6b5b4f; }
 
 /* 群头像是九宫格，这里取四格——不写"群"字也一眼认得出 */
 .av-group {
