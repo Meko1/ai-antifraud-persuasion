@@ -9,6 +9,7 @@
 
 import pytest
 
+from app.scenario import SCENARIOS
 from app.scoring import MAX_ROUNDS, Mood
 from tools.act_eval import (
     Reply,
@@ -16,6 +17,8 @@ from tools.act_eval import (
     load_routes,
     summarize,
 )
+
+场景 = tuple(s.id for s in SCENARIOS)
 
 
 def 台词(route: str, run: int, round_: int, *sentences: str, said: str = "随便一句") -> Reply:
@@ -35,28 +38,115 @@ def 台词(route: str, run: int, round_: int, *sentences: str, said: str = "随�
 def test_每条路线都是完整的十二轮() -> None:
     """少一轮，最后几轮的样本量就和前面对不齐，跨轮的数字不可比。"""
     for route in load_routes():
-        assert len(route.utterances) == MAX_ROUNDS, route.id
-        assert len(route.moods) == MAX_ROUNDS, route.id
+        assert len(route.utterances) == MAX_ROUNDS, f"{route.sid}/{route.id}"
+        assert len(route.moods) == MAX_ROUNDS, f"{route.sid}/{route.id}"
 
 
-def test_四条路线覆盖不同的施压形状() -> None:
+@pytest.mark.parametrize("sid", 场景)
+def test_每个场景都有自己的四条路线(sid: str) -> None:
+    """**8-22 之前只有荐股局那四条**，而跑批脚本结构上也只跑得了老陈。
+
+    于是"演绎基线"这个词历史上只对一个场景成立。拿"王老师带您做的那只票"
+    去问周淑琴，量出来的是她在答非所问，三条门槛全部失去意义。
+    """
+    routes = load_routes(sid=sid)
+
+    assert {r.id for r in routes} == {"cold", "climb", "sawtooth", "parrot"}
+
+
+@pytest.mark.parametrize("sid", 场景)
+def test_四条路线覆盖不同的施压形状(sid: str) -> None:
     """全是"教科书打法"的话，量不到路人看到的那一面——
 
     而首轮基线正是在路人那条路线上炸的：cold 首句重复率 30.4%，
     climb 只有 3.8%。只跑一条路线会得出"没问题"的结论。
     """
-    routes = load_routes()
-    assert len(routes) >= 4
-    形状 = {r.id: set(r.moods) for r in routes}
+    形状 = {r.id: set(r.moods) for r in load_routes(sid=sid)}
+
     assert 形状["cold"] <= {Mood.GUARDED, Mood.IRRITATED}, "冷脸路线不该走到松动"
     assert Mood.SOFTENING in 形状["climb"], "教科书路线得能爬到松动"
+
+
+def test_教科书路线必须按各场景自己的最优解写() -> None:
+    """climb 是"效力矩阵会翻过来"在演绎侧的对照组。
+
+    照抄老陈那条过去，量的就变成了"玩家在这个场景里打错了"——那是路线的
+    毛病，不是演绎的毛病，而报告上分不出这两件事。这里只做一件最机械的
+    检查：四个场景的 climb 发言不许有任何一条重合。
+    """
+    climbs = {
+        sid: set(next(r for r in load_routes(sid=sid) if r.id == "climb").utterances)
+        for sid in 场景
+    }
+
+    for a in 场景:
+        for b in 场景:
+            if a < b:
+                assert not climbs[a] & climbs[b], f"{a} 与 {b} 的教科书路线撞了"
+
+
+def test_教科书路线走遍四个档位() -> None:
+    """每个场景的四把冠军钥匙分落在四个不同的档位上。
+
+    所以一条自称"教科书"的路线必须四档都走到——少走一档，那一档的冠军
+    在这一批里就没有出场机会，而那正是"换了场景最优解会翻过来"这件事
+    在演绎侧最该被看见的地方。
+
+    这条只检查**结构**（档位轨迹），发言内容靠人看，路线的 note 里写着
+    每一档配的是哪一把。
+    """
+    for scene in SCENARIOS:
+        climb = next(r for r in load_routes(sid=scene.id) if r.id == "climb")
+
+        assert set(climb.moods) == set(Mood), (
+            f"{scene.id} 的教科书路线没走到 {set(Mood) - set(climb.moods)}"
+        )
+
+
+def test_四个场景的冠军钥匙确实不是同一组() -> None:
+    """"换个骗局最优解要翻过来"是这个作品的论点，路线是照它写的。
+
+    冠军按**得分**算（基值 × 效力），不是按倍率。踩过一次坑：倍率最高的
+    往往是基值最低的那把（reflect 基值 8，倍率 2.4 也才 19.2 分，
+    照倍率排会把四个场景的最优解全读错，路线也就跟着写错）。
+    """
+    from app.scoring import KEY_VALUES
+
+    def 冠军(scene: object) -> tuple:
+        eff = scene.efficacy  # type: ignore[attr-defined]
+        return tuple(
+            max(KEY_VALUES, key=lambda k: KEY_VALUES[k] * eff[k][mood])
+            for mood in (Mood.GUARDED, Mood.IRRITATED, Mood.WAVERING, Mood.SOFTENING)
+        )
+
+    组 = {scene.id: 冠军(scene) for scene in SCENARIOS}
+
+    assert len(set(组.values())) == len(SCENARIOS), f"有两个场景的最优解一模一样：{组}"
+
+
+def test_复读机路线四个场景共用同一组发言() -> None:
+    """复读攻略的定义就是"贴到任何一段对话里都成立"。
+
+    它不带任何场景成分，因此四个场景的玩家输入完全相同——
+    四份指标的差异 100% 来自演绎本身。这是唯一一条纯净的跨场景对照，
+    改动它等于拆掉这个对照。
+    """
+    parrots = {
+        next(r for r in load_routes(sid=sid) if r.id == "parrot").utterances
+        for sid in 场景
+    }
+
+    assert len(parrots) == 1
 
 
 def test_档位与发言数量对不上时直接报错() -> None:
     from tools.act_eval import Route
 
     with pytest.raises(ValueError):
-        Route(id="坏的", note="", moods=(Mood.GUARDED,), utterances=("一", "二"))
+        Route(
+            id="坏的", sid="chen", note="",
+            moods=(Mood.GUARDED,), utterances=("一", "二"),
+        )
 
 
 # ── 复述反问 ──────────────────────────────────────────────────────────────

@@ -65,6 +65,10 @@ class Case:
 
     `context` 是上一轮劝阻对象说的话——扎根与否只能相对于它来判，
     脱离上下文的"扎根"标注没有意义。
+
+    `sid` 是这条样本写在哪个场景的语域里。**分类器不知道剧本是什么**
+    （它判的是手法），所以这一列不进提示词，只用来把准确率按场景拆开报——
+    "同一套判据在四个场景上都成立"是个断言，不拆开就永远验不了它。
     """
 
     id: str
@@ -73,6 +77,7 @@ class Case:
     utterance: str
     hits: FrozenSet[str]
     grounded: bool
+    sid: str = "any"
     note: str = ""
 
 
@@ -104,6 +109,13 @@ class Report:
     # 按难例分类拆开的扎根准确率。总体数字会把某一类的塌方摊平，
     # 而复读攻略那一类塌了就等于扎根门控失效。
     grounded_accuracy_by_tag: Dict[str, float] = field(default_factory=dict)
+    # 按场景拆开的 (hit_keys 准确率, grounded 准确率, 样本数)。
+    #
+    # "同一张判分表、同一套七把钥匙，换个骗局照样成立"是这个作品的论点，
+    # 而分类器是它最靠前的一环。**这句话此前只是个断言**——标注集里
+    # 荐股局占了三分之二，总体准确率再高也说明不了另外三个场景。
+    # 拆开报之后它才是一条能被证伪的数。
+    accuracy_by_sid: Dict[str, Tuple[float, float, int]] = field(default_factory=dict)
     mistakes: Tuple[Mistake, ...] = ()
 
 
@@ -122,6 +134,7 @@ def load_cases(path: Path = DEFAULT_SET_PATH) -> Tuple[Case, ...]:
                 utterance=data["utterance"],
                 hits=frozenset(data["hits"]),
                 grounded=data["grounded"],
+                sid=data.get("sid", "any"),
                 note=data.get("note", ""),
             )
         )
@@ -140,6 +153,7 @@ def summarize(
     total = hit_ok = grounded_ok = unparsed = 0
     key_cases = key_grounded_ok = 0
     by_tag: Dict[str, List[int]] = {}
+    by_sid: Dict[str, List[int]] = {}
     confusion = {row: {col: 0 for col in (*LABELS, EMPTY)} for row in (*LABELS, EMPTY)}
     tallies: Dict[str, List[int]] = {label: [0, 0, 0] for label in LABELS}
     mistakes: List[Mistake] = []
@@ -165,6 +179,11 @@ def summarize(
         tally = by_tag.setdefault(case.tag, [0, 0])
         tally[0] += grounded_match
         tally[1] += 1
+
+        scene_tally = by_sid.setdefault(case.sid, [0, 0, 0])
+        scene_tally[0] += hits_match
+        scene_tally[1] += grounded_match
+        scene_tally[2] += 1
 
         for row in case.hits or {EMPTY}:
             for col in predicted_hits or {EMPTY}:
@@ -195,6 +214,10 @@ def summarize(
         },
         grounded_accuracy_by_tag={
             tag: _ratio(ok, n) for tag, (ok, n) in sorted(by_tag.items())
+        },
+        accuracy_by_sid={
+            sid: (_ratio(hit, n), _ratio(gnd, n), n)
+            for sid, (hit, gnd, n) in sorted(by_sid.items())
         },
         mistakes=tuple(mistakes),
     )
@@ -318,6 +341,19 @@ def format_report(report: Report) -> str:
     for tag, acc in report.grounded_accuracy_by_tag.items():
         floor = PARROT_GROUNDED_FLOOR if tag == PARROT_TAG else GROUNDED_ACCURACY_FLOOR
         lines.append(f"  {tag:<18}{acc:>7.1%}   门槛 {floor:.0%}")
+
+    if report.accuracy_by_sid:
+        lines += [
+            "",
+            "按场景语域（「同一套判据换个骗局照样成立」这句话的证据在这一栏）",
+            f"  {'场景':<8}{'样本':>6}{'hit_keys':>11}{'grounded':>11}",
+        ]
+        for sid, (hit, gnd, n) in report.accuracy_by_sid.items():
+            lines.append(f"  {sid:<8}{n:>6}{hit:>11.1%}{gnd:>11.1%}")
+        lines.append(
+            "  样本少的那几行波动大，单次跑批不足以下结论（§6.4：没有 temperature，"
+            "两次连跑固有差 1.3 个百分点）"
+        )
 
     lines += [
         "",

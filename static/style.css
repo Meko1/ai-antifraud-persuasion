@@ -1064,6 +1064,22 @@ body {
    同类的 AI 陪练产品人人都有维度评分，我们原先只有一张"没用上的钥匙"清单。
    条长按"这一局挣得最多的那把"归一：绝对分值没有天花板，拿一个想象出来的
    满分去除，条会长期趴在左边，什么也说明不了。 */
+/* 「同一句话，换个时候说」。
+   排版刻意与判分卡同一套语法（微信系统提示那一族），不新造视觉体系。
+   引用块用 --gold 的左边线：金色是全作品唯一不属于微信的颜色，专供游戏层，
+   而"这一招值几倍"正是游戏层最核心的那句话。 */
+.contrast-head { padding: 13px 16px 0; color: var(--wx-note); font-size: 12.5px; }
+.contrast-quote {
+  margin: 8px 16px 0;
+  padding: 8px 0 8px 11px;
+  border-left: 2px solid var(--gold);
+  color: var(--wx-text);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+.contrast-body { margin: 10px 16px 0; font-size: 13.5px; line-height: 1.85; color: var(--wx-text); }
+.contrast-body b { font-weight: 700; }
+
 .keyrow { padding: 13px 16px; }
 .keyrow + .keyrow { box-shadow: inset 0 1px 0 var(--wx-line); }
 .keyhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
@@ -1408,8 +1424,74 @@ button:disabled { cursor: not-allowed; }
 .assignment-progress i { display: block; width: 58%; height: 100%; background: var(--signal); }
 .retry-start { width: 100%; min-height: 52px; margin-top: 24px; border: 0; border-radius: 14px; background: var(--navy); color: #fff; font-weight: 760; }
 
+/* 开打前那一屏（8-22）。排版跟客户档案同一族，不新造视觉体系。
+   `.primer-spacer` 是右上角「跳过」的等宽占位，让标题真正居中——
+   appbar 是三栏 grid，少一边标题就会偏。 */
+.primer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 23px 28px; }
+/* 与 .back-button 同一套尺寸，只是贴右边。44px 高是触控下限（8-17 核过）。 */
+.skip-button {
+  position: absolute;
+  right: 13px;
+  min-width: 54px;
+  height: 44px;
+  padding: 0 7px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+.primer-lead { margin: 0 0 18px; color: #505a55; font-size: 14px; line-height: 1.75; }
+.primer-lead b { color: var(--wx-text); font-weight: 700; }
+.primer-list { margin: 0; padding: 0; list-style: none; counter-reset: primer; }
+.primer-list li {
+  counter-increment: primer;
+  position: relative;
+  padding: 12px 0 12px 30px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.primer-list li + li { box-shadow: inset 0 1px 0 var(--line); }
+.primer-list li::before {
+  content: counter(primer);
+  position: absolute;
+  left: 0;
+  top: 13px;
+  width: 19px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.primer-list b { display: block; font-size: 14.5px; font-weight: 700; }
+.primer-list span { color: #505a55; }
+.primer-foot { margin: 20px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+
+/* 「话说通了，现实里还差这几步」。刻意做得像清单而不是成绩：
+   没有分数、没有勾选态、没有颜色语义——它是待办，不是评价。 */
+.disposal { margin: 0; padding: 13px 16px 4px 34px; }
+.disposal li { padding: 0 0 12px; font-size: 13.5px; line-height: 1.65; }
+.disposal li::marker { color: var(--wx-sub); font-size: 12px; }
+.disposal b { display: block; font-weight: 700; }
+.disposal span { color: var(--wx-note); }
+
 /* 异常事件 */
-.opening-body { flex: 1; min-height: 0; overflow-y: auto; padding: 42px 23px 140px; }
+/* 内容块在可用空间里**光学居中**，而不是顶在上面（8-22）。
+ *
+ * 8-21「交底砍半、卡片拍平」删掉了内容，却没有重排版：实测 375×812 上
+ * 金额块收在 y=444，而固定操作栏从 y=716 开始——**272px 的洞，占屏高 33%**，
+ * 而且是下重上轻的，读起来不像"留白"，像"没加载完"。这是评审与路演的第一屏。
+ *
+ * 用两个可压缩的伪元素撑开上下，而不是 `justify-content: center`：
+ * 这一块是 `overflow-y: auto` 的，居中对齐在内容超高时会把顶部裁掉够不着
+ * （小屏、大字号、换了更长的客户名都可能超）。伪元素 `flex: 1 1 0` 在空间
+ * 不够时自己塌成 0，内容回到顶部对齐、照常滚动——**不用赌布局**。
+ *
+ * padding-bottom 从 140px 收回 42px：操作栏是 flex 兄弟节点（`flex: none`），
+ * 本来就不会压在内容上，那 140px 是早先某一版留下的、只在加大这个洞。
+ */
+.opening-body { flex: 1; min-height: 0; overflow-y: auto; padding: 42px 23px; display: flex; flex-direction: column; }
+.opening-body::before,
+.opening-body::after { content: ''; flex: 1 1 0; min-height: 0; }
+.opening-body > * { flex: none; }
 .opening-rule { display: block; width: 36px; height: 3px; margin: 25px 0; background: var(--signal); }
 .opening-lead { margin: 16px 0 0; color: #505a55; font-size: 15px; line-height: 1.78; }
 .opening-record { margin: 30px 0 0; padding: 18px 0; display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }

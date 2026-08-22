@@ -9,7 +9,8 @@
 指标口径本身由 `tests/test_act_eval.py` 守着，那部分不调模型。
 
 用法：
-    python -m tools.act_eval                       # 全量：4 路线 × 20 遍
+    python -m tools.act_eval                       # 全量：4 路线 × 20 遍（默认场景）
+    python -m tools.act_eval --scenario zhou       # 换一个场景跑
     python -m tools.act_eval --runs 1 --rounds 2   # 几毛钱确认链路通
     python -m tools.act_eval --routes climb        # 只跑一条路线
     python -m tools.act_eval --dump lines.jsonl    # 导出台词，人格那一类靠人眼看
@@ -18,6 +19,20 @@
 **玩家的话是写死的**（见 tests/data/act_routes.jsonl 顶部注释）：要量的是同样
 输入下老陈有多不一样，输入一变这个指标当场作废。情绪档位同样是声明的，
 不由分类器现判——否则 20 遍之间的差异里会混进"档位走到了别处"这个变量。
+
+## 一次只跑一个场景（2026-08-22）
+
+**在此之前这个脚本结构上就跑不了别的场景**：`opening_for(gid)` 不传 personas、
+`gateway.act(...)` 不传 `scene=`，两处都落到缺省的老陈。于是历史上每一次
+"演绎基线"量的都只是老陈一个人——8-21 那组三条门槛全过的数字，对
+zhou / liu / ben 一个字都不成立。
+
+路线也必须按场景各写一份：拿荐股局的话（王老师、那只票）去问周淑琴，
+量出来的是"她在答非所问"，不是她演得好不好。
+
+**指标一次只在一个场景内部汇总。** 跨场景合并没有意义——`cross_route_repeat`
+认的是"同一句话出现在两条路线里"，四个场景的人根本不说同一种话，
+合起来算只会把这个指标稀释成 0。
 """
 
 from __future__ import annotations
@@ -35,6 +50,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from app.persona import opening_for
 from app.safety import screen_sentence
+from app.scenario import DEFAULT, SCENARIOS, Scenario, scenario_for
 from app.scoring import Mood, under_pressure
 from app.state_token import TurnRecord
 from app.streaming import SentenceBuffer
@@ -111,14 +127,19 @@ RETRY_BACKOFF = 2.0
 
 @dataclass(frozen=True)
 class Route:
+    # 路线 id 是**施压形状**（cold / climb / sawtooth / parrot），四个场景各有
+    # 同名的一条。它不带场景前缀是刻意的：跑批一次只跑一个场景，报告里的
+    # 「路线」那一列因此不必重复四遍场景名，而形状之间才是可比的
+    # ——chen 的 cold 与 zhou 的 cold 量的是同一种玩家。
     id: str
+    sid: str
     note: str
     moods: Tuple[Mood, ...]
     utterances: Tuple[str, ...]
 
     def __post_init__(self) -> None:
         if len(self.moods) != len(self.utterances):
-            raise ValueError(f"路线 {self.id}：档位与发言数量不一致")
+            raise ValueError(f"路线 {self.sid}/{self.id}：档位与发言数量不一致")
 
 
 @dataclass(frozen=True)
@@ -222,16 +243,26 @@ ECHO_QUESTION_CEILING: Optional[float] = 0.10
 FORMAL_CEILING: Optional[float] = 0.02
 
 
-def load_routes(path: Path = DEFAULT_ROUTES_PATH) -> Tuple[Route, ...]:
+def load_routes(
+    path: Path = DEFAULT_ROUTES_PATH, sid: Optional[str] = None
+) -> Tuple[Route, ...]:
+    """读回放路线。`sid` 给了就只留那个场景的。
+
+    不给 sid 时返回全部——那是给测试用的（要遍历四个场景各查一遍），
+    跑批一律经 `--scenario` 过滤，理由见模块文档。
+    """
     routes: List[Route] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("//"):
             continue
         data = json.loads(line)
+        if sid is not None and data["sid"] != sid:
+            continue
         routes.append(
             Route(
                 id=data["id"],
+                sid=data["sid"],
                 note=data.get("note", ""),
                 moods=tuple(Mood(m) for m in data["moods"]),
                 utterances=tuple(data["utterances"]),
@@ -248,17 +279,24 @@ async def play_route(
     gateway: object,
     *,
     run: int,
+    scene: Optional[Scenario] = None,
     rounds: int = 0,
     failures: Optional[List[Tuple[str, int, int]]] = None,
 ) -> List[Reply]:
     """跑一遍路线。走生产同一条路：同一个网关、同一份提示词、同一个安全层。
 
-    gid 由 (route, run) 拼出来，于是人格变体与开场白都跟生产一样由它派生。
+    gid 由 (场景, route, run) 拼出来，于是人格变体与开场白都跟生产一样由它派生。
     20 遍拿到 20 个不同的 gid——这正是玩家那一侧的真实情况：
-    每个人开一局就是一个新 gid，落到哪个老陈身上由 hash 决定。
+    每个人开一局就是一个新 gid，落到哪个变体身上由 hash 决定。
+    **gid 里必须带场景**：不带的话四个场景会挑到同一串变体下标，
+    "换个场景重跑一遍"就变成了"同一批人换套剧本"，抽样根本没换。
+
+    `scene` 决定三件事，缺一件这一批就是在量老陈：开场白从哪一组人格里挑、
+    提示词用谁的剧本、四档演绎指示是谁的。**这三处 8-22 之前一处都没传。**
     """
-    gid = f"{route.id}:{run}"
-    opening = opening_for(gid)
+    scene = scene or DEFAULT
+    gid = f"{scene.id}:{route.id}:{run}"
+    opening = opening_for(gid, scene.personas)
     failures = [] if failures is None else failures
     history: List[TurnRecord] = []
     replies: List[Reply] = []
@@ -276,7 +314,13 @@ async def play_route(
                     history=tuple(history),
                     opening=opening,
                     pressured=under_pressure(round_),
+                    # 生产上第 1 轮走的是 FIRST_TURN_DIRECTION，不是档位指示
+                    # （app/engine.py 的 `first_turn=round_ == 1`）。跑批一直没传，
+                    # 于是**主指标"首句重复率"量的是一句生产里根本不会出现的话**。
+                    # 开口那一下正是这个脚本存在的理由，不能量错。
+                    first_turn=round_ == 1,
                     gid=gid,
+                    scene=scene,
                 ):
                     buf += chunk
                 raw = buf
@@ -330,6 +374,7 @@ async def run(
     gateway: object,
     *,
     runs: int,
+    scene: Optional[Scenario] = None,
     rounds: int = 0,
     concurrency: int = 4,
 ) -> List[Reply]:
@@ -340,7 +385,12 @@ async def run(
     async def one(route: Route, run_index: int) -> List[Reply]:
         async with gate:
             return await play_route(
-                route, gateway, run=run_index, rounds=rounds, failures=failures
+                route,
+                gateway,
+                run=run_index,
+                scene=scene,
+                rounds=rounds,
+                failures=failures,
             )
 
     batches = await asyncio.gather(
@@ -554,7 +604,12 @@ def format_report(report: Report) -> str:
 
 
 async def measure_drift(
-    dump: Path, gateway: object, *, sample: int, concurrency: int
+    dump: Path,
+    gateway: object,
+    *,
+    sample: int,
+    concurrency: int,
+    scene: Optional[Scenario] = None,
 ) -> Tuple[float, int]:
     """拿导出的台词去跑分类器，看"扎根"的判定有没有漂。
 
@@ -564,11 +619,21 @@ async def measure_drift(
 
     玩家那一侧的话在两份 dump 里是同一批，所以扎根率的差异只能来自老陈——
     这正是要量的东西。第 1 轮跳过：它的上下文是开场白，而开场白不在 dump 里。
+
+    **两份 dump 必须是同一个场景的。** 场景一换，玩家那一侧的话也换了，
+    差异里就混进了"问的问题不同"这个变量，这个数就不再是漂移。
+    dump 自带 `sid`，这里以它为准；旧的 dump 没有这个字段，落到 `scene`。
     """
     from app.classify import parse_classification
 
     rows = [json.loads(line) for line in dump.read_text(encoding="utf-8").splitlines()]
-    routes = {r.id: r for r in load_routes()}
+    scene = scene or DEFAULT
+    if not rows:
+        raise ValueError(f"{dump} 是空的，没有台词可以拿去判扎根")
+    sids = {row.get("sid", scene.id) for row in rows}
+    if len(sids) > 1:
+        raise ValueError(f"这份 dump 混了多个场景 {sorted(sids)}，扎根漂移没法比")
+    routes = {r.id: r for r in load_routes(sid=sids.pop())}
     replies = {(r["route"], r["run"], r["round"]): r["sentences"] for r in rows}
 
     pairs = []
@@ -585,21 +650,49 @@ async def measure_drift(
 
     gate = asyncio.Semaphore(concurrency)
 
-    async def one(utterance: str, context: str) -> bool:
-        async with gate:
-            raw = await gateway.classify(  # type: ignore[attr-defined]
-                utterance=utterance, history=(), opening=context
-            )
-        parsed = parse_classification(raw)
-        return bool(parsed and parsed.grounded)
+    async def one(utterance: str, context: str) -> Optional[bool]:
+        """一条判定。**必须自己扛住网关抖动**——这一处漏了很久。
 
-    verdicts = await asyncio.gather(*(one(u, c) for u, c in pairs))
+        两个 eval 的主路径都重试两次、失败的样本从指标里剔除，唯独这里是
+        裸 await 挂在 `asyncio.gather` 上：**一次瞬时 401 就让整批作废**，
+        200 条判定一条都拿不到。8-22 实测撞上两次（`ip restriction!` 与
+        「该令牌状态不可用」），第二次正是在这儿炸的。
+
+        失败返回 None 而不是 False：False 是"判为未扎根"，会把扎根率算低，
+        而这个数是用来做前后对比的——凭空压低它等于伪造一个"没有漂移"。
+        """
+        for attempt in range(ACT_RETRIES + 1):
+            try:
+                async with gate:
+                    raw = await gateway.classify(  # type: ignore[attr-defined]
+                        utterance=utterance, history=(), opening=context
+                    )
+                parsed = parse_classification(raw)
+                return bool(parsed and parsed.grounded)
+            except Exception as exc:  # noqa: BLE001 - 瞬时故障不该毁掉整批
+                if attempt == ACT_RETRIES:
+                    print(f"  ! 一条判定放弃：{type(exc).__name__}", flush=True)
+                    return None
+                await asyncio.sleep(RETRY_BACKOFF * (attempt + 1))
+        return None
+
+    results = await asyncio.gather(*(one(u, c) for u, c in pairs))
+    verdicts = [v for v in results if v is not None]
+    dropped = len(results) - len(verdicts)
+    if dropped:
+        print(f"{dropped} 条重试三次仍失败，已从指标中剔除", flush=True)
     return (sum(verdicts) / len(verdicts) if verdicts else 0.0), len(verdicts)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="演绎跑批（会真实调用模型）")
     parser.add_argument("--routes-file", type=Path, default=DEFAULT_ROUTES_PATH)
+    parser.add_argument(
+        "--scenario",
+        default=DEFAULT.id,
+        choices=[s.id for s in SCENARIOS],
+        help="跑哪个场景。一次只跑一个，指标不跨场景合并",
+    )
     parser.add_argument("--routes", default="", help="只跑这些路线，逗号分隔")
     parser.add_argument("--runs", type=int, default=20, help="每条路线跑几遍")
     parser.add_argument("--rounds", type=int, default=0, help="只跑前 N 轮，0 表示全部")
@@ -618,6 +711,8 @@ def main() -> int:
     # 而 summarize / check_thresholds 这些纯函数不该被这条约束拖住
     from app.gateway import ModelGateway
 
+    scene = scenario_for(args.scenario)
+
     if args.drift:
         # 单独一条路：它花的是分类请求（短、便宜），不重跑演绎。
         # 两份 dump 各跑一次，比的是同一批玩家发言在不同老陈面前的扎根率
@@ -627,6 +722,7 @@ def main() -> int:
                 ModelGateway(),
                 sample=args.drift_sample,
                 concurrency=args.concurrency,
+                scene=scene,
             )
         )
         print(f"{args.drift.name}：抽 {n} 条，判为扎根 {rate:.1%}")
@@ -635,7 +731,7 @@ def main() -> int:
         print("那条线是评审关的资产（docs/TECH-DESIGN.md §9.4），届时要重跑 balance_sim。")
         return 0
 
-    routes = load_routes(args.routes_file)
+    routes = load_routes(args.routes_file, sid=scene.id)
     if args.routes:
         wanted = {r.strip() for r in args.routes.split(",")}
         routes = tuple(r for r in routes if r.id in wanted)
@@ -646,6 +742,7 @@ def main() -> int:
     turns = args.rounds or len(routes[0].utterances)
     calls = len(routes) * args.runs * turns
     print(
+        f"场景 {scene.id}（{scene.name} · {scene.kind}）：",
         f"{len(routes)} 条路线 × {args.runs} 遍 × {turns} 轮 = "
         f"{calls} 次演绎调用，并发 {args.concurrency}…",
         flush=True,
@@ -655,6 +752,7 @@ def main() -> int:
             routes,
             ModelGateway(),
             runs=args.runs,
+            scene=scene,
             rounds=args.rounds,
             concurrency=args.concurrency,
         )
@@ -666,6 +764,9 @@ def main() -> int:
                 fh.write(
                     json.dumps(
                         {
+                            # 场景要留在 dump 里：`--drift` 靠它找回这一批用的
+                            # 是哪一份路线，而路线决定玩家那一侧说了什么
+                            "sid": scene.id,
                             "route": reply.route,
                             "run": reply.run,
                             "round": reply.round,
@@ -683,6 +784,7 @@ def main() -> int:
 
     report = summarize(replies, args.runs)
     print()
+    print(f"场景 {scene.id} · {scene.name}（{scene.kind}）")
     print(format_report(report))
     print()
 

@@ -14,7 +14,7 @@ import dataclasses
 from app.engine import play_turn
 from app.scenario import DEFAULT
 from app.safety import INJECTION_REPLY, SAFE_FALLBACK
-from app.scoring import MAX_ROUNDS, Ending, GameState, new_game
+from app.scoring import MAX_ROUNDS, Ending, GameState, Mood, new_game
 from app.state_token import Session, TurnRecord, new_session, verify_token
 
 SECRET = "test-secret-not-a-real-key"
@@ -365,6 +365,43 @@ async def test_结局台词生成失败时用预置收尾() -> None:
     ending = next(e for e in events if e.name == "ending")
     assert ending.data["lines"] == list(DEFAULT.ending_lines[Ending(ending.data["kind"])])
     assert [e.name for e in events][-2:] == ["state", "done"], "令牌照发，这一局才算收干净"
+
+
+async def test_效力矩阵只随结局下发_对局中一个字都没有() -> None:
+    """复盘那个「同一句话，换个时候说」的对照块要用它。
+
+    两条约束一起守：
+    - **对局中不许出现**。POSITIONING「在对局中显示分数＝把攻略印在屏幕上」，
+      玩家边打边能读到矩阵，两轮就学会照表刷分，从此不再读人。
+    - **前端不许抄一份**（踩过的坑 7）。判分参数改了要蒙特卡洛重跑，
+      抄一份在 JS 里的话页面上那个数不会跟着动，两边悄悄走散。
+      所以它必须是下发的，而不是前端常量。
+    """
+    gateway = 结局生成失败的Gateway(
+        台词="……你让我想想。", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    events = [
+        event
+        async for event in play_turn(
+            最后一轮的session(), "陈叔，您先别转。",
+            gateway=gateway, secret=SECRET, now=NOW,
+        )
+    ]
+
+    ending = next(e for e in events if e.name == "ending")
+    矩阵 = ending.data["efficacy"]
+    assert set(矩阵) == set(DEFAULT.efficacy), "七把钥匙一把都不能少"
+    assert 矩阵["anchor_real_purpose"]["guarded"] == DEFAULT.efficacy[
+        "anchor_real_purpose"][Mood.GUARDED]
+
+    对局中 = [e for e in events if e.name in ("score", "sentence", "meta")]
+    for e in 对局中:
+        assert "efficacy" not in str(e.data) or e.name == "score", e.name
+    分数 = next(e for e in events if e.name == "score")
+    assert isinstance(分数.data.get("efficacy"), (int, float, type(None))), (
+        "score 里的 efficacy 是这一轮那一个倍率，不是整张表"
+    )
 
 
 # ── 分类降级 ──────────────────────────────────────────────────────────────

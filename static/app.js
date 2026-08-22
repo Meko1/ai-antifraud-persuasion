@@ -21,19 +21,32 @@
 // 标识与 app/scoring.py 的 KEY_VALUES / PENALTY_VALUES 一一对应。
 // 分值不抄过来：那是判分引擎的事，前端只认服务端下发的 delta。
 
+/* `brief` 与 `tip` 是两句不同的话，不能互相替代（8-22）：
+ *
+ * - `brief` 开局前给，**只说这个动作是什么**，一句话，不含时机、不含分值、
+ *   不含"哪一把更强"。它是课程表，不是攻略。
+ * - `tip` 复盘时给，可以讲时机与相对强弱（"说早了它就不是钥匙"
+ *   "他越防着你别的招越没用"）——那时候讲才是教学，开打前讲就是泄题。
+ *
+ * 这条分界正是「给词汇，不给时机」：**词汇是课程，时机是答案。**
+ * 任何真实的培训都会先告诉你评分维度叫什么，但不会在你答题时告诉你分数。
+ * 往 `brief` 里写"这一招在他戒备时最管用"，这个作品的差异点就白送了。 */
 const KEYS = {
   anchor_real_purpose: {
     name: '锚定真实用途',
+    brief: '让他自己说出这笔钱本来是干什么用的。',
     tip: '被洗脑的人满脑子是收益率。让他自己说出「这笔钱本来是给孩子办婚礼的」，' +
          '抽象的数字才会变回具体的代价——一线劝阻里最有效的一招，也最难开口问。',
   },
   socratic_question: {
     name: '苏格拉底式提问',
+    brief: '不给结论，用提问让他自己发现问题。',
     tip: '直接否定只会激起防御。让他自己去按那个提现键、自己去看账户开户名是谁，' +
          '结论由他自己得出，才立得住。',
   },
   expose_contradiction: {
     name: '指出内部矛盾',
+    brief: '用他自己说过的话，指出两件对不上的事。',
     tip: '骗局的话术经不起并置：「内部消息」和「几百人的群」不可能同时成立。' +
          '用他自己说过的话去顶，比引用任何新闻都管用。',
   },
@@ -41,21 +54,25 @@ const KEYS = {
   // 先听懂他、确认他到底理解了什么、以及不去替他做决定。
   reflect_feeling: {
     name: '反映式倾听',
+    brief: '把他的处境和情绪原样说回去，不追加要求。',
     tip: '把他的处境原样说回去，不追加任何要求。它是唯一能主动把他的防备压下去的动作——' +
          '骂过他之后，别的招都被打折，只有先听他说完才救得回来。',
   },
   support_autonomy: {
     name: '支持自主',
+    brief: '明说决定权在他手上，你不替他做主。',
     tip: '「转不转是您的钱，我不替您做主。」它同时是逆反的解药和投顾唯一站得住的合规姿态。' +
          '**他越是竖起防备，别的招越没用，而这一把照常生效**。',
   },
   check_understanding: {
     name: '确认理解',
+    brief: '让他自己讲一遍这钱转过去之后会怎么走。',
     tip: '让他自己讲一遍钱转过去之后会怎么走。这是适当性管理的硬要求，' +
          '也是揭穿骗局最狠的一招——他讲不出来。他自己听见自己答不上，比你说一百句都重。',
   },
   informed_warning: {
     name: '有据告知',
+    brief: '把你的判断说出口，并且给出依据。',
     tip: '把判断说出口，并且给出依据。投顾对疑似诈骗负有告知义务，该说的时候不说是失职。' +
          '**但说早了它就不是钥匙**：他还硬着的时候，这句和「这是诈骗」没有区别。',
   },
@@ -88,6 +105,21 @@ const BREACHES = {
 /** 这一局踩了几次红线。判分口径在服务端，前端只认下发的 hits。 */
 function breachTurns() {
   return game.turns.filter((t) => t.hits.some((h) => h in BREACHES));
+}
+
+/** **真正判成了的那些轮。** 分类失败的轮次按中性记分（`degraded`），
+ *  hits 是空的——在任何"你用了几次 / 占几成"的统计里，它和
+ *  "玩家这一轮说了句没用的话"**长得一模一样**。
+ *
+ *  所以凡是拿轮次当分母的地方都要走这里，而不是 `game.turns`：
+ *  网关抖一下不该记在人头上。
+ *
+ *  分子分母必须用同一个集合，否则会算出"你 120%"这种数。
+ *
+ *  **不适用于**：K 线、轮数、结局文案、逐轮清单——那几处要的是
+ *  "这一局实际发生了什么"，降级的那一轮确实发生过，玩家也确实说了那句话。 */
+function scoredTurns() {
+  return game.turns.filter((t) => !t.degraded);
 }
 
 // ── 剧本素材 ────────────────────────────────────────────────────
@@ -137,13 +169,22 @@ function savedAmount(kind) {
  *
  * 拖住的钱还在账户里，但客户并未放弃转账，所以它不能叫“守住”；
  * 被拉黑后连资金是否已转出都无法确认，也不能用一个虚假的 ¥0 代替未知。
+ *
+ * **「确认保住」这四个字 8-22 拿掉了。** 这一局判的是他最后有多信你，
+ * 而信任度跨过一条线**不等于钱安全了**：这套判分闭集里七把钥匙全是问法，
+ * 没有任何一把是"劰住这笔转账""核验收款方""陪他打 96110"——
+ * 玩家从头到尾没做过任何一个真实处置动作。拿一句"确认保住"去总结它，
+ * 是在教一件现实里不成立的事。
+ *
+ * 改的是文案不是机制（判分闭集一行没动）：金额仍然是叙事外壳，
+ * 只是不再自称是业务结果。真实处置差哪几步，写在复盘末尾那张清单里。
  */
 function resultAmount(kind) {
   if (kind === 'persuaded') {
-    return { value: wholeMoney(TOTAL()), label: '本局确认保住的资金' };
+    return { value: wholeMoney(TOTAL()), label: '他最后没按下确认' };
   }
   if (kind === 'intercepted') {
-    return { value: wholeMoney(TOTAL() - TEST_TRANSFER()), label: '其余资金已被拦下' };
+    return { value: wholeMoney(TOTAL() - TEST_TRANSFER()), label: '其余的他暂时按住了' };
   }
   if (kind === 'stalled') {
     return { value: wholeMoney(TOTAL()), label: '暂未转出，风险尚未解除' };
@@ -679,6 +720,12 @@ async function playTurn(utterance) {
       breached: score.breached,
       breaches: score.breaches,
       mistimedWarning: score.mistimed_warning,
+      // **这一轮的分类没跑成，是按中性判的**（app/engine.py 的 `degraded`）。
+      // 服务端一直在下发它，前端此前一次都没读过——后果不是"少一条提示"，
+      // 是这一轮在复盘里**伪装成"玩家白打了一轮"**：hits 是空的，
+      // 于是它照样进能力画像的分母、照样一格都不涨。
+      // 网关抖了一下，账记在人头上。
+      degraded: !!score.degraded,
     });
     game.trust = score.trust;
     paintMood(score.mood);
@@ -689,13 +736,16 @@ async function playTurn(utterance) {
     // **合规红线是这条规矩唯一的例外**，理由不是它更重要，是它性质不同：
     // 上面那条规矩防的是"泄漏怎么劝才有效"，而"投顾不能荐股"不是劝法，
     // 是这场练习的规则本身——说出来一分攻略都不漏。
-    // 而且它在虚构上是自洽的：开局那句「本会话已按监管要求存档」
-    // 到这里才第一次兑现——存档系统当场把你这句话挑了出来。
     // 不给分数、不给标签，只说踩了哪条线。
+    //
+    // **措辞不能断言"本会话已存档"**（8-22 校准）：那是在给一个练习
+    // 安上一条并不存在的监管义务。真实券商的展业留痕是真的，
+    // 这个练习没有那套东西——说"真实展业中这句要留痕"既保住了
+    // 全部教学分量，又不需要撒谎。
     if (score.breached) {
       const names = (score.hits || [])
         .filter((h) => h in BREACHES).map((h) => BREACHES[h].name);
-      sysnote([`合规红线 · ${names.join(' / ')}`, '这句已进存档'], true);
+      sysnote([`合规红线 · ${names.join(' / ')}`, '真实展业中这句要留痕'], true);
     }
     if (score.pressure) narrate('王老师又在群里催了一遍');
   }
@@ -784,9 +834,8 @@ async function finish() {
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
   const meta = endingMeta(kind);
   if (!meta.receipt) {
-    // 被拒收之后聊天窗口显示的就是这一条。开局那句「对方是你的客户」在这里
+    // 被拒收之后聊天窗口显示的就是这一条。开局那句「对方是虚构客户」在这里
     // 合上了口：他还是你的客户，你还得对他负责，只是话再也递不进去了。
-    // 而那条存档提示仍然挂在上面——你连没说出口的话都留了痕。
     const tip = document.createElement('p');
     tip.className = 'strangertip';
     tip.textContent = '消息已发出，但被对方拒收了。';
@@ -890,8 +939,10 @@ function recordGame(kind) {
   if (game._historyRecorded) return loadHistory();
   const uses = {};
   const gains = {};
+  // 进步趋势要跨局比，降级轮混进去会让某一局的"用了几次"莫名偏低
+  const scored = scoredTurns();
   Object.keys(KEYS).forEach((k) => {
-    const turns = game.turns.filter((t) => t.hits.includes(k));
+    const turns = scored.filter((t) => t.hits.includes(k));
     uses[k] = turns.length;
     gains[k] = turns.reduce((s, t) => s + Math.max(0, t.delta), 0);
   });
@@ -1061,6 +1112,11 @@ function openReview() {
               <div class="panel" id="phoneList"></div>
             </div>
 
+            <div class="group" id="contrastWrap" hidden>
+              <div class="group-title">同一句话，换个时候说</div>
+              <div class="panel" id="contrastBox"></div>
+            </div>
+
             <div class="group">
               <div class="group-title">关键方法 · 你这一局用得怎么样</div>
               <div class="panel" id="keyBars"></div>
@@ -1091,9 +1147,28 @@ function openReview() {
               </div>
             </div>
 
+            <!-- 这一局练的只是"怎么开口"。现实里把话说通之后还有一串动作，
+                 而这套判分闭集里一个都没有（七把钥匙全是问法）。
+                 不列出来，玩家会以为劝住了就完事了——那是这个作品最容易
+                 教错的一件事，而它只要一张清单就能说清。
+                 **不计分、不参与任何统计**：它是"接下来还要做什么"，不是成绩。 -->
+            <div class="group">
+              <div class="group-title">话说通了，现实里还差这几步</div>
+              <div class="panel">
+                <ol class="disposal">
+                  <li><b>先把这一笔停下</b><span>让客户当场取消转账或撤回；已提交的联系银行尝试拦截。</span></li>
+                  <li><b>核验收款方</b><span>对公户还是个人卡、户名对不对得上他说的那家机构。</span></li>
+                  <li><b>拨 96110 / 110</b><span>陪着他打，别让他挂了电话自己再想。</span></li>
+                  <li><b>在系统里留痕并上报</b><span>疑似诈骗按本机构流程报备，别只留在聊天记录里。</span></li>
+                  <li><b>约下一次回访</b><span>骗子还会再找他。这一通电话不是终点。</span></li>
+                </ol>
+                <p class="empty">这几步本局不计分，也不该由一次对话代替。真实处置流程以你所在机构的规定为准。</p>
+              </div>
+            </div>
+
             <div class="actions"><button id="makeCard">生成分享卡</button></div>
             <div id="cardWrap"></div>
-            <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>。同一句话在客户不同的情绪档位上值不同的分，结果可复现。</p>
+            <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>：同一把钥匙在客户不同的情绪档位上值不同的分，这张规则表是纯函数、可以离线重跑。<b>但"命中了哪一把"仍由模型判定</b>，那一步不是确定性的——所以别把这里的分当成一个精确刻度，它是画像，不是成绩单。</p>
           </div>
         </details>
         <button class="restart-action" id="restart" type="button">开始一位新客户</button>
@@ -1164,6 +1239,16 @@ function openReview() {
     if (when) body.append(when);
     const win = windowNote(t);
     if (win) body.append(win);
+    // **这一轮没判成。** 必须说出来，而且必须说清是我们的问题：
+    // 不说的话，这一行看起来就是"你说了句什么也没命中的话"——
+    // 一次网关抖动被永久记成了玩家的失误，而且他连申辩的依据都没有。
+    // 上面 scoredTurns() 已经把它踢出了所有比率的分母，这里补上告知。
+    if (t.degraded) {
+      const bad = document.createElement('div');
+      bad.className = 'window';
+      bad.textContent = '这一轮没能判分（系统原因），已不计入上面的能力画像';
+      body.append(bad);
+    }
     // 催单那一轮多掉 3 分。不写出来，玩家只会看到流失那一列忽然从 -2 变成 -5，
     // 而 title 提示在手机上根本摸不到
     if (t.pressure) {
@@ -1177,6 +1262,7 @@ function openReview() {
     list.appendChild(row);
   });
 
+  paintContrast(view);
   paintKeyBars(view);
 
   if (usedPenalties.length) {
@@ -1277,10 +1363,13 @@ function paintBreaches(view) {
   lead.className = 'breach-lead';
   const kinds = new Set();
   turns.forEach((t) => t.hits.forEach((h) => h in BREACHES && kinds.add(h)));
+  // 最后一句原来是「本会话按监管要求存档，开局那条提示不是布景」。
+  // 两处都不成立：这个练习没有任何监管存档义务，而开局那条提示 8-22 已改。
+  // 换成一句关于**真实展业**的陈述——教学分量一分没少，断言没了。
   lead.innerHTML =
     `这一局你有 <b>${turns.length}</b> 轮踩到了执业红线。` +
     `<br>这一节和你劝没劝住他无关 —— <b>这样的对话记录，合规那边看到是要问话的</b>。` +
-    `本会话按监管要求存档，开局那条提示不是布景。`;
+    `真实展业中，投顾与客户的沟通是要留痕的。`;
   box.appendChild(lead);
 
   turns.forEach((t) => {
@@ -1450,10 +1539,106 @@ function paintPhone(view) {
  *
  * 没用过的那几把不留白，给出它的一句话说明——那正是下一局该试的东西。
  */
+/** 「同一句话，换个时候说」。
+ *
+ *  **这是全作品唯一一条竞品没有的判据第一次被摆到玩家眼前。**
+ *  金融 AI 陪练判"回答准确度、语速、音量"，销售 roleplay 判"方法论有没有
+ *  照做"，没有一家判"你这一招用得是不是时候"——而效力矩阵判的正是这个。
+ *  在这个块之前，它只出现在两个地方：逐轮里一闪而过的 `1.3×`，
+ *  以及技术文档。**玩家自己打一局是看不见它的**，评审也一样。
+ *
+ *  矩阵随结局事件下发（app/engine.py），不在前端抄一份（踩过的坑 7）：
+ *  调参数时蒙特卡洛会重跑，抄一份的话页面上这个数不会跟着动。
+ *
+ *  挑哪一轮来讲，按"教学价值"排，不按分数排：
+ *    1. 说早了的「有据告知」——同一句话早说是失误、晚说是钥匙，
+ *       这是本条判据的**极端形态**，有就一定讲它
+ *    2. 否则挑"实际效力与这一把最高效力差得最多"的那一轮——
+ *       他做对了动作、只是挑错了时候，那正是这一节要教的
+ *  两样都没有（比如一把钥匙都没用上），整块不出现——不留一个空壳。 */
+function paintContrast(view) {
+  const box = view.querySelector('#contrastBox');
+  const eff = game.ending && game.ending.efficacy;
+  if (!eff || !box) return;
+
+  const named = (m) => MOODS[m] || m;
+  const rowOf = (k) => eff[k] || null;
+  // 一把钥匙在四档里的最高与最低。用来说"同一句话差多少倍"
+  const peak = (row) => Object.entries(row).sort((a, b) => b[1] - a[1])[0];
+  const floor = (row) => Object.entries(row).sort((a, b) => a[1] - b[1])[0];
+
+  let head = '';
+  let body = '';
+  let quote = '';
+
+  const mistimed = scoredTurns().find((t) => t.mistimedWarning);
+  if (mistimed && rowOf('informed_warning')) {
+    const row = rowOf('informed_warning');
+    const [bestMood, bestVal] = peak(row);
+    quote = mistimed.utterance;
+    head = `第 ${mistimed.round} 轮 · 你给了依据，也下了判断`;
+    body =
+      `他当时${named(mistimed.judgedMood)}，这句话算的是<b>空口断言</b>——`
+      + `跟他女儿昨天说的那四个字落在同一个地方。`
+      + `<br>同一句话，等他${named(bestMood)}再说，它是这一局分值最高的一把（${bestVal}×）。`
+      + `<br><b>不是这句话错了，是时候错了。</b>`;
+  } else {
+    // 找"动作对、时候不对"差得最远的那一轮
+    let worst = null;
+    scoredTurns().forEach((t) => {
+      if (t.efficacy == null) return;
+      const k = (t.hits || []).find((h) => rowOf(h));
+      if (!k) return;
+      const [bestMood, bestVal] = peak(rowOf(k));
+      const gap = bestVal - t.efficacy;
+      if (!worst || gap > worst.gap) worst = { t, k, bestMood, bestVal, gap };
+    });
+    if (!worst || worst.gap <= 0.15) return;   // 差得不明显就不硬讲
+    const { t, k, bestMood, bestVal } = worst;
+    quote = t.utterance;
+    head = `第 ${t.round} 轮 · ${KEYS[k] ? KEYS[k].name : k}`;
+    body =
+      `他当时${named(t.judgedMood)}，这一招值 ${t.efficacy}×。`
+      + `<br>同一句话，等他${named(bestMood)}再说，值 ${bestVal}×。`
+      + `<br><b>动作是对的，差的是时候。</b>`;
+  }
+
+  if (!head) return;
+
+  const h = document.createElement('div');
+  h.className = 'contrast-head';
+  h.textContent = head;
+  box.appendChild(h);
+
+  if (quote) {
+    const q = document.createElement('div');
+    q.className = 'contrast-quote';
+    q.textContent = quote;
+    box.appendChild(q);
+  }
+
+  const p = document.createElement('p');
+  p.className = 'contrast-body';
+  p.innerHTML = body;
+  box.appendChild(p);
+
+  // 一句话把这个块为什么存在说清楚。竞品判"说得标不标准"，我们判"用得是不是
+  // 时候"——这句是全作品的论点，值得在它唯一被看见的地方写出来
+  const foot = document.createElement('p');
+  foot.className = 'empty';
+  foot.textContent =
+    '这一局判的从来不是你说得标不标准，是你用得是不是时候。'
+    + '同一把钥匙，在他四种情绪下值的分不一样——换个客户，这张表还会翻过来。';
+  box.appendChild(foot);
+
+  view.querySelector('#contrastWrap').hidden = false;
+}
+
 function paintKeyBars(view) {
   const box = view.querySelector('#keyBars');
+  const scored = scoredTurns();
   const rows = Object.keys(KEYS).map((k) => {
-    const turns = game.turns.filter((t) => t.hits.includes(k));
+    const turns = scored.filter((t) => t.hits.includes(k));
     const gained = turns.reduce((s, t) => s + Math.max(0, t.delta), 0);
     const effs = turns.map((t) => t.efficacy).filter((e) => e != null);
     return {
@@ -1651,7 +1836,10 @@ async function paintStats(view, kind) {
   if (!data.turns) return;
 
   const rows = [];
-  const mine = game.turns.length;
+  // 分母只数真正判成了的轮次（见 scoredTurns）——降级轮的 hits 是空的，
+  // 留在分母里等于让网关抖动去稀释玩家的命中率
+  const scored = scoredTurns();
+  const mine = scored.length;
 
   const share = data.endings && data.endings[kind];
   if (share && share.share) {
@@ -1666,7 +1854,7 @@ async function paintStats(view, kind) {
   Object.keys(KEYS).forEach((k) => {
     const g = data.keys && data.keys[k];
     if (!g) return;
-    const 我的 = game.turns.filter((t) => t.hits.includes(k)).length;
+    const 我的 = scored.filter((t) => t.hits.includes(k)).length;
     rows.push([
       KEYS[k].name,
       `大家 ${Math.round(g.rate * 100)}% 的发言用到 · 你 ${mine ? Math.round((我的 / mine) * 100) : 0}%`,
@@ -2166,10 +2354,55 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.toggle('on', s.id === id));
 }
 
+// 这台设备见过那一屏没有。**只认"见过"，不认"同意"**——它是课程表，
+// 不是条款，没有需要玩家承诺的东西。存不进去（隐私模式）就每次都显示，
+// 这是安全的失败方向：多看一屏，好过第一局空手上阵。
+const PRIMER_KEY = 'aap.primer.seen';
+
+function primerSeen() {
+  try {
+    return localStorage.getItem(PRIMER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markPrimerSeen() {
+  try {
+    localStorage.setItem(PRIMER_KEY, '1');
+  } catch {
+    // 存不了就下次再看一遍，不影响任何别的东西
+  }
+}
+
+/** 开打前那一屏。**只列名字与一句话**，见 KEYS 顶部那段关于 brief / tip 的注释。 */
+function paintPrimer() {
+  const list = $('primerList');
+  if (!list || list.childElementCount) return;
+  Object.keys(KEYS).forEach((k) => {
+    const li = document.createElement('li');
+    const name = document.createElement('b');
+    name.textContent = KEYS[k].name;
+    const desc = document.createElement('span');
+    desc.textContent = KEYS[k].brief;
+    li.append(name, desc);
+    list.appendChild(li);
+  });
+}
+
 async function enterGame() {
   if (game.entered) {
     showScreen('chat');
     $('say').focus();
+    return;
+  }
+
+  // 第一次开打先过一遍课程表。**放在开局请求之后、进聊天之前**：
+  // 开局请求在玩家读工作台那一屏时就发出去了，读这一屏的时间同样在给它买单，
+  // 「首屏 ≤3 秒」不受影响。
+  if (!primerSeen()) {
+    paintPrimer();
+    showScreen('primer');
     return;
   }
 
@@ -2197,6 +2430,13 @@ function startNewClient() {
 
 // 它现在是个真 <button>，回车与空格由浏览器自己管，不用再补 keydown
 $('openChen').addEventListener('click', enterGame);
+
+// 「跳过」与「知道了」走同一条路：都记下已看过，然后进聊天。
+// 跳过不该被惩罚——愿意空手上阵的人本来就是这个作品最想要的那批玩家。
+['primerGo', 'primerSkip'].forEach((id) => {
+  const el = $(id);
+  if (el) el.addEventListener('click', () => { markPrimerSeen(); enterGame(); });
+});
 $('backHome')?.addEventListener('click', () => showScreen('home'));
 $('openProfile').addEventListener('click', () => showScreen('home'));
 $('backOpening').addEventListener('click', () => showScreen('opening'));

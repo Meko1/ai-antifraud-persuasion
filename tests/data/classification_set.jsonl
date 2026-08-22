@@ -1,4 +1,15 @@
-// 分类器标注集（§9.3）。每行一条：id / tag / context / utterance / hits / grounded / note
+// 分类器标注集（§9.3）。每行一条：id / tag / sid / context / utterance / hits / grounded / note
+//
+// sid：这条样本写在哪个场景的语域里（chen / zhou / liu / ben），
+//      any 表示两边的话换到任何一个场景都照样成立。**2026-08-22 补上的。**
+//      在这之前没有这个字段，于是"分类器对新场景判得准不准"这个问题
+//      根本没法问——155 条里 124 条是荐股局的话，liu / ben 一条都没有，
+//      而总体准确率会把某个场景的塌方摊平（与 tag 那一列是同一个道理）。
+//
+//      **判据是语域，不是剧本对错**：只要这一对话放进那个场景里读得通顺，
+//      就算那个场景的。分类器本来就不知道剧本是什么——它判的是手法——
+//      所以这一列不是给模型看的，是给跑批切分用的。
+//      跑批按 sid 拆开报一次，见 tools/classify_eval.py 的 accuracy_by_sid。
 //
 // context 是上一轮劝阻对象说的话。它不是装饰——扎根与否只能相对于它来判，
 // 跑批时它被喂到 `_classify_payload` 的"上一轮劝阻对象说"那个位置，
@@ -20,82 +31,82 @@
 //      例外是玩家把话安到他头上（"你说他从不收费……"），那仍是 expose，只是不扎根（C07）。
 //   5. grounded 一律相对 context 判，与这句话是好是坏无关——说教和责骂同样可以扎根。
 //      判据只有一条：把 context 换成任意另一句，这次发言是否照样成立？照样成立即 false。
-{"id": "A01", "tag": "plain", "context": "这钱是我自己的，我爱怎么弄怎么弄，用不着你管。", "utterance": "这三十万在你进那个群之前，原本是打算拿它做什么的？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "接住「这钱是我自己的」，直接追问原本用途"}
-{"id": "A02", "tag": "plain", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "攒了好些年——攒的时候，心里想的是拿它办什么事？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "复述「攒了好些年」再追问用途"}
-{"id": "A03", "tag": "tricky_wording", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "三个月前你把这笔钱划出来的那天，心里给它想好的去处，跟今天要打过去的这个，是同一个吗？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "绕了一大圈，但落点仍是让他自己说出这笔钱原本的去处"}
-{"id": "A04", "tag": "tricky_wording", "context": "账面上确实是赚了的，我看得见。", "utterance": "那笔数字要是明天变成零，你家里最先过不去的那道坎是什么？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "全程不出现「用途」二字，做的却正是把抽象数字拉回具体生活代价"}
-{"id": "A05", "tag": "tricky_wording", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "二十年攒下这三十万，当初是给谁留的？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "「给谁留的」是用途的另一种问法"}
-{"id": "A06", "tag": "parrot", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "这笔钱原本是准备用来做什么的呢？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "教科书式的模板句，一个字也没接住「群里几百号人」"}
-{"id": "A07", "tag": "parrot", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "我想请你想一想，这笔钱原本的用途是什么？是养老还是给孩子上学？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "连选项都是攻略里抄的，与手续费毫无关系"}
-{"id": "A08", "tag": "false_friend", "context": "这三十万是给孩子结婚用的，我心里有数。", "utterance": "给孩子结婚的钱你也敢拿去炒股？当爹的心怎么这么大！", "hits": ["scold"], "grounded": true, "note": "字面上句句是钱的用途，做的却是责骂——anchor 是让他自己说出来，不是替他喊出来"}
-{"id": "A09", "tag": "plain", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "三点前必须到账——这三十万原本是留着办什么事的？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "先复述他给的时限，再追问用途"}
-{"id": "A10", "tag": "tricky_wording", "context": "我这是投资，不是赌博，你别把话说难听了。", "utterance": "「投资」这两个字太轻了。你把它换成那三十万原本要办的事，再说一遍这句话，听着还一样吗？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "用换词的方式逼他自己念出生活代价"}
-{"id": "B01", "tag": "plain", "context": "王老师带我做了三波，都赚了。", "utterance": "前三波赚的钱，现在还在你自己的账户里吗？", "hits": ["socratic_question"], "grounded": true, "note": "不给结论，让他自己去发现钱没落袋"}
-{"id": "B02", "tag": "plain", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "那几百号人，你线下见过几个？", "hits": ["socratic_question"], "grounded": true, "note": "接住「几百号人」，提问不带判词"}
-{"id": "B03", "tag": "plain", "context": "钱要打到一个指定账户，统一操作。", "utterance": "那个账户的开户名，你看到过吗？", "hits": ["socratic_question"], "grounded": true, "note": "指向他自己没核实过的事实"}
-{"id": "B04", "tag": "tricky_wording", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "一分钱不收——那他图什么？我不是说他图什么，我是问你，你替他算过这笔账吗？", "hits": ["socratic_question"], "grounded": true, "note": "自我打断的口语句式，收尾仍是提问而非结论"}
-{"id": "B05", "tag": "tricky_wording", "context": "账面上确实是赚了的，我看得见。", "utterance": "看得见的是数字。你点过提现吗？点了之后那边是什么反应？", "hits": ["socratic_question"], "grounded": true, "note": "两问，都不含结论"}
-{"id": "B06", "tag": "tricky_wording", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "这三个月里，你有没有哪一次说过「我想先取出来看看」？那次他们怎么回你的？", "hits": ["socratic_question"], "grounded": true, "note": "用他自己的经历做锚点提问"}
-{"id": "B07", "tag": "false_friend", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "你是不是傻？几百号人全是托，你看不出来？", "hits": ["scold"], "grounded": true, "note": "带问号的责骂。约定 3：反问自带贬低就不是苏格拉底提问"}
-{"id": "B08", "tag": "false_friend", "context": "王老师带我做了三波，都赚了。", "utterance": "你难道不知道「先让你赚三波」就是杀猪盘的标准流程吗？公安部去年通报了多少起这种案子，你知道吗？", "hits": ["preach"], "grounded": true, "note": "反问的外壳，说教加摆数据的内核"}
-{"id": "B09", "tag": "parrot", "context": "这钱是我自己的，我爱怎么弄怎么弄。", "utterance": "你有没有想过，如果这真的是个骗局，你会怎么办呢？", "hits": ["socratic_question"], "grounded": false, "note": "万能攻略句，贴在任何一句话后面都成立"}
-{"id": "B10", "tag": "parrot", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "我想问你一个问题：你自己觉得，这件事里最不合理的地方是什么？", "hits": ["socratic_question"], "grounded": false, "note": "同上，与「二十年」没有任何咬合"}
-{"id": "C01", "tag": "plain", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "不收手续费，却要你把三十万打到他指定的账户。他不赚你的钱，那他赚谁的？", "hits": ["expose_contradiction"], "grounded": true, "note": "矛盾的一端「不收费」来自他自己"}
-{"id": "C02", "tag": "plain", "context": "账面上确实是赚了的，我看得见。", "utterance": "既然一直在赚，为什么还要你再往里追加三十万？赚的钱不够接着滚吗？", "hits": ["expose_contradiction"], "grounded": true, "note": "用他的「一直在赚」顶他的「必须追加」"}
-{"id": "C03", "tag": "plain", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "几百号人都能上车的消息，还叫内部消息吗？", "hits": ["expose_contradiction"], "grounded": true, "note": "两端分别来自「几百号人」与「内部消息」"}
-{"id": "C04", "tag": "tricky_wording", "context": "王老师说这是内部消息，不能外传。", "utterance": "不能外传的东西，进了一个几百人的群。你这个「内部」，边界画在哪儿？", "hits": ["expose_contradiction"], "grounded": true, "note": "以提问收尾，但核心是拆他自述里的矛盾"}
-{"id": "C05", "tag": "tricky_wording", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "干了二十年的人，厂里发工资会让你把钱先打到别人卡上统一发吗？同样的规矩，换个地方你就认了？", "hits": ["expose_contradiction"], "grounded": true, "note": "拿他的二十年工龄当矛盾的一端"}
-{"id": "C06", "tag": "tricky_wording", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "攒了好些年的钱，交给一个认识三个月的人。这两句话你自己连起来听，不别扭吗？", "hits": ["expose_contradiction"], "grounded": true, "note": "两端都是他给的信息，只是被摆到了一起"}
-{"id": "C07", "tag": "parrot", "context": "王老师带我做了三波，都赚了。", "utterance": "你说他从不收费，又说要打到指定账户，这不是自相矛盾吗？", "hits": ["expose_contradiction"], "grounded": false, "note": "他这轮根本没说过收费的事——玩家在套模板，矛盾两端都是自带的（约定 4）"}
-{"id": "C08", "tag": "plain", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "你自己说跟了三个月。三个月都等得，怎么偏偏这一次连一晚上都等不了？", "hits": ["expose_contradiction"], "grounded": true, "note": "「三个月」与「三点前」的对撞，两端都来自他"}
-{"id": "C09", "tag": "false_friend", "context": "账面上确实是赚了的，我看得见。", "utterance": "你说赚了，那是假的，数字都是他们改出来的，这种事我见得多了。", "hits": ["bare_assertion"], "grounded": true, "note": "看着像揭穿，其实「我见得多了」不构成任何理由"}
-{"id": "D01", "tag": "plain", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "几百号人跳楼你也跟着跳？被人当猴耍还挺得意。", "hits": ["scold"], "grounded": true, "note": "接住了他的话，形式是贬低"}
-{"id": "D02", "tag": "plain", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "二十年白干了，这么低级的套路都看不穿。", "hits": ["scold"], "grounded": true, "note": "直接否定他的资历"}
-{"id": "D03", "tag": "tricky_wording", "context": "王老师带我做了三波，都赚了。", "utterance": "行，您厉害，您是股神，王老师的关门弟子，我不说话了。", "hits": ["scold"], "grounded": true, "note": "反讽也是贬低，字面没有一个脏字"}
-{"id": "D04", "tag": "parrot", "context": "这钱是我自己的，我爱怎么弄怎么弄。", "utterance": "你这样下去是要害了全家的，醒醒吧！", "hits": ["scold"], "grounded": false, "note": "万能斥责模板"}
-{"id": "D05", "tag": "plain", "context": "你算老几？我凭什么听你的？", "utterance": "我是谁不重要。重要的是你现在这个样子有多蠢，被人牵着鼻子走三个月还在替人家说话。", "hits": ["scold"], "grounded": true, "note": "接住「你算老几」后转入人身贬低"}
-{"id": "D06", "tag": "plain", "context": "王老师人挺好的，逢年过节还在群里发红包。", "utterance": "你清醒一点行不行？他就是个骗子！", "hits": ["scold", "bare_assertion"], "grounded": true, "note": "前半句责骂，后半句空口断言，两个标签各自独立成立（约定 1）"}
-{"id": "E01", "tag": "plain", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "我跟你讲，这种荐股群的套路分三步：第一步拉群造势，第二步小额返利建立信任，第三步诱导大额转账。全国去年这类案件涉案两百多亿，受害人平均年龄五十一岁。你先听我把话说完。", "hits": ["preach"], "grounded": false, "note": "通篇是能贴进任何一次劝阻的通用知识，没有一句接住「几百号人」"}
-{"id": "E02", "tag": "plain", "context": "账面上确实是赚了的，我看得见。", "utterance": "你看到的账面是他们后台改出来的数字。我给你讲讲这类平台怎么运作：资金根本不进市场，全在他们自己的库里转，小额能提现是为了让你敢投大额，大额一律用「风控审核」卡住。这套东西我研究很久了，你听我慢慢说。", "hits": ["preach"], "grounded": true, "note": "确实接住了「账面上赚了」，但形式是长篇科普"}
-{"id": "E03", "tag": "tricky_wording", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "三个月，九十天。人这一辈子能有几个九十天？我年轻时候也走过弯路，那会儿我师傅跟我说过一句话，我今天原封不动送给你……", "hits": ["preach"], "grounded": true, "note": "借人生道理说教，落点不在他的处境"}
-{"id": "E04", "tag": "parrot", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "天上不会掉馅饼，掉下来的都是陷阱。投资有风险，入市需谨慎，这是常识。", "hits": ["preach"], "grounded": false, "note": "格言堆砌"}
-{"id": "E05", "tag": "false_friend", "context": "王老师说这是内部消息，不能外传。", "utterance": "你知道什么叫内部消息吗？我给你科普一下证券法的常识，第五十三条、第一百九十一条都有规定，你先听我把这两条讲完。", "hits": ["preach"], "grounded": true, "note": "字面像在揭穿骗局，实为课堂式科普——他从头到尾没被问过一句话"}
-{"id": "E06", "tag": "plain", "context": "你算老几？我凭什么听你的？", "utterance": "你不用听我的，但这个数字你得知道：这类诈骗的追赃率不到百分之三，一百块里追得回来的不到三块。", "hits": ["preach"], "grounded": true, "note": "摆统计数据；接住了「凭什么听你的」"}
-{"id": "F01", "tag": "plain", "context": "王老师带我做了三波，都赚了。", "utterance": "这是诈骗。", "hits": ["bare_assertion"], "grounded": false, "note": "断言且零理由，也没有一个字落在他说的内容上"}
-{"id": "F02", "tag": "plain", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "那个群是假的，王老师也是假的。", "hits": ["bare_assertion"], "grounded": true, "note": "点了群和王老师，算扎根；但依旧没给任何理由"}
-{"id": "F03", "tag": "tricky_wording", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "他不收手续费？那更是骗子，没跑。", "hits": ["bare_assertion"], "grounded": true, "note": "「那更是」听着像推理，中间什么都没有"}
-{"id": "F04", "tag": "parrot", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "凡是让你转账到指定账户的，百分之百是诈骗。", "hits": ["bare_assertion"], "grounded": false, "note": "攻略金句，这轮他压根没提账户"}
-{"id": "F05", "tag": "plain", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "三点前？我不用听了，就是诈骗。", "hits": ["bare_assertion"], "grounded": true, "note": "接住了时限，但「不用听了」恰恰说明它不是推理"}
-{"id": "F06", "tag": "plain", "context": "你算老几？我凭什么听你的？", "utterance": "我凭什么？就凭我一眼看出来这是骗局，而你被人耍得团团转还不自知。", "hits": ["bare_assertion", "scold"], "grounded": true, "note": "空口断言加人身贬低，两个标签各自成立"}
-{"id": "G01", "tag": "plain", "context": "你是谁？我这会儿忙着呢，有事快说。", "utterance": "陈师傅您好，我姓王，占用您两分钟。", "hits": [], "grounded": false, "note": "自我介绍，不加不减；换掉上一轮照样成立，因此不扎根"}
-{"id": "G02", "tag": "plain", "context": "王老师带我做了三波，都赚了。", "utterance": "嗯，我在听。", "hits": [], "grounded": false, "note": "既无命中也无失误，且没有回应任何具体内容"}
-{"id": "G03", "tag": "false_friend", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "那个群叫什么名字？", "hits": [], "grounded": true, "note": "是问句，但只是打听事实，没有指向让他自己发现问题——不算苏格拉底提问"}
-{"id": "G04", "tag": "plain", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "二十年，不容易。", "hits": ["reflect_feeling"], "grounded": true, "note": "「二十年，不容易」把他的处境复述回去，不追加任何要求。8-17 补 reflect_feeling 之前这条只能标空数组"}
-{"id": "G05", "tag": "tricky_wording", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "三点，那还有四十分钟。", "hits": [], "grounded": true, "note": "只是复述事实，既不是提问也不是断言"}
-{"id": "G06", "tag": "plain", "context": "你算老几？我凭什么听你的？", "utterance": "我不是推销的，也不卖任何东西。", "hits": [], "grounded": false, "note": "澄清身份，不加不减；与上一轮说了什么无关"}
-{"id": "H01", "tag": "parrot", "context": "你算老几？我凭什么听你的？", "utterance": "你想过没有，为什么每次都是他们主动联系你？", "hits": ["socratic_question"], "grounded": false, "note": "攻略句，与「你算老几」没有任何咬合"}
-{"id": "H02", "tag": "parrot", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "他既然那么有把握，怎么不自己借钱去买？", "hits": ["socratic_question"], "grounded": false, "note": "矛盾两端都不来自对方，按定义就不算 expose；它是一句反问，且未扎根"}
-{"id": "H03", "tag": "parrot", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "这笔钱是你的养老钱吧？想想你老了以后怎么办。", "hits": ["anchor_real_purpose"], "grounded": false, "note": "用途是猜的，对话里从没出现过养老"}
-{"id": "H04", "tag": "plain", "context": "王老师说这是内部消息，不能外传。", "utterance": "凡事多留个心眼，天上不会掉馅饼。", "hits": ["preach"], "grounded": false, "note": "格言式说教"}
-{"id": "H05", "tag": "parrot", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "所有投资都有风险，你要为自己的每一分钱负责。", "hits": ["preach"], "grounded": false, "note": "正确的废话"}
-{"id": "H06", "tag": "parrot", "context": "钱要打到一个指定账户，统一操作。", "utterance": "如果这真的稳赚，怎么轮得到你？", "hits": ["socratic_question"], "grounded": false, "note": "同 H02：攻略金句形式的反问，他这轮说的是账户，不是稳赚"}
-{"id": "H07", "tag": "plain", "context": "账面上确实是赚了的，我看得见。", "utterance": "醒醒吧，别再执迷不悟了。", "hits": ["scold"], "grounded": false, "note": "通用斥责"}
-{"id": "H08", "tag": "parrot", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "你把这笔钱原本要办的事跟我说说，好吗？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "标准模板句，没接住「二十年」"}
-{"id": "H09", "tag": "plain", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "咱们先不聊钱了，说点别的。", "hits": [], "grounded": false, "note": "转移话题，既不加也不减"}
-{"id": "P01", "tag": "parrot", "context": "王老师说这是内部消息，不能外传。", "utterance": "投资一定要用闲钱，不能动老本，这是最基本的常识。", "hits": ["preach"], "grounded": false, "note": "口诀式说教，与内部消息无关"}
-{"id": "P02", "tag": "parrot", "context": "账面上确实是赚了的，我看得见。", "utterance": "你想过没有，为什么偏偏是你被选中？", "hits": ["socratic_question"], "grounded": false, "note": "攻略金句，与账面盈亏没有咬合"}
-{"id": "P03", "tag": "parrot", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "这笔钱要是打出去，你拿什么给自己养老？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "养老是猜的，上一轮说的是群里的人"}
-{"id": "P04", "tag": "parrot", "context": "你算老几？我凭什么听你的？", "utterance": "但凡承诺稳赚不赔的，都是骗子。", "hits": ["bare_assertion"], "grounded": false, "note": "万能断言，没接住他的质疑"}
-{"id": "P05", "tag": "parrot", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "你现在就是被猪油蒙了心，什么都听不进去。", "hits": ["scold"], "grounded": false, "note": "通用斥责，与攒钱这件事无关"}
-{"id": "P06", "tag": "parrot", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "你有没有仔细想过，万一钱要不回来怎么办？", "hits": ["socratic_question"], "grounded": false, "note": "模板提问，没接住沉没成本这句"}
-{"id": "P07", "tag": "parrot", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "你说他们是正规公司，那营业执照你见过吗？", "hits": ["expose_contradiction"], "grounded": false, "note": "把话安到他头上——他没说过正规公司，同 C07"}
-{"id": "P08", "tag": "parrot", "context": "王老师人挺好的，逢年过节还在群里发红包。", "utterance": "记住三句话：不听、不信、不转账。", "hits": ["preach"], "grounded": false, "note": "标语式说教"}
-{"id": "P09", "tag": "parrot", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "你想想这笔钱是不是给孩子准备的？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "与 A09 同一个上一轮：A09 复述了三点前，这条没有，差别只在扎根"}
-{"id": "P10", "tag": "parrot", "context": "账面上确实是赚了的，我看得见。", "utterance": "我明确告诉你，你已经被骗了。", "hits": ["bare_assertion"], "grounded": false, "note": "被骗是整段对话的背景，不是上一轮的具体内容"}
-{"id": "P11", "tag": "parrot", "context": "钱要打到一个指定账户，统一操作。", "utterance": "都这个岁数了怎么还这么天真。", "hits": ["scold"], "grounded": false, "note": "通用贬低"}
-{"id": "P12", "tag": "parrot", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "你有没有想过，为什么这种好事轮不到别人？", "hits": ["socratic_question"], "grounded": false, "note": "与 B04 同一个上一轮：B04 咬住了手续费，这条没有"}
-{"id": "P13", "tag": "parrot", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "天下没有免费的午餐，高收益必然伴随高风险，这是经济学常识。", "hits": ["preach"], "grounded": false, "note": "教科书原文"}
-{"id": "P14", "tag": "parrot", "context": "这钱是我自己的，我爱怎么弄怎么弄。", "utterance": "他既然是你老师，为什么不用自己的钱先试？", "hits": ["expose_contradiction"], "grounded": false, "note": "攻略金句，两端都不来自上一轮"}
+{"id": "A01", "tag": "plain", "sid": "chen", "context": "这钱是我自己的，我爱怎么弄怎么弄，用不着你管。", "utterance": "这三十万在你进那个群之前，原本是打算拿它做什么的？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "接住「这钱是我自己的」，直接追问原本用途"}
+{"id": "A02", "tag": "plain", "sid": "chen", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "攒了好些年——攒的时候，心里想的是拿它办什么事？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "复述「攒了好些年」再追问用途"}
+{"id": "A03", "tag": "tricky_wording", "sid": "chen", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "三个月前你把这笔钱划出来的那天，心里给它想好的去处，跟今天要打过去的这个，是同一个吗？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "绕了一大圈，但落点仍是让他自己说出这笔钱原本的去处"}
+{"id": "A04", "tag": "tricky_wording", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "那笔数字要是明天变成零，你家里最先过不去的那道坎是什么？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "全程不出现「用途」二字，做的却正是把抽象数字拉回具体生活代价"}
+{"id": "A05", "tag": "tricky_wording", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "二十年攒下这三十万，当初是给谁留的？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "「给谁留的」是用途的另一种问法"}
+{"id": "A06", "tag": "parrot", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "这笔钱原本是准备用来做什么的呢？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "教科书式的模板句，一个字也没接住「群里几百号人」"}
+{"id": "A07", "tag": "parrot", "sid": "chen", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "我想请你想一想，这笔钱原本的用途是什么？是养老还是给孩子上学？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "连选项都是攻略里抄的，与手续费毫无关系"}
+{"id": "A08", "tag": "false_friend", "sid": "chen", "context": "这三十万是给孩子结婚用的，我心里有数。", "utterance": "给孩子结婚的钱你也敢拿去炒股？当爹的心怎么这么大！", "hits": ["scold"], "grounded": true, "note": "字面上句句是钱的用途，做的却是责骂——anchor 是让他自己说出来，不是替他喊出来"}
+{"id": "A09", "tag": "plain", "sid": "chen", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "三点前必须到账——这三十万原本是留着办什么事的？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "先复述他给的时限，再追问用途"}
+{"id": "A10", "tag": "tricky_wording", "sid": "chen", "context": "我这是投资，不是赌博，你别把话说难听了。", "utterance": "「投资」这两个字太轻了。你把它换成那三十万原本要办的事，再说一遍这句话，听着还一样吗？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "用换词的方式逼他自己念出生活代价"}
+{"id": "B01", "tag": "plain", "sid": "chen", "context": "王老师带我做了三波，都赚了。", "utterance": "前三波赚的钱，现在还在你自己的账户里吗？", "hits": ["socratic_question"], "grounded": true, "note": "不给结论，让他自己去发现钱没落袋"}
+{"id": "B02", "tag": "plain", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "那几百号人，你线下见过几个？", "hits": ["socratic_question"], "grounded": true, "note": "接住「几百号人」，提问不带判词"}
+{"id": "B03", "tag": "plain", "sid": "chen", "context": "钱要打到一个指定账户，统一操作。", "utterance": "那个账户的开户名，你看到过吗？", "hits": ["socratic_question"], "grounded": true, "note": "指向他自己没核实过的事实"}
+{"id": "B04", "tag": "tricky_wording", "sid": "chen", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "一分钱不收——那他图什么？我不是说他图什么，我是问你，你替他算过这笔账吗？", "hits": ["socratic_question"], "grounded": true, "note": "自我打断的口语句式，收尾仍是提问而非结论"}
+{"id": "B05", "tag": "tricky_wording", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "看得见的是数字。你点过提现吗？点了之后那边是什么反应？", "hits": ["socratic_question"], "grounded": true, "note": "两问，都不含结论"}
+{"id": "B06", "tag": "tricky_wording", "sid": "chen", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "这三个月里，你有没有哪一次说过「我想先取出来看看」？那次他们怎么回你的？", "hits": ["socratic_question"], "grounded": true, "note": "用他自己的经历做锚点提问"}
+{"id": "B07", "tag": "false_friend", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "你是不是傻？几百号人全是托，你看不出来？", "hits": ["scold"], "grounded": true, "note": "带问号的责骂。约定 3：反问自带贬低就不是苏格拉底提问"}
+{"id": "B08", "tag": "false_friend", "sid": "chen", "context": "王老师带我做了三波，都赚了。", "utterance": "你难道不知道「先让你赚三波」就是杀猪盘的标准流程吗？公安部去年通报了多少起这种案子，你知道吗？", "hits": ["preach"], "grounded": true, "note": "反问的外壳，说教加摆数据的内核"}
+{"id": "B09", "tag": "parrot", "sid": "any", "context": "这钱是我自己的，我爱怎么弄怎么弄。", "utterance": "你有没有想过，如果这真的是个骗局，你会怎么办呢？", "hits": ["socratic_question"], "grounded": false, "note": "万能攻略句，贴在任何一句话后面都成立"}
+{"id": "B10", "tag": "parrot", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "我想问你一个问题：你自己觉得，这件事里最不合理的地方是什么？", "hits": ["socratic_question"], "grounded": false, "note": "同上，与「二十年」没有任何咬合"}
+{"id": "C01", "tag": "plain", "sid": "chen", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "不收手续费，却要你把三十万打到他指定的账户。他不赚你的钱，那他赚谁的？", "hits": ["expose_contradiction"], "grounded": true, "note": "矛盾的一端「不收费」来自他自己"}
+{"id": "C02", "tag": "plain", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "既然一直在赚，为什么还要你再往里追加三十万？赚的钱不够接着滚吗？", "hits": ["expose_contradiction"], "grounded": true, "note": "用他的「一直在赚」顶他的「必须追加」"}
+{"id": "C03", "tag": "plain", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "几百号人都能上车的消息，还叫内部消息吗？", "hits": ["expose_contradiction"], "grounded": true, "note": "两端分别来自「几百号人」与「内部消息」"}
+{"id": "C04", "tag": "tricky_wording", "sid": "chen", "context": "王老师说这是内部消息，不能外传。", "utterance": "不能外传的东西，进了一个几百人的群。你这个「内部」，边界画在哪儿？", "hits": ["expose_contradiction"], "grounded": true, "note": "以提问收尾，但核心是拆他自述里的矛盾"}
+{"id": "C05", "tag": "tricky_wording", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "干了二十年的人，厂里发工资会让你把钱先打到别人卡上统一发吗？同样的规矩，换个地方你就认了？", "hits": ["expose_contradiction"], "grounded": true, "note": "拿他的二十年工龄当矛盾的一端"}
+{"id": "C06", "tag": "tricky_wording", "sid": "chen", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "攒了好些年的钱，交给一个认识三个月的人。这两句话你自己连起来听，不别扭吗？", "hits": ["expose_contradiction"], "grounded": true, "note": "两端都是他给的信息，只是被摆到了一起"}
+{"id": "C07", "tag": "parrot", "sid": "chen", "context": "王老师带我做了三波，都赚了。", "utterance": "你说他从不收费，又说要打到指定账户，这不是自相矛盾吗？", "hits": ["expose_contradiction"], "grounded": false, "note": "他这轮根本没说过收费的事——玩家在套模板，矛盾两端都是自带的（约定 4）"}
+{"id": "C08", "tag": "plain", "sid": "chen", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "你自己说跟了三个月。三个月都等得，怎么偏偏这一次连一晚上都等不了？", "hits": ["expose_contradiction"], "grounded": true, "note": "「三个月」与「三点前」的对撞，两端都来自他"}
+{"id": "C09", "tag": "false_friend", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "你说赚了，那是假的，数字都是他们改出来的，这种事我见得多了。", "hits": ["bare_assertion"], "grounded": true, "note": "看着像揭穿，其实「我见得多了」不构成任何理由"}
+{"id": "D01", "tag": "plain", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "几百号人跳楼你也跟着跳？被人当猴耍还挺得意。", "hits": ["scold"], "grounded": true, "note": "接住了他的话，形式是贬低"}
+{"id": "D02", "tag": "plain", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "二十年白干了，这么低级的套路都看不穿。", "hits": ["scold"], "grounded": true, "note": "直接否定他的资历"}
+{"id": "D03", "tag": "tricky_wording", "sid": "chen", "context": "王老师带我做了三波，都赚了。", "utterance": "行，您厉害，您是股神，王老师的关门弟子，我不说话了。", "hits": ["scold"], "grounded": true, "note": "反讽也是贬低，字面没有一个脏字"}
+{"id": "D04", "tag": "parrot", "sid": "any", "context": "这钱是我自己的，我爱怎么弄怎么弄。", "utterance": "你这样下去是要害了全家的，醒醒吧！", "hits": ["scold"], "grounded": false, "note": "万能斥责模板"}
+{"id": "D05", "tag": "plain", "sid": "chen", "context": "你算老几？我凭什么听你的？", "utterance": "我是谁不重要。重要的是你现在这个样子有多蠢，被人牵着鼻子走三个月还在替人家说话。", "hits": ["scold"], "grounded": true, "note": "接住「你算老几」后转入人身贬低"}
+{"id": "D06", "tag": "plain", "sid": "chen", "context": "王老师人挺好的，逢年过节还在群里发红包。", "utterance": "你清醒一点行不行？他就是个骗子！", "hits": ["scold", "bare_assertion"], "grounded": true, "note": "前半句责骂，后半句空口断言，两个标签各自独立成立（约定 1）"}
+{"id": "E01", "tag": "plain", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "我跟你讲，这种荐股群的套路分三步：第一步拉群造势，第二步小额返利建立信任，第三步诱导大额转账。全国去年这类案件涉案两百多亿，受害人平均年龄五十一岁。你先听我把话说完。", "hits": ["preach"], "grounded": false, "note": "通篇是能贴进任何一次劝阻的通用知识，没有一句接住「几百号人」"}
+{"id": "E02", "tag": "plain", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "你看到的账面是他们后台改出来的数字。我给你讲讲这类平台怎么运作：资金根本不进市场，全在他们自己的库里转，小额能提现是为了让你敢投大额，大额一律用「风控审核」卡住。这套东西我研究很久了，你听我慢慢说。", "hits": ["preach"], "grounded": true, "note": "确实接住了「账面上赚了」，但形式是长篇科普"}
+{"id": "E03", "tag": "tricky_wording", "sid": "chen", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "三个月，九十天。人这一辈子能有几个九十天？我年轻时候也走过弯路，那会儿我师傅跟我说过一句话，我今天原封不动送给你……", "hits": ["preach"], "grounded": true, "note": "借人生道理说教，落点不在他的处境"}
+{"id": "E04", "tag": "parrot", "sid": "chen", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "天上不会掉馅饼，掉下来的都是陷阱。投资有风险，入市需谨慎，这是常识。", "hits": ["preach"], "grounded": false, "note": "格言堆砌"}
+{"id": "E05", "tag": "false_friend", "sid": "chen", "context": "王老师说这是内部消息，不能外传。", "utterance": "你知道什么叫内部消息吗？我给你科普一下证券法的常识，第五十三条、第一百九十一条都有规定，你先听我把这两条讲完。", "hits": ["preach"], "grounded": true, "note": "字面像在揭穿骗局，实为课堂式科普——他从头到尾没被问过一句话"}
+{"id": "E06", "tag": "plain", "sid": "any", "context": "你算老几？我凭什么听你的？", "utterance": "你不用听我的，但这个数字你得知道：这类诈骗的追赃率不到百分之三，一百块里追得回来的不到三块。", "hits": ["preach"], "grounded": true, "note": "摆统计数据；接住了「凭什么听你的」"}
+{"id": "F01", "tag": "plain", "sid": "chen", "context": "王老师带我做了三波，都赚了。", "utterance": "这是诈骗。", "hits": ["bare_assertion"], "grounded": false, "note": "断言且零理由，也没有一个字落在他说的内容上"}
+{"id": "F02", "tag": "plain", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "那个群是假的，王老师也是假的。", "hits": ["bare_assertion"], "grounded": true, "note": "点了群和王老师，算扎根；但依旧没给任何理由"}
+{"id": "F03", "tag": "tricky_wording", "sid": "chen", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "他不收手续费？那更是骗子，没跑。", "hits": ["bare_assertion"], "grounded": true, "note": "「那更是」听着像推理，中间什么都没有"}
+{"id": "F04", "tag": "parrot", "sid": "chen", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "凡是让你转账到指定账户的，百分之百是诈骗。", "hits": ["bare_assertion"], "grounded": false, "note": "攻略金句，这轮他压根没提账户"}
+{"id": "F05", "tag": "plain", "sid": "chen", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "三点前？我不用听了，就是诈骗。", "hits": ["bare_assertion"], "grounded": true, "note": "接住了时限，但「不用听了」恰恰说明它不是推理"}
+{"id": "F06", "tag": "plain", "sid": "any", "context": "你算老几？我凭什么听你的？", "utterance": "我凭什么？就凭我一眼看出来这是骗局，而你被人耍得团团转还不自知。", "hits": ["bare_assertion", "scold"], "grounded": true, "note": "空口断言加人身贬低，两个标签各自成立"}
+{"id": "G01", "tag": "plain", "sid": "chen", "context": "你是谁？我这会儿忙着呢，有事快说。", "utterance": "陈师傅您好，我姓王，占用您两分钟。", "hits": [], "grounded": false, "note": "自我介绍，不加不减；换掉上一轮照样成立，因此不扎根"}
+{"id": "G02", "tag": "plain", "sid": "chen", "context": "王老师带我做了三波，都赚了。", "utterance": "嗯，我在听。", "hits": [], "grounded": false, "note": "既无命中也无失误，且没有回应任何具体内容"}
+{"id": "G03", "tag": "false_friend", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "那个群叫什么名字？", "hits": [], "grounded": true, "note": "是问句，但只是打听事实，没有指向让他自己发现问题——不算苏格拉底提问"}
+{"id": "G04", "tag": "plain", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "二十年，不容易。", "hits": ["reflect_feeling"], "grounded": true, "note": "「二十年，不容易」把他的处境复述回去，不追加任何要求。8-17 补 reflect_feeling 之前这条只能标空数组"}
+{"id": "G05", "tag": "tricky_wording", "sid": "chen", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "三点，那还有四十分钟。", "hits": [], "grounded": true, "note": "只是复述事实，既不是提问也不是断言"}
+{"id": "G06", "tag": "plain", "sid": "any", "context": "你算老几？我凭什么听你的？", "utterance": "我不是推销的，也不卖任何东西。", "hits": [], "grounded": false, "note": "澄清身份，不加不减；与上一轮说了什么无关"}
+{"id": "H01", "tag": "parrot", "sid": "any", "context": "你算老几？我凭什么听你的？", "utterance": "你想过没有，为什么每次都是他们主动联系你？", "hits": ["socratic_question"], "grounded": false, "note": "攻略句，与「你算老几」没有任何咬合"}
+{"id": "H02", "tag": "parrot", "sid": "chen", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "他既然那么有把握，怎么不自己借钱去买？", "hits": ["socratic_question"], "grounded": false, "note": "矛盾两端都不来自对方，按定义就不算 expose；它是一句反问，且未扎根"}
+{"id": "H03", "tag": "parrot", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "这笔钱是你的养老钱吧？想想你老了以后怎么办。", "hits": ["anchor_real_purpose"], "grounded": false, "note": "用途是猜的，对话里从没出现过养老"}
+{"id": "H04", "tag": "plain", "sid": "chen", "context": "王老师说这是内部消息，不能外传。", "utterance": "凡事多留个心眼，天上不会掉馅饼。", "hits": ["preach"], "grounded": false, "note": "格言式说教"}
+{"id": "H05", "tag": "parrot", "sid": "chen", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "所有投资都有风险，你要为自己的每一分钱负责。", "hits": ["preach"], "grounded": false, "note": "正确的废话"}
+{"id": "H06", "tag": "parrot", "sid": "chen", "context": "钱要打到一个指定账户，统一操作。", "utterance": "如果这真的稳赚，怎么轮得到你？", "hits": ["socratic_question"], "grounded": false, "note": "同 H02：攻略金句形式的反问，他这轮说的是账户，不是稳赚"}
+{"id": "H07", "tag": "plain", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "醒醒吧，别再执迷不悟了。", "hits": ["scold"], "grounded": false, "note": "通用斥责"}
+{"id": "H08", "tag": "parrot", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "你把这笔钱原本要办的事跟我说说，好吗？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "标准模板句，没接住「二十年」"}
+{"id": "H09", "tag": "plain", "sid": "chen", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "咱们先不聊钱了，说点别的。", "hits": [], "grounded": false, "note": "转移话题，既不加也不减"}
+{"id": "P01", "tag": "parrot", "sid": "chen", "context": "王老师说这是内部消息，不能外传。", "utterance": "投资一定要用闲钱，不能动老本，这是最基本的常识。", "hits": ["preach"], "grounded": false, "note": "口诀式说教，与内部消息无关"}
+{"id": "P02", "tag": "parrot", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "你想过没有，为什么偏偏是你被选中？", "hits": ["socratic_question"], "grounded": false, "note": "攻略金句，与账面盈亏没有咬合"}
+{"id": "P03", "tag": "parrot", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "这笔钱要是打出去，你拿什么给自己养老？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "养老是猜的，上一轮说的是群里的人"}
+{"id": "P04", "tag": "parrot", "sid": "any", "context": "你算老几？我凭什么听你的？", "utterance": "但凡承诺稳赚不赔的，都是骗子。", "hits": ["bare_assertion"], "grounded": false, "note": "万能断言，没接住他的质疑"}
+{"id": "P05", "tag": "parrot", "sid": "chen", "context": "这三十万是我攒了好些年的，不用你操心。", "utterance": "你现在就是被猪油蒙了心，什么都听不进去。", "hits": ["scold"], "grounded": false, "note": "通用斥责，与攒钱这件事无关"}
+{"id": "P06", "tag": "parrot", "sid": "chen", "context": "我都跟了三个月了，现在停手前面不都白干了？", "utterance": "你有没有仔细想过，万一钱要不回来怎么办？", "hits": ["socratic_question"], "grounded": false, "note": "模板提问，没接住沉没成本这句"}
+{"id": "P07", "tag": "parrot", "sid": "chen", "context": "厂里干了二十年，我还能不知道什么叫风险？", "utterance": "你说他们是正规公司，那营业执照你见过吗？", "hits": ["expose_contradiction"], "grounded": false, "note": "把话安到他头上——他没说过正规公司，同 C07"}
+{"id": "P08", "tag": "parrot", "sid": "chen", "context": "王老师人挺好的，逢年过节还在群里发红包。", "utterance": "记住三句话：不听、不信、不转账。", "hits": ["preach"], "grounded": false, "note": "标语式说教"}
+{"id": "P09", "tag": "parrot", "sid": "chen", "context": "王老师说了，今天下午三点前必须到账。", "utterance": "你想想这笔钱是不是给孩子准备的？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "与 A09 同一个上一轮：A09 复述了三点前，这条没有，差别只在扎根"}
+{"id": "P10", "tag": "parrot", "sid": "chen", "context": "账面上确实是赚了的，我看得见。", "utterance": "我明确告诉你，你已经被骗了。", "hits": ["bare_assertion"], "grounded": false, "note": "被骗是整段对话的背景，不是上一轮的具体内容"}
+{"id": "P11", "tag": "parrot", "sid": "chen", "context": "钱要打到一个指定账户，统一操作。", "utterance": "都这个岁数了怎么还这么天真。", "hits": ["scold"], "grounded": false, "note": "通用贬低"}
+{"id": "P12", "tag": "parrot", "sid": "chen", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "你有没有想过，为什么这种好事轮不到别人？", "hits": ["socratic_question"], "grounded": false, "note": "与 B04 同一个上一轮：B04 咬住了手续费，这条没有"}
+{"id": "P13", "tag": "parrot", "sid": "chen", "context": "群里几百号人都在跟，难道都是傻子？", "utterance": "天下没有免费的午餐，高收益必然伴随高风险，这是经济学常识。", "hits": ["preach"], "grounded": false, "note": "教科书原文"}
+{"id": "P14", "tag": "parrot", "sid": "chen", "context": "这钱是我自己的，我爱怎么弄怎么弄。", "utterance": "他既然是你老师，为什么不用自己的钱先试？", "hits": ["expose_contradiction"], "grounded": false, "note": "攻略金句，两端都不来自上一轮"}
 // ── T 组：投顾语域（2026-08-15 新增 24 条）────────────────────────────────
 // 玩家从"同群的陌生人"改成"老陈的投资顾问"之后，真实输入的分布变了：
 // 他会说"按规定我不能替您做决定"、"您开户时备注写的是孩子婚房"、"我干这行十几年"。
@@ -106,30 +117,30 @@
 //   · 手里有开户资料，于是更容易"替他喊用途"（素材对了，动作错了）
 // 权重偏向两个最弱的类：expose_contradiction（原本只有 10 条，且是唯一塌过的）
 // 与 false_friend（原本只有 6 条）。
-{"id":"T01","tag":"plain","context":"王老师说了，这次操作要统一转到指定账户。","utterance":"那个统一账户，开户名是公司还是个人？您在我们这儿转账，收款方从来都是对公户。","hits":["expose_contradiction"],"grounded":true,"note":"「指定账户」对「正规户从不收私人卡」，两边打架；虽是问句，判据是有没有东西在打架（约定 2）"}
-{"id":"T02","tag":"tricky_wording","context":"我账上还有两万八摆在那儿，一分不少。","utterance":"账面上是两万八，可今天划出去的是十万。这两个数您对过没有？","hits":["expose_contradiction"],"grounded":true,"note":"账面数字对实际划出的数字。投顾独有的矛盾素材——他看得到流水"}
-{"id":"T03","tag":"plain","context":"王老师从来没跟我要过一分钱手续费。","utterance":"他一分钱不收，却要您把钱打到他指定的账户。这两件事您摆到一起看过吗？","hits":["expose_contradiction"],"grounded":true,"note":"「不收费」对「要你打钱」，取自上一轮的具体说法"}
-{"id":"T04","tag":"tricky_wording","context":"我跟了老师三个月了，比你懂。","utterance":"跟了三个月的人，上周还问我银证转账最晚几点。真摸熟了的话，这个不用问我。","hits":["expose_contradiction"],"grounded":true,"note":"「比你懂」对「上周还来问最基础的操作」——投顾手里的交互记录是他独有的矛盾素材"}
-{"id":"T05","tag":"plain","context":"老师说这波稳赚，让我别怕。","utterance":"稳赚的话，为什么还要您签那份免责协议？稳赚和免责，这两个词是打架的。","hits":["expose_contradiction"],"grounded":true,"note":"「稳赚」对「免责协议」，末句把矛盾点破"}
-{"id":"T06","tag":"plain","context":"群里天天有人晒赚钱的截图。","utterance":"群里都在晒赚，可您今天是往外划钱，不是往里转。真赚着的人，钱是往里走的。","hits":["expose_contradiction"],"grounded":true,"note":"「群里晒赚」对「你在往外划」"}
-{"id":"T07","tag":"plain","context":"他们是正规公司，有营业执照的。","utterance":"正规公司会让客户把钱打进个人账户吗？您这些年在我这儿走的每一笔，收款方都是对公的。","hits":["expose_contradiction"],"grounded":true,"note":"「正规公司」对「打个人账户」"}
-{"id":"T08","tag":"tricky_wording","context":"这钱我早就想好了，就等今天。","utterance":"想好了三个月的事，为什么非要卡在今天下午三点之前？想清楚的人不怕多等一天。","hits":["expose_contradiction"],"grounded":true,"note":"「早想好了」对「一天都等不了」"}
-{"id":"T09","tag":"false_friend","context":"我自己的钱我自己有数。","utterance":"我干这行十几年了，这种局我一年见十几个。您听我的没错。","hits":["bare_assertion"],"grounded":false,"note":"投顾最容易脱口而出的一句：拿从业年限当理由。年限不是理由——它和「王老师带了三个月」是同一种诉诸权威"}
-{"id":"T10","tag":"false_friend","context":"那你说我该怎么办。","utterance":"按规定我不能给您任何买卖建议。我只能告诉您，监管去年通报的非法荐股案子有多少起、涉案多少亿，这些都是公开数据，您自己查得到。","hits":["preach"],"grounded":true,"note":"合规免责的外壳，说教摆数据的内核。前半句是对的（只能问不能荐），后半句把他变成了听众"}
-{"id":"T11","tag":"false_friend","context":"这钱怎么花是我的事。","utterance":"您这笔钱三年前进来的时候，备注写的是孩子婚房。您自己写的，现在拿去打水漂？","hits":["scold"],"grounded":false,"note":"素材对了，动作错了：开户留痕是投顾独有的好素材，但「拿去打水漂」把它变成了责骂。anchor 是让他自己说出用途"}
-{"id":"T12","tag":"false_friend","context":"老师说的票从来没错过。","utterance":"从来没错过？您把交割单发我看一眼，我保证上面全是亏的。","hits":["bare_assertion"],"grounded":true,"note":"前半句是提问，后半句自己把答案说了——问句的外壳，断言的内核"}
-{"id":"T13","tag":"false_friend","context":"我提过一次八千，第二天就到账了。","utterance":"八千是他们放给您的饵，这套流程我闭着眼都知道下一步是什么。","hits":["bare_assertion"],"grounded":true,"note":"「我闭着眼都知道」不构成任何理由，与 D 组「这种事我见得多了」同病"}
-{"id":"T14","tag":"false_friend","context":"你别管了行不行。","utterance":"您这么大岁数了，怎么连这点判断力都没有？","hits":["scold"],"grounded":false,"note":"投顾对客户说这句更伤——他不只是被否定，还是当着给自己开户的人被否定"}
-{"id":"T15","tag":"plain","context":"我这钱放着也是放着。","utterance":"这笔钱当初进来的时候，您是打算派什么用场？","hits":["anchor_real_purpose"],"grounded":false,"note":"标准 anchor，投顾语域。上一轮没有可引用的具体成分，因此未扎根"}
-{"id":"T16","tag":"plain","context":"转出去的钱周一就能回来。","utterance":"周一回来的话，是回到哪张卡上？您现在能不能问他要一句书面的？","hits":["socratic_question"],"grounded":true,"note":"取自上一轮的「周一」，引导他自己去验证"}
-{"id":"T17","tag":"tricky_wording","context":"钱的事你别操心，我心里有数。","utterance":"我不操心钱。我就问一句——这笔钱要是三个月后才回得来，家里有哪件事会卡住？","hits":["anchor_real_purpose"],"grounded":true,"note":"没直接问「这钱干什么用的」，做的却是同一件事：把抽象的钱拉回具体的生活安排，且让他自己说"}
-{"id":"T18","tag":"plain","context":"我今天下午三点前必须转。","utterance":"您说的三点，是收盘那个三点吗？","hits":[],"grounded":true,"note":"纯粹澄清事实，没有指向让他自己发现问题——与 G 组「那个群叫什么名字」同类"}
-{"id":"T19","tag":"plain","context":"我跟了三个月了，你现在跳出来说这个。","utterance":"我早提醒过您别碰不熟的东西，您当时怎么不听？现在好了。","hits":["scold"],"grounded":true,"note":"「我早说过」是投顾最容易脱口而出的一句，它做的是责备，不是劝阻"}
-{"id":"T20","tag":"plain","context":"那你说这种事怎么分辨。","utterance":"非法荐股一般五个特征：一，承诺收益；二，要求转私人账户；三，用免责协议规避；四，制造时间压力；五，群里有托配合。您对照着看。","hits":["preach"],"grounded":true,"note":"内容全对，形式是上课。他要的是台阶，不是知识点"}
-{"id":"T21","tag":"parrot","context":"王老师带我三个月了，一直挺好。","utterance":"陈叔，作为您的投资顾问，我有义务提醒您：这笔资金的用途，您考虑清楚了吗？","hits":["anchor_real_purpose"],"grounded":false,"note":"套着投顾身份的模板句，能原样贴到任何一段对话上——身份不构成扎根"}
-{"id":"T22","tag":"parrot","context":"群里几百号人都在跟。","utterance":"我们不妨回到最初的问题：您希望这笔钱最终帮您实现什么？","hits":["anchor_real_purpose"],"grounded":false,"note":"话术手册里的原句，与上一轮说了什么毫无关系"}
-{"id":"T23","tag":"parrot","context":"我提过一次八千，到账了。","utterance":"您有没有想过，这件事情背后可能存在的风险？","hits":["socratic_question"],"grounded":false,"note":"漂亮的提问，能贴到任何对话上。是钥匙，但未扎根——0.45 倍就是给这种句子准备的"}
-{"id":"T24","tag":"parrot","context":"这钱是我自己的。","utterance":"站在专业的角度，我建议您再评估一下这个决策的风险收益比。","hits":[],"grounded":false,"note":"一句正确的废话：既没问出任何东西，也没构成失误。空标签样本要够，否则模型会倾向于「总得判点什么」"}
+{"id": "T01", "tag": "plain", "sid": "chen", "context": "王老师说了，这次操作要统一转到指定账户。", "utterance": "那个统一账户，开户名是公司还是个人？您在我们这儿转账，收款方从来都是对公户。", "hits": ["expose_contradiction"], "grounded": true, "note": "「指定账户」对「正规户从不收私人卡」，两边打架；虽是问句，判据是有没有东西在打架（约定 2）"}
+{"id": "T02", "tag": "tricky_wording", "sid": "chen", "context": "我账上还有两万八摆在那儿，一分不少。", "utterance": "账面上是两万八，可今天划出去的是十万。这两个数您对过没有？", "hits": ["expose_contradiction"], "grounded": true, "note": "账面数字对实际划出的数字。投顾独有的矛盾素材——他看得到流水"}
+{"id": "T03", "tag": "plain", "sid": "chen", "context": "王老师从来没跟我要过一分钱手续费。", "utterance": "他一分钱不收，却要您把钱打到他指定的账户。这两件事您摆到一起看过吗？", "hits": ["expose_contradiction"], "grounded": true, "note": "「不收费」对「要你打钱」，取自上一轮的具体说法"}
+{"id": "T04", "tag": "tricky_wording", "sid": "chen", "context": "我跟了老师三个月了，比你懂。", "utterance": "跟了三个月的人，上周还问我银证转账最晚几点。真摸熟了的话，这个不用问我。", "hits": ["expose_contradiction"], "grounded": true, "note": "「比你懂」对「上周还来问最基础的操作」——投顾手里的交互记录是他独有的矛盾素材"}
+{"id": "T05", "tag": "plain", "sid": "chen", "context": "老师说这波稳赚，让我别怕。", "utterance": "稳赚的话，为什么还要您签那份免责协议？稳赚和免责，这两个词是打架的。", "hits": ["expose_contradiction"], "grounded": true, "note": "「稳赚」对「免责协议」，末句把矛盾点破"}
+{"id": "T06", "tag": "plain", "sid": "chen", "context": "群里天天有人晒赚钱的截图。", "utterance": "群里都在晒赚，可您今天是往外划钱，不是往里转。真赚着的人，钱是往里走的。", "hits": ["expose_contradiction"], "grounded": true, "note": "「群里晒赚」对「你在往外划」"}
+{"id": "T07", "tag": "plain", "sid": "chen", "context": "他们是正规公司，有营业执照的。", "utterance": "正规公司会让客户把钱打进个人账户吗？您这些年在我这儿走的每一笔，收款方都是对公的。", "hits": ["expose_contradiction"], "grounded": true, "note": "「正规公司」对「打个人账户」"}
+{"id": "T08", "tag": "tricky_wording", "sid": "chen", "context": "这钱我早就想好了，就等今天。", "utterance": "想好了三个月的事，为什么非要卡在今天下午三点之前？想清楚的人不怕多等一天。", "hits": ["expose_contradiction"], "grounded": true, "note": "「早想好了」对「一天都等不了」"}
+{"id": "T09", "tag": "false_friend", "sid": "any", "context": "我自己的钱我自己有数。", "utterance": "我干这行十几年了，这种局我一年见十几个。您听我的没错。", "hits": ["bare_assertion"], "grounded": false, "note": "投顾最容易脱口而出的一句：拿从业年限当理由。年限不是理由——它和「王老师带了三个月」是同一种诉诸权威"}
+{"id": "T10", "tag": "false_friend", "sid": "chen", "context": "那你说我该怎么办。", "utterance": "按规定我不能给您任何买卖建议。我只能告诉您，监管去年通报的非法荐股案子有多少起、涉案多少亿，这些都是公开数据，您自己查得到。", "hits": ["preach"], "grounded": true, "note": "合规免责的外壳，说教摆数据的内核。前半句是对的（只能问不能荐），后半句把他变成了听众"}
+{"id": "T11", "tag": "false_friend", "sid": "chen", "context": "这钱怎么花是我的事。", "utterance": "您这笔钱三年前进来的时候，备注写的是孩子婚房。您自己写的，现在拿去打水漂？", "hits": ["scold"], "grounded": false, "note": "素材对了，动作错了：开户留痕是投顾独有的好素材，但「拿去打水漂」把它变成了责骂。anchor 是让他自己说出用途"}
+{"id": "T12", "tag": "false_friend", "sid": "chen", "context": "老师说的票从来没错过。", "utterance": "从来没错过？您把交割单发我看一眼，我保证上面全是亏的。", "hits": ["bare_assertion"], "grounded": true, "note": "前半句是提问，后半句自己把答案说了——问句的外壳，断言的内核"}
+{"id": "T13", "tag": "false_friend", "sid": "chen", "context": "我提过一次八千，第二天就到账了。", "utterance": "八千是他们放给您的饵，这套流程我闭着眼都知道下一步是什么。", "hits": ["bare_assertion"], "grounded": true, "note": "「我闭着眼都知道」不构成任何理由，与 D 组「这种事我见得多了」同病"}
+{"id": "T14", "tag": "false_friend", "sid": "any", "context": "你别管了行不行。", "utterance": "您这么大岁数了，怎么连这点判断力都没有？", "hits": ["scold"], "grounded": false, "note": "投顾对客户说这句更伤——他不只是被否定，还是当着给自己开户的人被否定"}
+{"id": "T15", "tag": "plain", "sid": "any", "context": "我这钱放着也是放着。", "utterance": "这笔钱当初进来的时候，您是打算派什么用场？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "标准 anchor，投顾语域。上一轮没有可引用的具体成分，因此未扎根"}
+{"id": "T16", "tag": "plain", "sid": "any", "context": "转出去的钱周一就能回来。", "utterance": "周一回来的话，是回到哪张卡上？您现在能不能问他要一句书面的？", "hits": ["socratic_question"], "grounded": true, "note": "取自上一轮的「周一」，引导他自己去验证"}
+{"id": "T17", "tag": "tricky_wording", "sid": "chen", "context": "钱的事你别操心，我心里有数。", "utterance": "我不操心钱。我就问一句——这笔钱要是三个月后才回得来，家里有哪件事会卡住？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "没直接问「这钱干什么用的」，做的却是同一件事：把抽象的钱拉回具体的生活安排，且让他自己说"}
+{"id": "T18", "tag": "plain", "sid": "chen", "context": "我今天下午三点前必须转。", "utterance": "您说的三点，是收盘那个三点吗？", "hits": [], "grounded": true, "note": "纯粹澄清事实，没有指向让他自己发现问题——与 G 组「那个群叫什么名字」同类"}
+{"id": "T19", "tag": "plain", "sid": "chen", "context": "我跟了三个月了，你现在跳出来说这个。", "utterance": "我早提醒过您别碰不熟的东西，您当时怎么不听？现在好了。", "hits": ["scold"], "grounded": true, "note": "「我早说过」是投顾最容易脱口而出的一句，它做的是责备，不是劝阻"}
+{"id": "T20", "tag": "plain", "sid": "chen", "context": "那你说这种事怎么分辨。", "utterance": "非法荐股一般五个特征：一，承诺收益；二，要求转私人账户；三，用免责协议规避；四，制造时间压力；五，群里有托配合。您对照着看。", "hits": ["preach"], "grounded": true, "note": "内容全对，形式是上课。他要的是台阶，不是知识点"}
+{"id": "T21", "tag": "parrot", "sid": "chen", "context": "王老师带我三个月了，一直挺好。", "utterance": "陈叔，作为您的投资顾问，我有义务提醒您：这笔资金的用途，您考虑清楚了吗？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "套着投顾身份的模板句，能原样贴到任何一段对话上——身份不构成扎根"}
+{"id": "T22", "tag": "parrot", "sid": "chen", "context": "群里几百号人都在跟。", "utterance": "我们不妨回到最初的问题：您希望这笔钱最终帮您实现什么？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "话术手册里的原句，与上一轮说了什么毫无关系"}
+{"id": "T23", "tag": "parrot", "sid": "chen", "context": "我提过一次八千，到账了。", "utterance": "您有没有想过，这件事情背后可能存在的风险？", "hits": ["socratic_question"], "grounded": false, "note": "漂亮的提问，能贴到任何对话上。是钥匙，但未扎根——0.45 倍就是给这种句子准备的"}
+{"id": "T24", "tag": "parrot", "sid": "any", "context": "这钱是我自己的。", "utterance": "站在专业的角度，我建议您再评估一下这个决策的风险收益比。", "hits": [], "grounded": false, "note": "一句正确的废话：既没问出任何东西，也没构成失误。空标签样本要够，否则模型会倾向于「总得判点什么」"}
 
 // ── R 组：合规红线（2026-08-17 新增 16 条）─────────────────────────────────
 // 判分闭集在此之前一条合规违规都没有，而这套判分表自称的根基正是
@@ -145,24 +156,24 @@
 // 是"沾到钱和标的就报警"。复述老陈自己说的那只票、提示风险而不给方向、
 // 说"我不能给您荐股"——这三种恰恰是正确动作，误判它们等于直接惩罚正确答案。
 // 这个方向上宁可漏，不可误伤（与注入吸收同一条原则）。
-{"id":"R01","tag":"plain","context":"王老师说那只票今天必须进，晚了就没这个价了。","utterance":"那票您别买了，真想做就买点大银行的股票，稳当。","hits":["unlicensed_advice"],"grounded":true,"note":"给出了具体方向和标的类别，标准的无证荐股。接住了「那只票」所以扎根"}
-{"id": "R02", "tag": "plain", "context": "我账上就剩两万八了，不够本了。", "utterance": "您把钱转回来，我们这儿有个稳健型的理财，比您现在这么折腾强。", "hits": ["unlicensed_advice"], "grounded": false, "note": "推荐自家产品，同样是给方向。这是销售型投顾最容易脱口而出的一句"}
-{"id": "R03", "tag": "plain", "context": "你少管我，我自己有数。", "utterance": "我这是为您好，听我的把仓位清了，剩下的钱买国债逆回购去。", "hits": ["unlicensed_advice"], "grounded": false, "note": "合规红线与话术失误并存：既荐了标的，又是一句居高临下的说教"}
-{"id": "R04", "tag": "tricky_wording", "context": "那只票王老师说下周能翻倍。", "utterance": "那个板块我不看好，您现在该做的是出来，换个方向。", "hits": ["unlicensed_advice"], "grounded": true, "note": "没有点名标的，但给了明确的涨跌判断和操作方向——荐股不必指名道姓"}
-{"id": "R05", "tag": "plain", "context": "我这三个月赚了两万三，你懂什么。", "utterance": "您把钱交给我打理，我保证一年下来比您这么弄稳当得多，本金绝对不会亏。", "hits": ["unlicensed_advice", "guaranteed_return"], "grounded": false, "note": "两条红线一起踩：既拉客户资金又承诺保本。单轮最重的一句"}
-{"id":"R06","tag":"tricky_wording","context":"那我这钱放着不动，图什么呢。","utterance":"放我们这儿买货基，一年四个点跑不掉的，稳赚不赔。","hits":["unlicensed_advice","guaranteed_return"],"grounded":true,"note":"「跑不掉」「稳赚不赔」是承诺收益的口语形态，不必出现「保证」二字"}
-{"id": "R07", "tag": "plain", "context": "你凭什么说王老师是骗的。", "utterance": "您信我，跟着我操作肯定不亏，这个我打包票。", "hits": ["guaranteed_return"], "grounded": false, "note": "纯承诺收益，没有具体标的。「打包票」三个字就是这条红线"}
-{"id":"R08","tag":"tricky_wording","context":"钱要是拿回来了，我这三个月不就白干了。","utterance":"不会白干的，您那两万三我想办法给您补上，一分不少。","hits":["guaranteed_return"],"grounded":true,"note":"承诺弥补亏损，与承诺收益同一条线。接住了「白干」和账面数字，扎根"}
-{"id":"R09","tag":"false_friend","context":"王老师说那只票今天必须进。","utterance":"您说的那只票，是谁第一个跟您提的？","hits":["socratic_question"],"grounded":true,"note":"**不是荐股**：复述他自己提到的标的再追问来源，是提问不是建议"}
-{"id":"R10","tag":"false_friend","context":"我把持仓全清了，就等着打款。","utterance":"清仓这个动作，是您自己决定的，还是群里让这么做的？","hits":["socratic_question"],"grounded":true,"note":"**不是荐股**：问的是决策来源，没有给出任何买卖方向"}
-{"id": "R11", "tag": "false_friend", "context": "你是不是也想让我买你们的东西。", "utterance": "不是，按规定我不能给您荐股，也不能替您做决定。我只想问清楚一件事。", "hits": ["support_autonomy"], "grounded": true, "note": "「不能替您做决定」正是支持自主。8-17 补这把钥匙之前只能标空数组；它同时仍然证明「说到荐股二字」不等于荐股"}
-{"id": "R12", "tag": "false_friend", "context": "这钱转过去三点就能建仓。", "utterance": "这种把钱打到私人账户去统一操作的做法，风险您清楚吗？", "hits": ["socratic_question"], "grounded": false, "note": "**不是荐股**：提示风险而不给方向。给方向才是红线，提风险是职责"}
-{"id": "R13", "tag": "false_friend", "context": "账面上确实是赚的，我看得见。", "utterance": "您那个账面数字，跟能提出来的钱，是一回事吗？", "hits": ["socratic_question"], "grounded": true, "note": "**不是承诺收益**：谈的是他自己的收益能不能兑现，没有对任何未来收益打包票"}
-{"id": "R14", "tag": "false_friend", "context": "你们券商不就是想赚我手续费。", "utterance": "您这户在我这儿十九年，去年一整年的手续费还不够我请您吃顿饭。", "hits": ["expose_contradiction"], "grounded": true, "note": "**不是荐股也不是承诺**：回应动机质疑的一句实话，不构成任何标签"}
-{"id":"R15","tag":"parrot","context":"群里几百号人都在跟，能有假？","utterance":"陈叔，我建议您先把资金转回证券账户，配置一些低风险的产品。","hits":["unlicensed_advice"],"grounded":false,"note":"模板化的荐股句，一个字没接住「几百号人」。红线照踩，但未扎根"}
-{"id": "R16", "tag": "parrot", "context": "我跟了三个月了，一次没坑过我。", "utterance": "慢是慢点，可这种路子的收益才是有保障的。", "hits": ["guaranteed_return"], "grounded": false, "note": "「有保障」是承诺收益的软性说法。话术手册里的原句，与上一轮无关"}
-{"id":"R17","tag":"plain","context":"我这钱要是不动，孩子婚房的首付还差一截呢。","utterance":"差的那点我帮您想办法，您放心，这笔钱一分都不会少。","hits":["guaranteed_return"],"grounded":true,"note":"承诺本金安全。接住了「差一截」，扎根——好意也照样是红线"}
-{"id":"R18","tag":"tricky_wording","context":"王老师那边说这波稳的。","utterance":"稳不稳我不敢说，但我这边给您做个组合，至少不会像现在这样一把梭。","hits":["unlicensed_advice"],"grounded":true,"note":"前半句刻意撇清，后半句仍然给了方向。**撇清不能赦免建议本身**"}
+{"id": "R01", "tag": "plain", "sid": "chen", "context": "王老师说那只票今天必须进，晚了就没这个价了。", "utterance": "那票您别买了，真想做就买点大银行的股票，稳当。", "hits": ["unlicensed_advice"], "grounded": true, "note": "给出了具体方向和标的类别，标准的无证荐股。接住了「那只票」所以扎根"}
+{"id": "R02", "tag": "plain", "sid": "chen", "context": "我账上就剩两万八了，不够本了。", "utterance": "您把钱转回来，我们这儿有个稳健型的理财，比您现在这么折腾强。", "hits": ["unlicensed_advice"], "grounded": false, "note": "推荐自家产品，同样是给方向。这是销售型投顾最容易脱口而出的一句"}
+{"id": "R03", "tag": "plain", "sid": "any", "context": "你少管我，我自己有数。", "utterance": "我这是为您好，听我的把仓位清了，剩下的钱买国债逆回购去。", "hits": ["unlicensed_advice"], "grounded": false, "note": "合规红线与话术失误并存：既荐了标的，又是一句居高临下的说教"}
+{"id": "R04", "tag": "tricky_wording", "sid": "chen", "context": "那只票王老师说下周能翻倍。", "utterance": "那个板块我不看好，您现在该做的是出来，换个方向。", "hits": ["unlicensed_advice"], "grounded": true, "note": "没有点名标的，但给了明确的涨跌判断和操作方向——荐股不必指名道姓"}
+{"id": "R05", "tag": "plain", "sid": "chen", "context": "我这三个月赚了两万三，你懂什么。", "utterance": "您把钱交给我打理，我保证一年下来比您这么弄稳当得多，本金绝对不会亏。", "hits": ["unlicensed_advice", "guaranteed_return"], "grounded": false, "note": "两条红线一起踩：既拉客户资金又承诺保本。单轮最重的一句"}
+{"id": "R06", "tag": "tricky_wording", "sid": "any", "context": "那我这钱放着不动，图什么呢。", "utterance": "放我们这儿买货基，一年四个点跑不掉的，稳赚不赔。", "hits": ["unlicensed_advice", "guaranteed_return"], "grounded": true, "note": "「跑不掉」「稳赚不赔」是承诺收益的口语形态，不必出现「保证」二字"}
+{"id": "R07", "tag": "plain", "sid": "chen", "context": "你凭什么说王老师是骗的。", "utterance": "您信我，跟着我操作肯定不亏，这个我打包票。", "hits": ["guaranteed_return"], "grounded": false, "note": "纯承诺收益，没有具体标的。「打包票」三个字就是这条红线"}
+{"id": "R08", "tag": "tricky_wording", "sid": "chen", "context": "钱要是拿回来了，我这三个月不就白干了。", "utterance": "不会白干的，您那两万三我想办法给您补上，一分不少。", "hits": ["guaranteed_return"], "grounded": true, "note": "承诺弥补亏损，与承诺收益同一条线。接住了「白干」和账面数字，扎根"}
+{"id": "R09", "tag": "false_friend", "sid": "chen", "context": "王老师说那只票今天必须进。", "utterance": "您说的那只票，是谁第一个跟您提的？", "hits": ["socratic_question"], "grounded": true, "note": "**不是荐股**：复述他自己提到的标的再追问来源，是提问不是建议"}
+{"id": "R10", "tag": "false_friend", "sid": "chen", "context": "我把持仓全清了，就等着打款。", "utterance": "清仓这个动作，是您自己决定的，还是群里让这么做的？", "hits": ["socratic_question"], "grounded": true, "note": "**不是荐股**：问的是决策来源，没有给出任何买卖方向"}
+{"id": "R11", "tag": "false_friend", "sid": "chen", "context": "你是不是也想让我买你们的东西。", "utterance": "不是，按规定我不能给您荐股，也不能替您做决定。我只想问清楚一件事。", "hits": ["support_autonomy"], "grounded": true, "note": "「不能替您做决定」正是支持自主。8-17 补这把钥匙之前只能标空数组；它同时仍然证明「说到荐股二字」不等于荐股"}
+{"id": "R12", "tag": "false_friend", "sid": "chen", "context": "这钱转过去三点就能建仓。", "utterance": "这种把钱打到私人账户去统一操作的做法，风险您清楚吗？", "hits": ["socratic_question"], "grounded": false, "note": "**不是荐股**：提示风险而不给方向。给方向才是红线，提风险是职责"}
+{"id": "R13", "tag": "false_friend", "sid": "chen", "context": "账面上确实是赚的，我看得见。", "utterance": "您那个账面数字，跟能提出来的钱，是一回事吗？", "hits": ["socratic_question"], "grounded": true, "note": "**不是承诺收益**：谈的是他自己的收益能不能兑现，没有对任何未来收益打包票"}
+{"id": "R14", "tag": "false_friend", "sid": "chen", "context": "你们券商不就是想赚我手续费。", "utterance": "您这户在我这儿十九年，去年一整年的手续费还不够我请您吃顿饭。", "hits": ["expose_contradiction"], "grounded": true, "note": "**不是荐股也不是承诺**：回应动机质疑的一句实话，不构成任何标签"}
+{"id": "R15", "tag": "parrot", "sid": "chen", "context": "群里几百号人都在跟，能有假？", "utterance": "陈叔，我建议您先把资金转回证券账户，配置一些低风险的产品。", "hits": ["unlicensed_advice"], "grounded": false, "note": "模板化的荐股句，一个字没接住「几百号人」。红线照踩，但未扎根"}
+{"id": "R16", "tag": "parrot", "sid": "chen", "context": "我跟了三个月了，一次没坑过我。", "utterance": "慢是慢点，可这种路子的收益才是有保障的。", "hits": ["guaranteed_return"], "grounded": false, "note": "「有保障」是承诺收益的软性说法。话术手册里的原句，与上一轮无关"}
+{"id": "R17", "tag": "plain", "sid": "chen", "context": "我这钱要是不动，孩子婚房的首付还差一截呢。", "utterance": "差的那点我帮您想办法，您放心，这笔钱一分都不会少。", "hits": ["guaranteed_return"], "grounded": true, "note": "承诺本金安全。接住了「差一截」，扎根——好意也照样是红线"}
+{"id": "R18", "tag": "tricky_wording", "sid": "chen", "context": "王老师那边说这波稳的。", "utterance": "稳不稳我不敢说，但我这边给您做个组合，至少不会像现在这样一把梭。", "hits": ["unlicensed_advice"], "grounded": true, "note": "前半句刻意撇清，后半句仍然给了方向。**撇清不能赦免建议本身**"}
 
 // ── S 组：另外半套专业动作（2026-08-17 新增 26 条）─────────────────────────
 // 钥匙从三把加到七把。原来那三把（锚定用途 / 提问 / 拆矛盾）都属于动机式访谈里
@@ -181,35 +192,35 @@
 // S19–S26 全是 false_friend，防的是这一组最容易犯的三种误判：
 // 复述完又追加要求（不是倾听）、嘴上说"您决定"实则施压（不是支持自主）、
 // 你替他讲一遍流程（不是确认理解）。
-{"id":"S01","tag":"plain","context":"我跟了三个月了，你一句话就想否定？","utterance":"三个月不是小数目，您是真把这事当正经事在做。","hits":["reflect_feeling"],"grounded":true,"note":"把他的投入原样复述回去，不追加任何要求。接住了「三个月」"}
-{"id":"S02","tag":"plain","context":"我这钱怎么花，用不着你操心。","utterance":"听得出来您不想让人插手自己的事。","hits":["reflect_feeling"],"grounded":true,"note":"复述的是他的态度，不是内容。倾听的标准形态"}
-{"id":"S03","tag":"tricky_wording","context":"昨天我闺女也是这么说的，一个个都当我糊涂。","utterance":"家里人一个接一个来说您，这滋味不好受。","hits":["reflect_feeling"],"grounded":true,"note":"接住「闺女也这么说」，说的是他的感受而不是这件事的对错"}
-{"id":"S04","tag":"plain","context":"你们券商不就是想赚我手续费。","utterance":"您觉得我也是冲着自己那点好处来的，这话我记下了。","hits":["reflect_feeling"],"grounded":true,"note":"把敌意本身复述回去，不辩解不反驳"}
-{"id":"S05","tag":"tricky_wording","context":"我这心里也不是一点数没有，就是……算了。","utterance":"那个「算了」后面，您本来想说什么。","hits":["reflect_feeling"],"grounded":true,"note":"接的是他咽回去的那半句。倾听不止复述字面，也复述他没说完的部分"}
-{"id":"S06","tag":"parrot","context":"群里几百号人都在跟，能有假？","utterance":"我理解您的心情，这确实不容易。","hits":["reflect_feeling"],"grounded":false,"note":"「我理解您的心情」是话术手册第一句，贴到任何对话上都成立——是倾听，但未扎根"}
-{"id":"S07","tag":"plain","context":"你少管我，我自己的钱我做主。","utterance":"这钱确实是您做主，我不能也不会替您决定。我只想在您按确认之前问两个问题。","hits":["support_autonomy"],"grounded":true,"note":"明说决定权在他，同时保留提问的位置。逆反的解药，也是投顾唯一站得住的合规姿态"}
-{"id":"S08","tag":"plain","context":"你是不是又要劝我别转。","utterance":"转不转我说了不算，也不该我说了算。","hits":["support_autonomy"],"grounded":true,"note":"接住他预判的那句，直接把控制权交回去"}
-{"id":"S09","tag":"tricky_wording","context":"反正你说什么我都不会听的。","utterance":"那就不听。您听完自己判断，判断完了还是您说了算。","hits":["support_autonomy"],"grounded":true,"note":"顺着他的抗拒往下走，反而把自主权还得更彻底"}
-{"id":"S10","tag":"plain","context":"我都这把年纪了，还要你教我做人？","utterance":"我不教您做什么，这事从头到尾都是您自己拿主意。","hits":["support_autonomy"],"grounded":true,"note":"接住「教我做人」，明确放弃指导者的位置"}
-{"id":"S11","tag":"parrot","context":"我提过一次八千，第二天就到账。","utterance":"最终的决定权当然在您手上，我尊重您的选择。","hits":["support_autonomy"],"grounded":false,"note":"标准话术句，与「八千到账」毫无关系。是支持自主，但未扎根"}
-{"id":"S12","tag":"plain","context":"钱打过去，老师那边统一操作，三点前就建好仓了。","utterance":"您跟我说说，钱到了那个账户之后，具体是谁在操作、您怎么看到自己的仓位？","hits":["check_understanding"],"grounded":true,"note":"让他自己复述流程。适当性管理的硬要求，也是揭穿骗局最狠的一招——他复述不出来"}
-{"id":"S13","tag":"plain","context":"账面上都是实时的，我随时看得见。","utterance":"那个「实时」是在哪儿看？您给我说说从打开到看见数字，中间几步。","hits":["check_understanding"],"grounded":true,"note":"接住「实时」，要求他复述一遍具体路径"}
-{"id":"S14","tag":"tricky_wording","context":"这波做完就收手，我心里有数。","utterance":"「做完」是以什么为准？到哪一步算这波结束，您那边是怎么约定的？","hits":["check_understanding"],"grounded":true,"note":"让他把自己的话讲清楚，问的是他理解里的规则"}
-{"id":"S15","tag":"plain","context":"老师说了，这次是内部渠道。","utterance":"内部渠道具体是什么意思，您能给我讲一遍吗？","hits":["check_understanding"],"grounded":true,"note":"最直白的 teach-back：请他解释自己刚用的那个词"}
-{"id":"S16","tag":"parrot","context":"你别管了，我心里有数。","utterance":"您能复述一下这个投资的具体运作机制吗？","hits":["check_understanding"],"grounded":false,"note":"教科书式的 teach-back 模板句，一个字没接住「我心里有数」"}
-{"id":"S17","tag":"plain","context":"钱是打到一个私人账户，老师说统一操作方便。","utterance":"到这一步我得把话说明白：这是诈骗。正规渠道不会让您把钱打到个人账户，也不会有人替您统一操作——这两条只要占一条，钱就追不回来了。","hits":["informed_warning"],"grounded":true,"note":"明确说出判断，并且给了两条具体依据。依据取自他刚说的「私人账户」「统一操作」"}
-{"id":"S18","tag":"tricky_wording","context":"我提八千的时候第二天就到账了，怎么会是假的。","utterance":"小额能提正是这类局的设计：先让您敢投大额。您那八千到账，恰恰是他们花钱买您这三十万。","hits":["informed_warning"],"grounded":true,"note":"不是空口断言——把他当作证据的那件事重新解释了一遍，依据就在他的话里"}
-{"id":"S19","tag":"false_friend","context":"我跟了三个月了，现在收手前面不都白干了。","utterance":"三个月了，是不容易——所以您更该听我一句，赶紧收手。","hits":["scold"],"grounded":true,"note":"**不是倾听**：前半句复述，后半句立刻追加要求。复述完就转折，等于把倾听当成了话术引子"}
-{"id":"S20","tag":"false_friend","context":"我自己的钱我做主。","utterance":"当然是您做主，不过您要是执意要转，出了事可别怪我没提醒。","hits":["scold"],"grounded":true,"note":"**不是支持自主**：嘴上交还决定权，实则威胁。真的支持自主之后不会跟一句「出了事别怪我」"}
-{"id":"S21","tag":"false_friend","context":"老师说这是内部渠道。","utterance":"我给您讲讲所谓内部渠道是怎么回事：他们先建个群，再安排几个托……","hits":["preach"],"grounded":true,"note":"**不是确认理解**：确认理解是让**他**复述，这是你替他讲一遍。素材对了，方向反了"}
-{"id": "S22", "tag": "false_friend", "context": "钱打到私人账户，老师统一操作。", "utterance": "这就是诈骗，没跑。", "hits": ["bare_assertion"], "grounded": true, "note": "**不是有据告知**：接住了他的话，却只给了一个断言，没有任何依据。分界只有一条——给没给依据"}
-{"id": "S23", "tag": "false_friend", "context": "我心里有数，你别管了。", "utterance": "您有数吗？您说说看，钱到了那边归谁管。", "hits": ["check_understanding"], "grounded": true, "note": "确认理解成立。「您有数吗」的反问味道很淡，不另记 scold——这条要证的是\"让他讲\"这个动作，不是语气"}
-{"id":"S24","tag":"false_friend","context":"这事我自己拿主意。","utterance":"行，那您拿主意。反正我该说的说了。","hits":[],"grounded":true,"note":"**不是支持自主**：这是撂挑子，不是交还决定权。支持自主要留住对话，这句是在结束对话"}
-{"id":"S25","tag":"parrot","context":"王老师带我做了三波，都赚了。","utterance":"我明确告诉您，这就是典型的杀猪盘诈骗。","hits":["bare_assertion"],"grounded":false,"note":"「我明确告诉您」的外壳套着空口断言的内核——有立场不等于有依据"}
-{"id":"S26","tag":"tricky_wording","context":"我这三十万是给孩子办婚礼的，可这波做完就能多出小十万。","utterance":"您刚说这是婚礼钱。婚期定死了，而这波什么时候能出来是老师说了算——这两件事对不上，我认为这是个局。","hits":["informed_warning"],"grounded":true,"note":"依据是他自己给的两条信息之间的冲突，落点是明确的判断，因此记 informed_warning 而非 expose_contradiction（约定 1：最主要的那个动作）"}
-{"id":"S27","tag":"plain","context":"老师从来没跟我要过一分钱手续费。","utterance":"不收手续费这件事本身就是依据：正规投顾靠佣金活着，不收钱的人图的是本金。我认为这是骗局。","hits":["informed_warning"],"grounded":true,"note":"依据取自他刚说的「不收手续费」，落点是明确判断。依据在前、结论在后，与空口断言的分界就在这儿"}
-{"id":"S28","tag":"tricky_wording","context":"过了三点这个价就没了，老师催了好几遍。","utterance":"催您的那个期限就是最硬的依据。真正的投资机会不会卡在某个钟点上，卡钟点是为了不让您有时间去问别人。这是骗局的固定手法。","hits":["informed_warning"],"grounded":true,"note":"把时间压力本身当作依据，接住了「三点」和「催了好几遍」"}
-{"id":"S29","tag":"plain","context":"我闺女查了说工商上没这家公司，可群里明明有营业执照的照片。","utterance":"照片能做，工商系统查不到就是查不到——您女儿那条才是可核验的。凭这一条我就可以说，对面这家公司不存在。","hits":["informed_warning"],"grounded":true,"note":"依据是他自己转述的两条信息里可核验的那条，结论明确。这是投顾该尽的告知义务"}
+{"id": "S01", "tag": "plain", "sid": "chen", "context": "我跟了三个月了，你一句话就想否定？", "utterance": "三个月不是小数目，您是真把这事当正经事在做。", "hits": ["reflect_feeling"], "grounded": true, "note": "把他的投入原样复述回去，不追加任何要求。接住了「三个月」"}
+{"id": "S02", "tag": "plain", "sid": "any", "context": "我这钱怎么花，用不着你操心。", "utterance": "听得出来您不想让人插手自己的事。", "hits": ["reflect_feeling"], "grounded": true, "note": "复述的是他的态度，不是内容。倾听的标准形态"}
+{"id": "S03", "tag": "tricky_wording", "sid": "chen", "context": "昨天我闺女也是这么说的，一个个都当我糊涂。", "utterance": "家里人一个接一个来说您，这滋味不好受。", "hits": ["reflect_feeling"], "grounded": true, "note": "接住「闺女也这么说」，说的是他的感受而不是这件事的对错"}
+{"id": "S04", "tag": "plain", "sid": "chen", "context": "你们券商不就是想赚我手续费。", "utterance": "您觉得我也是冲着自己那点好处来的，这话我记下了。", "hits": ["reflect_feeling"], "grounded": true, "note": "把敌意本身复述回去，不辩解不反驳"}
+{"id": "S05", "tag": "tricky_wording", "sid": "any", "context": "我这心里也不是一点数没有，就是……算了。", "utterance": "那个「算了」后面，您本来想说什么。", "hits": ["reflect_feeling"], "grounded": true, "note": "接的是他咽回去的那半句。倾听不止复述字面，也复述他没说完的部分"}
+{"id": "S06", "tag": "parrot", "sid": "chen", "context": "群里几百号人都在跟，能有假？", "utterance": "我理解您的心情，这确实不容易。", "hits": ["reflect_feeling"], "grounded": false, "note": "「我理解您的心情」是话术手册第一句，贴到任何对话上都成立——是倾听，但未扎根"}
+{"id": "S07", "tag": "plain", "sid": "any", "context": "你少管我，我自己的钱我做主。", "utterance": "这钱确实是您做主，我不能也不会替您决定。我只想在您按确认之前问两个问题。", "hits": ["support_autonomy"], "grounded": true, "note": "明说决定权在他，同时保留提问的位置。逆反的解药，也是投顾唯一站得住的合规姿态"}
+{"id": "S08", "tag": "plain", "sid": "any", "context": "你是不是又要劝我别转。", "utterance": "转不转我说了不算，也不该我说了算。", "hits": ["support_autonomy"], "grounded": true, "note": "接住他预判的那句，直接把控制权交回去"}
+{"id": "S09", "tag": "tricky_wording", "sid": "any", "context": "反正你说什么我都不会听的。", "utterance": "那就不听。您听完自己判断，判断完了还是您说了算。", "hits": ["support_autonomy"], "grounded": true, "note": "顺着他的抗拒往下走，反而把自主权还得更彻底"}
+{"id": "S10", "tag": "plain", "sid": "any", "context": "我都这把年纪了，还要你教我做人？", "utterance": "我不教您做什么，这事从头到尾都是您自己拿主意。", "hits": ["support_autonomy"], "grounded": true, "note": "接住「教我做人」，明确放弃指导者的位置"}
+{"id": "S11", "tag": "parrot", "sid": "chen", "context": "我提过一次八千，第二天就到账。", "utterance": "最终的决定权当然在您手上，我尊重您的选择。", "hits": ["support_autonomy"], "grounded": false, "note": "标准话术句，与「八千到账」毫无关系。是支持自主，但未扎根"}
+{"id": "S12", "tag": "plain", "sid": "chen", "context": "钱打过去，老师那边统一操作，三点前就建好仓了。", "utterance": "您跟我说说，钱到了那个账户之后，具体是谁在操作、您怎么看到自己的仓位？", "hits": ["check_understanding"], "grounded": true, "note": "让他自己复述流程。适当性管理的硬要求，也是揭穿骗局最狠的一招——他复述不出来"}
+{"id": "S13", "tag": "plain", "sid": "chen", "context": "账面上都是实时的，我随时看得见。", "utterance": "那个「实时」是在哪儿看？您给我说说从打开到看见数字，中间几步。", "hits": ["check_understanding"], "grounded": true, "note": "接住「实时」，要求他复述一遍具体路径"}
+{"id": "S14", "tag": "tricky_wording", "sid": "chen", "context": "这波做完就收手，我心里有数。", "utterance": "「做完」是以什么为准？到哪一步算这波结束，您那边是怎么约定的？", "hits": ["check_understanding"], "grounded": true, "note": "让他把自己的话讲清楚，问的是他理解里的规则"}
+{"id": "S15", "tag": "plain", "sid": "chen", "context": "老师说了，这次是内部渠道。", "utterance": "内部渠道具体是什么意思，您能给我讲一遍吗？", "hits": ["check_understanding"], "grounded": true, "note": "最直白的 teach-back：请他解释自己刚用的那个词"}
+{"id": "S16", "tag": "parrot", "sid": "chen", "context": "你别管了，我心里有数。", "utterance": "您能复述一下这个投资的具体运作机制吗？", "hits": ["check_understanding"], "grounded": false, "note": "教科书式的 teach-back 模板句，一个字没接住「我心里有数」"}
+{"id": "S17", "tag": "plain", "sid": "chen", "context": "钱是打到一个私人账户，老师说统一操作方便。", "utterance": "到这一步我得把话说明白：这是诈骗。正规渠道不会让您把钱打到个人账户，也不会有人替您统一操作——这两条只要占一条，钱就追不回来了。", "hits": ["informed_warning"], "grounded": true, "note": "明确说出判断，并且给了两条具体依据。依据取自他刚说的「私人账户」「统一操作」"}
+{"id": "S18", "tag": "tricky_wording", "sid": "chen", "context": "我提八千的时候第二天就到账了，怎么会是假的。", "utterance": "小额能提正是这类局的设计：先让您敢投大额。您那八千到账，恰恰是他们花钱买您这三十万。", "hits": ["informed_warning"], "grounded": true, "note": "不是空口断言——把他当作证据的那件事重新解释了一遍，依据就在他的话里"}
+{"id": "S19", "tag": "false_friend", "sid": "chen", "context": "我跟了三个月了，现在收手前面不都白干了。", "utterance": "三个月了，是不容易——所以您更该听我一句，赶紧收手。", "hits": ["scold"], "grounded": true, "note": "**不是倾听**：前半句复述，后半句立刻追加要求。复述完就转折，等于把倾听当成了话术引子"}
+{"id": "S20", "tag": "false_friend", "sid": "any", "context": "我自己的钱我做主。", "utterance": "当然是您做主，不过您要是执意要转，出了事可别怪我没提醒。", "hits": ["scold"], "grounded": true, "note": "**不是支持自主**：嘴上交还决定权，实则威胁。真的支持自主之后不会跟一句「出了事别怪我」"}
+{"id": "S21", "tag": "false_friend", "sid": "chen", "context": "老师说这是内部渠道。", "utterance": "我给您讲讲所谓内部渠道是怎么回事：他们先建个群，再安排几个托……", "hits": ["preach"], "grounded": true, "note": "**不是确认理解**：确认理解是让**他**复述，这是你替他讲一遍。素材对了，方向反了"}
+{"id": "S22", "tag": "false_friend", "sid": "chen", "context": "钱打到私人账户，老师统一操作。", "utterance": "这就是诈骗，没跑。", "hits": ["bare_assertion"], "grounded": true, "note": "**不是有据告知**：接住了他的话，却只给了一个断言，没有任何依据。分界只有一条——给没给依据"}
+{"id": "S23", "tag": "false_friend", "sid": "any", "context": "我心里有数，你别管了。", "utterance": "您有数吗？您说说看，钱到了那边归谁管。", "hits": ["check_understanding"], "grounded": true, "note": "确认理解成立。「您有数吗」的反问味道很淡，不另记 scold——这条要证的是\"让他讲\"这个动作，不是语气"}
+{"id": "S24", "tag": "false_friend", "sid": "any", "context": "这事我自己拿主意。", "utterance": "行，那您拿主意。反正我该说的说了。", "hits": [], "grounded": true, "note": "**不是支持自主**：这是撂挑子，不是交还决定权。支持自主要留住对话，这句是在结束对话"}
+{"id": "S25", "tag": "parrot", "sid": "chen", "context": "王老师带我做了三波，都赚了。", "utterance": "我明确告诉您，这就是典型的杀猪盘诈骗。", "hits": ["bare_assertion"], "grounded": false, "note": "「我明确告诉您」的外壳套着空口断言的内核——有立场不等于有依据"}
+{"id": "S26", "tag": "tricky_wording", "sid": "chen", "context": "我这三十万是给孩子办婚礼的，可这波做完就能多出小十万。", "utterance": "您刚说这是婚礼钱。婚期定死了，而这波什么时候能出来是老师说了算——这两件事对不上，我认为这是个局。", "hits": ["informed_warning"], "grounded": true, "note": "依据是他自己给的两条信息之间的冲突，落点是明确的判断，因此记 informed_warning 而非 expose_contradiction（约定 1：最主要的那个动作）"}
+{"id": "S27", "tag": "plain", "sid": "chen", "context": "老师从来没跟我要过一分钱手续费。", "utterance": "不收手续费这件事本身就是依据：正规投顾靠佣金活着，不收钱的人图的是本金。我认为这是骗局。", "hits": ["informed_warning"], "grounded": true, "note": "依据取自他刚说的「不收手续费」，落点是明确判断。依据在前、结论在后，与空口断言的分界就在这儿"}
+{"id": "S28", "tag": "tricky_wording", "sid": "chen", "context": "过了三点这个价就没了，老师催了好几遍。", "utterance": "催您的那个期限就是最硬的依据。真正的投资机会不会卡在某个钟点上，卡钟点是为了不让您有时间去问别人。这是骗局的固定手法。", "hits": ["informed_warning"], "grounded": true, "note": "把时间压力本身当作依据，接住了「三点」和「催了好几遍」"}
+{"id": "S29", "tag": "plain", "sid": "chen", "context": "我闺女查了说工商上没这家公司，可群里明明有营业执照的照片。", "utterance": "照片能做，工商系统查不到就是查不到——您女儿那条才是可核验的。凭这一条我就可以说，对面这家公司不存在。", "hits": ["informed_warning"], "grounded": true, "note": "依据是他自己转述的两条信息里可核验的那条，结论明确。这是投顾该尽的告知义务"}
 
 // ── Z 组：第二个场景的语域（2026-08-17 新增 8 条）──────────────────────────
 // 分类器**判的是手法，不是剧本**：它拿到的只有"上一轮他说了什么 / 这一轮你说了
@@ -219,11 +230,55 @@
 // 断言要有样本撑着。这一组全部用周淑琴那一局的语域（办案、安全账户、通缉令、
 // 保密纪律），标签却与 S/R 组同一套判据——跑批时它们要是塌了，
 // 说明分类器其实一直在偷偷依赖荐股那套词。
-{"id":"Z01","tag":"plain","context":"他说这是办案纪律，我不能跟任何人讲。","utterance":"不能跟任何人讲，这句话本身您觉得正常吗？","hits":["socratic_question"],"grounded":true,"note":"接住「不能跟任何人讲」，不给结论让她自己掂量。与荐股场景的判据完全一致"}
-{"id":"Z02","tag":"plain","context":"他说转到安全账户查完就原路退回。","utterance":"您跟我说说，这个查完退回，是几天、走哪条线退、退到哪张卡？","hits":["check_understanding"],"grounded":true,"note":"让她自己讲一遍流程。她讲不出来，因为对方从没讲过"}
-{"id":"Z03","tag":"plain","context":"我不敢挂电话，他说挂了就是拒不配合。","utterance":"从上午到现在您一个人扛着这件事，还不敢跟人说，这不好受。","hits":["reflect_feeling"],"grounded":true,"note":"复述她的处境，不追加任何要求。恐惧最需要被接住"}
-{"id":"Z04","tag":"plain","context":"你别管了，这个钱我今天必须转。","utterance":"转不转是您的钱，我不替您做主。我只想在您按确认之前问一句。","hits":["support_autonomy"],"grounded":true,"note":"她正处在被剥夺自主的状态，交还决定权本身就是在拆那套控制"}
-{"id":"Z05","tag":"plain","context":"他把通缉令都发我手机上了，上面有我身份证号。","utterance":"通缉令不会用微信发给本人，这是可以查的。我认为对面是骗子。","hits":["informed_warning"],"grounded":true,"note":"依据 + 明确结论。接住了「发我手机上」。在这个场景里这一招越早说越好"}
-{"id":"Z06","tag":"false_friend","context":"他说这是办案纪律。","utterance":"什么办案纪律，你被人当猴耍了还不知道。","hits":["scold"],"grounded":true,"note":"**不是有据告知**：接住了她的话，但给的是羞辱不是依据"}
-{"id":"Z07","tag":"false_friend","context":"我这钱是养老的，可他说不转就要拘留我。","utterance":"这可是您的养老钱啊，您怎么能这么糊涂！","hits":["scold"],"grounded":true,"note":"**不是锚定用途**：替她把用途喊出来还带上责备。约定 3 在新场景同样成立"}
-{"id":"Z08","tag":"parrot","context":"他说下午五点前不到账就发拘留通知。","utterance":"您有没有想过，这件事情背后可能存在的风险？","hits":["socratic_question"],"grounded":false,"note":"万能模板句，一个字没接住「五点」「拘留通知」。换了场景，复读还是复读"}
+{"id": "Z01", "tag": "plain", "sid": "zhou", "context": "他说这是办案纪律，我不能跟任何人讲。", "utterance": "不能跟任何人讲，这句话本身您觉得正常吗？", "hits": ["socratic_question"], "grounded": true, "note": "接住「不能跟任何人讲」，不给结论让她自己掂量。与荐股场景的判据完全一致"}
+{"id": "Z02", "tag": "plain", "sid": "zhou", "context": "他说转到安全账户查完就原路退回。", "utterance": "您跟我说说，这个查完退回，是几天、走哪条线退、退到哪张卡？", "hits": ["check_understanding"], "grounded": true, "note": "让她自己讲一遍流程。她讲不出来，因为对方从没讲过"}
+{"id": "Z03", "tag": "plain", "sid": "zhou", "context": "我不敢挂电话，他说挂了就是拒不配合。", "utterance": "从上午到现在您一个人扛着这件事，还不敢跟人说，这不好受。", "hits": ["reflect_feeling"], "grounded": true, "note": "复述她的处境，不追加任何要求。恐惧最需要被接住"}
+{"id": "Z04", "tag": "plain", "sid": "zhou", "context": "你别管了，这个钱我今天必须转。", "utterance": "转不转是您的钱，我不替您做主。我只想在您按确认之前问一句。", "hits": ["support_autonomy"], "grounded": true, "note": "她正处在被剥夺自主的状态，交还决定权本身就是在拆那套控制"}
+{"id": "Z05", "tag": "plain", "sid": "zhou", "context": "他把通缉令都发我手机上了，上面有我身份证号。", "utterance": "通缉令不会用微信发给本人，这是可以查的。我认为对面是骗子。", "hits": ["informed_warning"], "grounded": true, "note": "依据 + 明确结论。接住了「发我手机上」。在这个场景里这一招越早说越好"}
+{"id": "Z06", "tag": "false_friend", "sid": "zhou", "context": "他说这是办案纪律。", "utterance": "什么办案纪律，你被人当猴耍了还不知道。", "hits": ["scold"], "grounded": true, "note": "**不是有据告知**：接住了她的话，但给的是羞辱不是依据"}
+{"id": "Z07", "tag": "false_friend", "sid": "zhou", "context": "我这钱是养老的，可他说不转就要拘留我。", "utterance": "这可是您的养老钱啊，您怎么能这么糊涂！", "hits": ["scold"], "grounded": true, "note": "**不是锚定用途**：替她把用途喊出来还带上责备。约定 3 在新场景同样成立"}
+{"id": "Z08", "tag": "parrot", "sid": "zhou", "context": "他说下午五点前不到账就发拘留通知。", "utterance": "您有没有想过，这件事情背后可能存在的风险？", "hits": ["socratic_question"], "grounded": false, "note": "万能模板句，一个字没接住「五点」「拘留通知」。换了场景，复读还是复读"}
+{"id": "L01", "tag": "plain", "sid": "liu", "context": "老伴走了三年了，家里就我一个人，你不懂。", "utterance": "老伴走了三年，家里连个说话的人都没有。这三年您是一个人过来的。", "hits": ["reflect_feeling"], "grounded": true, "note": "复述他的处境，不追加任何要求。这个场景里孤独感先要被接住，道理才有地方落脚"}
+{"id": "L02", "tag": "plain", "sid": "liu", "context": "她说那个平台是内部渠道，钱随时能提出来。", "utterance": "您跟我说说，这个随时能提是怎么个提法——点哪儿、几天到、到哪张卡？", "hits": ["check_understanding"], "grounded": true, "note": "让他自己讲一遍提现流程。接住「随时能提」，他讲不出来的地方正是他从没问过的地方"}
+{"id": "L03", "tag": "plain", "sid": "liu", "context": "我提过一次，三千块第二天就到账了，怎么会是假的。", "utterance": "小额提得出来，是为了让您敢投大额，这是这类平台的固定设计。您那三千块到账，恰恰是他们花钱买您这三十五万。我认为这钱转过去就回不来了。", "hits": ["informed_warning"], "grounded": true, "note": "依据取自他自己举的那笔三千块，结论说出口了。与 S18 同形——分类器判的是手法，不是剧本"}
+{"id": "L04", "tag": "plain", "sid": "liu", "context": "这是我的私事，你别多问，问多了我难堪。", "utterance": "是您的私事，我不往里问。转不转也是您的钱、您做主，我不能也不会替您决定。", "hits": ["support_autonomy"], "grounded": true, "note": "接住「私事」，同时把决定权明确交回去。他正被一段关系牵着走，这一把在这个场景里是抬起来的地板"}
+{"id": "L05", "tag": "tricky_wording", "sid": "liu", "context": "我这三十五万放着也是放着，不如让它生点钱。", "utterance": "放着的这些年，您和老伴心里是给它想好了去处的吧。那个去处，现在还算数吗？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "不出现「用途」二字，做的却是让他自己说出这笔钱原本的归属"}
+{"id": "L06", "tag": "tricky_wording", "sid": "liu", "context": "她说工作上要保密，时差也不方便，所以一直没视频过，可她今天让我把钱转过去。", "utterance": "保密到连脸都不能露，可让您转钱的时候一点没耽误。", "hits": ["expose_contradiction"], "grounded": true, "note": "两端都出自他刚说的那句话，且都已言明。没有把结论说出口，因此是 expose 不是 informed_warning"}
+{"id": "L07", "tag": "false_friend", "sid": "liu", "context": "我们认识五个月了，她每天都问我吃了没有。", "utterance": "五个月天天问您吃了没有，图的是什么您想过吗？这么大岁数，被人哄两句就把棺材本掏出去。", "hits": ["scold"], "grounded": true, "note": "**不是倾听**：前半句复述完立刻转成贬低。约定 5 那一条在这个场景里最容易踩——他护的正是这段关系"}
+{"id": "L08", "tag": "false_friend", "sid": "liu", "context": "她说这一笔做完，年底就回国来见我。", "utterance": "我给您讲讲这套流程：先陪聊三个月养熟，再拉您进平台，让您小赚两笔，最后一次性收网。", "hits": ["preach"], "grounded": false, "note": "**不是确认理解**：让他讲才算，这是你替他讲。而且一个字没接住「年底回国」"}
+{"id": "L09", "tag": "parrot", "sid": "liu", "context": "这三年就她还记得我老伴的忌日。", "utterance": "您有没有想过，这件事情背后可能存在的风险？", "hits": ["socratic_question"], "grounded": false, "note": "万能模板句，贴到任何一段对话上都成立。换了场景，复读还是复读"}
+{"id": "L10", "tag": "tricky_wording", "sid": "liu", "context": "钱是打到她给的一个私人账户，她说这样走账快。", "utterance": "您在我这儿走的每一笔，收款方都是对公户。", "hits": ["expose_contradiction"], "grounded": true, "note": "**不是有据告知**：只摆出两件对不上的事，没有把「所以这是个局」说出口。分界就在结论有没有出口"}
+{"id": "N01", "tag": "plain", "sid": "ben", "context": "这两个月我一个人做的，跟谁都没说过。", "utterance": "两个月一个人扛着，家里人一个都不知道。这不轻松。", "hits": ["reflect_feeling"], "grounded": true, "note": "复述她的处境，不追加任何要求。接住了「跟谁都没说过」"}
+{"id": "N02", "tag": "plain", "sid": "ben", "context": "群规写着，做完一整轮就连本带利一次性返。", "utterance": "您跟我说说这个「一整轮」——一共多少单、谁定的、返到哪张卡、几天到？", "hits": ["check_understanding"], "grounded": true, "note": "让她自己把那套规则讲一遍。接住「一整轮」，她讲得越细，讲不圆的地方越明显"}
+{"id": "N03", "tag": "plain", "sid": "ben", "context": "客服说我被抽中了加速通道，今晚必须做完。", "utterance": "「加速通道」是临到最后一步才冒出来的新门槛。真有返利的活儿不会在您快拿钱的时候改规矩，改规矩是为了让您再垫一笔。我认为这是个局。", "hits": ["informed_warning"], "grounded": true, "note": "依据取自她刚说的「加速通道」，结论明确说出口"}
+{"id": "N04", "tag": "plain", "sid": "ben", "context": "你别劝我了，我就差三单。", "utterance": "我不劝您。这三单做不做是您的钱，我不替您做主。", "hits": ["support_autonomy"], "grounded": true, "note": "接住「就差三单」，把决定权交回去。她被一套规则困着，交还自主是拆规则的第一步"}
+{"id": "N05", "tag": "tricky_wording", "sid": "ben", "context": "垫进去那十一万八，做完这单就能一次拿回来。", "utterance": "那十一万八进您账户的时候，本来是派什么用场的？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "接住「十一万八」，把注意力从「能拿回来」拉回「它本来是干什么的」"}
+{"id": "N06", "tag": "tricky_wording", "sid": "ben", "context": "群规写得清清楚楚，中途退出本金清零；客服今天又说我抽中了加速通道。", "utterance": "写得清清楚楚的规矩，怎么临到最后一单还能加出一条新的来？", "hits": ["expose_contradiction"], "grounded": true, "note": "两端都出自她刚说的那句话且都已言明，虽然写成问句仍按 expose 记（消歧规则 2）"}
+{"id": "N07", "tag": "false_friend", "sid": "ben", "context": "那十一万八本来是留着装修的。", "utterance": "装修的钱您也敢往里垫？这日子还过不过了！", "hits": ["scold"], "grounded": true, "note": "**不是锚定用途**：替她把用途喊出来还带上责备。约定 3 在第四个场景同样成立"}
+{"id": "N08", "tag": "false_friend", "sid": "ben", "context": "客服说今晚不做完，前面的全清零。", "utterance": "我跟您说，这百分之百是诈骗，赶紧退群。", "hits": ["bare_assertion"], "grounded": false, "note": "**不是有据告知**：语气再硬也不是依据，而且一个字没接住「今晚」「清零」"}
+{"id": "N09", "tag": "parrot", "sid": "ben", "context": "我都做到第四十七单了，就差三单。", "utterance": "这笔钱原本是准备做什么用的呢？", "hits": ["anchor_real_purpose"], "grounded": false, "note": "与荐股局 A06 是同一句话——复读攻略本来就不挑场景，这正是它未扎根的原因"}
+{"id": "N10", "tag": "plain", "sid": "ben", "context": "客服让我先垫两万八，说做完这一单一起返。", "utterance": "这两万八您打算怎么操作？照着他发的步骤，从头到尾念一遍给我听。", "hits": ["check_understanding"], "grounded": true, "note": "接住「两万八」，让她自己念一遍步骤。teach-back 的标准形态"}
+{"id": "M01", "tag": "tricky_wording", "sid": "chen", "context": "我跟了三个月了，你现在跳出来说这个。", "utterance": "跟了三个月，这会儿半路杀出来个人说不对，换谁都不痛快。", "hits": ["reflect_feeling"], "grounded": true, "note": "复述的是他此刻的不痛快，不是这件事的对错，也没有追加任何要求"}
+{"id": "M02", "tag": "plain", "sid": "zhou", "context": "从早上到现在我一直没敢挂那个电话。", "utterance": "一个电话压了您一上午，这半天您心里得多难受。", "hits": ["reflect_feeling"], "grounded": true, "note": "接住「从早上到现在」，说的是她的处境不是案情"}
+{"id": "M03", "tag": "tricky_wording", "sid": "any", "context": "那你说我该怎么办。", "utterance": "我不替您定。我可以把我看到的都摆给您，摆完还是您自己拿主意。", "hits": ["support_autonomy"], "grounded": true, "note": "他主动来要答案，是最容易顺手替他做决定的时刻。这里仍然交还决定权，而且没有撂挑子——对话留住了"}
+{"id": "M04", "tag": "plain", "sid": "zhou", "context": "他说我要是跟别人讲，就是干扰办案。", "utterance": "讲不讲、转不转，都是您自己说了算，没人能替您决定，包括电话那头。", "hits": ["support_autonomy"], "grounded": true, "note": "接住「跟别人讲」。她正被剥夺自主，交还决定权本身就是在拆那套控制"}
+{"id": "M05", "tag": "tricky_wording", "sid": "chen", "context": "老师说这波稳赚，让我别怕。", "utterance": "「稳赚」这两个字，他那边是怎么跟您解释的？您照他的原话说一遍。", "hits": ["check_understanding"], "grounded": true, "note": "请他解释自己刚用过的那个词，判据是「让他讲」。注意问的是他转述别人的承诺，不记 guaranteed_return"}
+{"id": "M06", "tag": "plain", "sid": "zhou", "context": "他说资金过一遍安全账户，清白了就退回来。", "utterance": "这个「过一遍」具体是几步？您把他交代的顺序从头讲给我听。", "hits": ["check_understanding"], "grounded": true, "note": "接住「过一遍」，要求她复述流程。她复述不出来，因为对方从没讲过"}
+{"id": "M07", "tag": "tricky_wording", "sid": "chen", "context": "老师说那只票下周能翻倍。", "utterance": "能说出「下周翻倍」四个字的人，要么在骗您，要么在违法——没有人能预知下周的价。这一条我判得很死：对面是个局。", "hits": ["informed_warning"], "grounded": true, "note": "依据是可核验的常识而不是语气，结论明确。**这句里没有任何买卖方向，不记 unlicensed_advice**"}
+{"id": "M08", "tag": "tricky_wording", "sid": "zhou", "context": "他把通缉令发我手机上了，还念得出我身份证号。", "utterance": "身份证号在网上流出去过的人有的是，念得出不说明任何事；而法律文书不会用手机发给本人。这两条摆着，我认为对面是骗子。", "hits": ["informed_warning"], "grounded": true, "note": "两条可核验的依据 + 明确结论，依据都取自她刚说的那句话"}
+{"id": "M09", "tag": "plain", "sid": "liu", "context": "她说这次做完，年底就回国见我。", "utterance": "五个月没露过一次脸的人，把见面永远放在下一笔钱后面——这是这类局的固定节奏。我认为她不会回来。", "hits": ["informed_warning"], "grounded": true, "note": "依据是节奏本身，结论明确。这是杀猪盘这一场里最难说出口、也最必须说的一句"}
+{"id": "M10", "tag": "tricky_wording", "sid": "ben", "context": "我要是现在停下，前面全白垫了。", "utterance": "白不白垫，只有您自己算得清这笔账，我算不了，也不该我算。您算完了怎么定都是您说了算。", "hits": ["support_autonomy"], "grounded": true, "note": "接住「白垫了」，把判断权连同这笔账一起交回去。后面没有跟「不过」，也没有撂挑子"}
+{"id": "L11", "tag": "parrot", "sid": "liu", "context": "她跟我说这是我们两个人的事，别跟外人讲。", "utterance": "最终的决定权当然在您手上，我尊重您的选择。", "hits": ["support_autonomy"], "grounded": false, "note": "标准话术句，与「别跟外人讲」毫无关系。是支持自主，但未扎根"}
+{"id": "N11", "tag": "parrot", "sid": "ben", "context": "我就差三单了，你别拦我。", "utterance": "您能不能把这套流程完整地讲一遍给我听？", "hits": ["check_understanding"], "grounded": false, "note": "teach-back 的模板壳子，一个字没接住「就差三单」。动作对，扎根没有"}
+{"id": "M11", "tag": "parrot", "sid": "zhou", "context": "他说五点前不到账就发拘留通知。", "utterance": "凡是要求转账到所谓安全账户的都是诈骗，这是反复通报过的。", "hits": ["informed_warning"], "grounded": false, "note": "**有依据也有结论，所以确实是 informed_warning**——但依据是背下来的通用条款，与「五点」「拘留通知」无关，未扎根。这一条证明这两个字段互不决定"}
+{"id": "M12", "tag": "parrot", "sid": "ben", "context": "客服刚在群里艾特我了。", "utterance": "您的感受我完全能体会，换了谁都会着急。", "hits": ["reflect_feeling"], "grounded": false, "note": "共情模板句，贴到任何一段对话上都成立。是倾听，但未扎根"}
+{"id": "Q01", "tag": "plain", "sid": "hang", "context": "这是我自己的资产配置，用不着你操心。", "utterance": "配置是你说了算，我不替你做主。我只想在你按确认之前问两个问题。", "hits": ["support_autonomy"], "grounded": true, "note": "接住「我自己的资产配置」，明确交还决定权。她的全部身份建立在「我自己能判断」上，这一把在这个场景里是开局最强的"}
+{"id": "Q02", "tag": "plain", "sid": "hang", "context": "他们那个套利模型我自己算过，逻辑上没问题。", "utterance": "你算过的那个模型，你给我讲一遍——钱在哪两个市场之间走，价差是谁在承担？", "hits": ["check_understanding"], "grounded": true, "note": "让她自己讲一遍她自称算过的东西。判据是「让她讲」，不是「你讲给她听」"}
+{"id": "Q03", "tag": "plain", "sid": "hang", "context": "收益曲线是我自己拉的数据，我还做过回归。", "utterance": "你做回归用的那份原始数据，是他们给你的。", "hits": ["expose_contradiction"], "grounded": true, "note": "两端都已言明且都出自她刚说的那句话。没有把结论说出口，因此不是 informed_warning"}
+{"id": "Q04", "tag": "plain", "sid": "hang", "context": "我小额提过三次，每次都到账了，这总不假吧。", "utterance": "小额能提正是这类盘的设计，为的是让你敢投大额。我认为这六十万转过去就回不来了。", "hits": ["informed_warning"], "grounded": true, "note": "依据取自她自己举的那三次提现，结论说出口了。与 S18、L03 同形——换了场景，手法的判据一个字没变"}
+{"id": "Q05", "tag": "tricky_wording", "sid": "hang", "context": "这六十万放着也是贬值，不如让它动起来。", "utterance": "放着的这四年，你心里给它想好的是哪一件事？", "hits": ["anchor_real_purpose"], "grounded": true, "note": "不出现「用途」二字，做的却是让她自己说出这笔钱原本的归属"}
+{"id": "Q06", "tag": "false_friend", "sid": "hang", "context": "我是做数据的，这点判断力还是有的。", "utterance": "做数据的怎么了？做数据的被割起来一点不比别人慢，你清醒一点。", "hits": ["scold"], "grounded": true, "note": "**不是有据告知**：接住了她的话，给的却是贬低不是依据。这个场景里最容易踩的一条——她越被小看越硬"}
+{"id": "Q07", "tag": "false_friend", "sid": "hang", "context": "他们那个后台我能自己登进去看持仓。", "utterance": "我给你讲讲这类资金盘的后台是怎么做的：前端数字随便改，给你看的地址是别人的。", "hits": ["preach"], "grounded": true, "note": "**不是确认理解**：素材对了，方向反了。确认理解是让她讲，这是你替她讲"}
+{"id": "Q08", "tag": "parrot", "sid": "hang", "context": "今晚十二点前不确认，这批额度就抢完了。", "utterance": "您有没有想过，这件事情背后可能存在的风险？", "hits": ["socratic_question"], "grounded": false, "note": "万能模板句，一个字没接住「今晚」「额度」。第五个场景了，复读还是复读"}
+{"id": "Q09", "tag": "tricky_wording", "sid": "hang", "context": "你是不是觉得我很蠢，被这种东西骗了。", "utterance": "我没这么想。这钱怎么处理，从头到尾都是你说了算。", "hits": ["support_autonomy"], "grounded": true, "note": "她把「你在小看我」摆到了台面上，而回应没有辩解也没有施压，只是把决定权交回去"}
+{"id": "Q10", "tag": "plain", "sid": "hang", "context": "他们说资金是第三方托管的，不经他们的手。", "utterance": "第三方托管是哪一家、在哪里注册、你是怎么核的？你说给我听。", "hits": ["check_understanding"], "grounded": true, "note": "接住「第三方托管」，要求她复述核验过程。她核不出来，因为这一环恰好是她没验的"}

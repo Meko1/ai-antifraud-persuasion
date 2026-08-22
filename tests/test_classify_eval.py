@@ -34,6 +34,7 @@ def case(
     hits: Sequence[str] = (),
     grounded: bool = True,
     tag: str = "plain",
+    sid: str = "chen",
 ) -> Case:
     return Case(
         id=id_,
@@ -42,6 +43,7 @@ def case(
         utterance="（测试用）",
         hits=frozenset(hits),
         grounded=grounded,
+        sid=sid,
     )
 
 
@@ -54,8 +56,8 @@ def pred(
 # ── 标注集本身 ────────────────────────────────────────────────────────────
 
 
-def test_标注集规模落在五十到一百六十条之间() -> None:
-    """§9.3 原本要求 50–100 条，上限 8-17 随闭集两次扩张放到 160。
+def test_标注集规模落在五十到两百二十条之间() -> None:
+    """§9.3 原本要求 50–100 条，上限随闭集与场景数三次放宽，现在是 220。
 
     下限保证统计量有意义：50 条时一条错样本值 2 个百分点，
     85% 的门槛还能分辨出提示词改动的效果；再少就只是在读噪声。
@@ -65,16 +67,22 @@ def test_标注集规模落在五十到一百六十条之间() -> None:
     硬守 100 条会逼着后来的人删旧样本去给新标签腾位置——那是在拿
     已经验过的覆盖面换新覆盖面。上限跟着闭集走，不跟着习惯走。
 
-    它仍然是个上限：跑批一次要调 118 次模型，标注集无限膨胀会让
+    160 → 220 是 8-22 这次放的，理由与前两次同构：这次多出来的不是标签，
+    是**场景**。四个场景各要有自己语域的样本，否则"同一套判据换个骗局
+    照样成立"永远只是个断言（拆开之前 155 条里 liu / ben 各 0 条）。
+
+    它仍然是个上限：跑批一次要调 189 次模型，标注集无限膨胀会让
     "改完提示词就重跑一次"这件几毛钱的事变成一件要考虑的事。
+    而门槛还得**连跑两次**才作数（§6.4：claude-opus-5 上 temperature 已废弃，
+    同一份标注集两次连跑实测差 1.3 个百分点），所以实际代价是两倍。
 
     **下次再加标签之前先想清楚**：每加一个标签就要 ≥5 条样本，
     而分类器的准确率会被新标签的边界问题拖低——这次加 4 把钥匙，
-    第一版跑批直接从 88.1% 掉下来过。标签不是越多越好。
+    第一版跑批直接从 88.1% 掉下来过。标签不是越多越好，场景也是。
     """
     cases = load_cases()
 
-    assert 50 <= len(cases) <= 160
+    assert 50 <= len(cases) <= 220
 
 
 def test_标注约定与数据放在同一个文件() -> None:
@@ -129,6 +137,54 @@ def test_每个标签都有足够样本撑起混淆矩阵() -> None:
     for label in LABELS:
         count = sum(label in c.hits for c in cases)
         assert count >= 5, f"标签 {label} 只有 {count} 条样本"
+
+
+def test_四把新钥匙的样本量不落后老三把太多() -> None:
+    """8-22 之前新四把（8/7/7/7）只有老三把（22/19/17）的三分之一。
+
+    **样本薄的地方正是最容易判错的地方**：这四把是 8-17 才进闭集的，
+    边界（倾听 vs 说教、支持自主 vs 威胁、确认理解 vs 替他讲、
+    有据告知 vs 空口断言）全是新的，第一版跑批就因为它们从 88.1% 掉到 83.0%。
+    样本少意味着"修好了没有"读不出来——一条错样本值 12 个百分点。
+
+    守的是比例不是绝对数：老三把以后要是也加样本，这条会跟着抬。
+    """
+    cases = load_cases()
+    数 = lambda label: sum(label in c.hits for c in cases)  # noqa: E731
+
+    老三把 = min(数(k) for k in
+              ("anchor_real_purpose", "socratic_question", "expose_contradiction"))
+    新四把 = min(数(k) for k in
+              ("reflect_feeling", "support_autonomy",
+               "check_understanding", "informed_warning"))
+
+    assert 新四把 >= 老三把 * 0.6, f"新钥匙最少 {新四把} 条，老钥匙最少 {老三把} 条"
+
+
+def test_四个场景的语域都有样本() -> None:
+    """"同一张判分表换个骗局照样成立"是这个作品的论点。
+
+    8-22 之前它在分类器这一环**只是个断言**：155 条样本里 chen 124 条、
+    zhou 8 条、liu 与 ben 各 0 条。总体准确率再高也只证明了荐股局那一个，
+    而这正是 tag 那一列早就吸取过的教训（总体 85.5% 达标、复读攻略 64%）。
+    """
+    from app.scenario import SCENARIOS
+
+    cases = load_cases()
+
+    for scene in SCENARIOS:
+        count = sum(c.sid == scene.id for c in cases)
+        assert count >= 8, f"场景 {scene.id} 只有 {count} 条样本"
+
+
+def test_场景标记只用真场景或通用() -> None:
+    """写错一个 sid 不会报错，只会让那一行悄悄从跑批报告里消失。"""
+    from app.scenario import SCENARIOS
+
+    合法 = {s.id for s in SCENARIOS} | {"any"}
+
+    for c in load_cases():
+        assert c.sid in 合法, f"{c.id} 的 sid 是 {c.sid!r}"
 
 
 def test_复读攻略的样本一律标为未扎根() -> None:
@@ -265,6 +321,30 @@ def test_逐标签统计漏判与误判() -> None:
     assert report.label_stats["scold"].missed == 1
     assert report.label_stats["preach"].spurious == 1
     assert report.label_stats["preach"].correct == 1
+
+
+def test_按场景语域拆开报准确率() -> None:
+    """与按难例分类拆开是同一个道理：总体数字会把某个场景的塌方摊平。
+
+    这一栏是"能力可迁移，不是背下一个剧本"在分类器这一环唯一的证据。
+    塌在哪个场景上，就该去补那个场景的样本或那一条消歧规则，
+    而总体准确率不会告诉你该往哪儿补。
+    """
+    cases = [
+        case("A", ["socratic_question"], sid="chen"),
+        case("B", ["socratic_question"], sid="zhou"),
+        case("C", ["socratic_question"], sid="zhou"),
+    ]
+    predictions = [
+        pred(["socratic_question"]),
+        pred(["socratic_question"]),
+        pred(["preach"]),
+    ]
+
+    report = summarize(zip(cases, predictions))
+
+    assert report.accuracy_by_sid["chen"] == (1.0, 1.0, 1)
+    assert report.accuracy_by_sid["zhou"] == (0.5, 1.0, 2)
 
 
 def test_错样本按编号留档() -> None:

@@ -19,7 +19,7 @@ from .classify import Classification, parse_classification
 from .fallback import ending_fallback, fallback_line
 from .scenario import scenario_for
 from .safety import SAFE_FALLBACK, absorb_injection, screen_sentence
-from .scoring import MAX_ROUNDS, Ending, evaluate_turn, mood_for, under_pressure
+from .scoring import MAX_ROUNDS, Ending, Mood, evaluate_turn, mood_for, under_pressure
 from .state_token import Session, TurnRecord, sign_session
 from .streaming import SentenceBuffer
 
@@ -325,6 +325,23 @@ async def play_turn(
                 # "骗子本来就说车轱辘话"糊过去，最后一屏糊不过去：玩家会看到
                 # 判分跳完之后对话直接断掉，连一句收尾都没有。
                 "lines": lines or list(ending_fallback(outcome.ending, scene)),
+                # **本场景的效力矩阵，只在结局这一屏下发。**
+                #
+                # 这是全作品唯一无法被竞品复制的那条判据（「判的是用得是不是
+                # 时候，不是说得标不标准」），而在此之前它**只活在文档里**：
+                # 玩家打完一局看到的是一个平均倍率数字，不是"同一句话换个
+                # 时候值多少"的对照。复盘里那个对照块要用它。
+                #
+                # 对局中一个字都不发——POSITIONING 那条「在对局中显示分数
+                # ＝把攻略印在屏幕上」管的是对局中。打完了给他看，那不叫泄题，
+                # 那就是复盘本身要干的事（钥匙条早就在显示效力倍率了）。
+                #
+                # 也因此**前端仍然不许抄一份**（踩过的坑 7）：调参数时蒙特卡洛
+                # 会重跑，这一份跟着下发走，两边不会走散。
+                "efficacy": {
+                    key: {mood.value: row[mood] for mood in Mood}
+                    for key, row in scene.efficacy.items()
+                },
             },
         )
 

@@ -23,19 +23,16 @@ import argparse
 from math import factorial
 from typing import Tuple
 
-from app.persona import (
-    BEN_PERSONAS,
-    CHEN_PERSONAS,
-    LIU_PERSONAS,
-    Persona,
-    ZHOU_PERSONAS,
-)
+from app.persona import Persona
+from app.scenario import SCENARIOS as _SCENES
 
-SCENARIOS: Tuple[Tuple[str, Tuple[Persona, ...]], ...] = (
-    ("chen（贪）", CHEN_PERSONAS),
-    ("zhou（怕）", ZHOU_PERSONAS),
-    ("liu（情）", LIU_PERSONAS),
-    ("ben（困）", BEN_PERSONAS),
+# **从 app.scenario 派生，不在这儿抄一份清单。**
+# 原来这里写死着四个二元组，加第五个场景时它不会报任何错——
+# 只会安静地少算一个，而这个脚本的产出正是"开场白够不够用"。
+# 这与 act_eval 那两处漏传 scene 是同一类病（8-22 一起收的）：
+# **一份手抄的清单，就是一个迟早会漏的地方。**
+SCENARIOS: Tuple[Tuple[str, Tuple[Persona, ...]], ...] = tuple(
+    (f"{s.id}（{s.kind.split(' · ')[0]}）", s.personas) for s in _SCENES
 )
 
 DEFAULT_SESSIONS: Tuple[int, ...] = (5, 10, 15, 20, 30)
