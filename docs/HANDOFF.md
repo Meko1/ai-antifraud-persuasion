@@ -1,6 +1,6 @@
 # 交接说明
 
-> 更新于 2026-08-22（第十个会话）。给下一个会话看的，不是给评委看的。
+> 更新于 2026-08-22（第十一个会话）。给下一个会话看的，不是给评委看的。
 > 新会话请先读：本文件 → [CONTEXT.md](../CONTEXT.md) → [TECH-DESIGN.md](TECH-DESIGN.md) 的相关章节。
 > **不需要**读完整个技术方案，按任务读对应章节即可。
 
@@ -8,19 +8,55 @@
 >
 > 下面三条**逐条实测过**，不是转述。
 >
-> 1. **本地领先远端**：这个会话的改动还没提交。`pytest` **482 全绿**。
-> 2. **网关会抽风，而且是一整天来回抽。** 8-22 这一天实测到三种状态：
+> 1. **本地领先远端**：这个会话的改动还没提交。
+>    `pytest` **529 全绿**（约 60 秒），另加前端 17 个：
+>    ```
+>    node --test 'tests/frontend/*.test.mjs'
+>    ```
+>    前端那套零 npm 依赖（`node:vm` + `node --test`），已进 CI。
+> 2. **网关会抽风，而且是一整天来回抽。** 8-22 这一天实测到四种状态：
 >    开工时正常；跑到第四批时 `AuthenticationError: ip restriction!`（与 8-15 同类）；
 >    等了几分钟自己好了；再跑二十分钟后变成 `401 该令牌状态不可用`——
 >    **这一条比 IP 白名单更糟，是令牌本身被停了**，很可能是当天累计调用量
 >    （约 3900 次演绎 + 570 次分类）触发的。
+>    **当天晚些时候令牌自己恢复了**（第十一个会话探针 `ok: True`，
+>    跑完 398 次分类，其中 11 次瞬时失败、重试两次后仍失败）。
+>
+>    **8-23 又走了一遍同样的循环，而且这次量清楚了阈值。** 上午开工时是
+>    `401 ip restriction!`，连探六次都不通，**第七分钟自己好了**（等，别改配置）；
+>    当天累计跑到约 3400 次调用之后变成 `401 该令牌状态不可用`，
+>    正在跑的那一批 960 轮里 540 轮当场作废。
+>    **经验：一天的预算大约就是三千多次调用，排跑批要按这个数排。**
 >    干活前先探一次，**跑长批之前再探一次**：
 >    ```
 >    .venv/bin/python -c "import asyncio;from app.llm import llm_client;print(asyncio.run(llm_client.probe()))"
 >    ```
 >    并发别开到 8——那一次之后就开始抽了，后面改回 4。
+>
+>    **实在等不到，现在有离线模式了**：`OFFLINE_DEMO=true` 启动，
+>    一个请求都不发，判分照常走满十二轮（`app/offline.py`）。
+>    路演用它，别用它量任何数字。
 > 3. **改完 Python 必须 `./stop.sh && ./start.sh`。** 静态文件是实时读盘的，
 >    Python 不是——这一点栽过好几次。
+
+## 8-22 第十一个会话：执行 PIVOT-C-END 那四项
+
+状态表与逐条经过写在 [PIVOT-C-END.md](PIVOT-C-END.md)（就地更新在每一节开头），
+这里只留下一句会影响下一个人怎么干活的：
+
+| 任务 | 结果 | 落在哪 |
+|---|---|---|
+| 一 · 改写定位 | ✅ | POSITIONING「一句话」「成功标准」两节 |
+| 二 · 妙想对照 | ⚠️ **半成品**：妙想不在这台网关上 | TECH-DESIGN §9.3.1、`classify_eval --model` |
+| 三 · 3.2 砍复盘 | ✅ 13 → 5，其余收进折叠 | `static/app.js` `openReview` |
+| 三 · 3.1 落数据 | ✅ 默认关，脱敏与告知各有测试 | ADR-0006、`app/transcripts.py`、`app/redact.py` |
+| 四 · 前端测试 | ✅ 17 个，零 npm 依赖，已进 CI | `tests/frontend/` |
+| 四 · 离线演示 | ✅ 一个请求都不发，判分照常 | `OFFLINE_DEMO=true`、`app/offline.py` |
+
+**这一轮里最该记住的一件事**：任务二的结论不是"妙想不行"，是**"没量到"**。
+网关列得出 25 个模型，一个妙想都没有；拿国产通用模型跑的那一栏两次里有一次
+不过门槛，而且不过的那一次里 8 条是网关错误。**右栏空着比填一个像样的数字
+诚实**——那道必答题真正能答的是"换模型是一个 flag"，不是"我们量过了"。
 
 ## 8-22 下半场：一轮拷问定下的九条（全部已落地）
 
@@ -314,12 +350,16 @@ REDESIGN-TRAINER D1 写了三个月的"投顾训练器"定位，虚构设定一�
 
 ## 当前状态
 
-端到端可玩，**482 个测试全绿**（`python -m pytest`，约 57 秒）。
+端到端可玩，**529 个测试全绿**（`python -m pytest`，约 60 秒），
+另加 **17 个前端测试**（`node --test`，零 npm 依赖）。
 
 ```
 .venv/bin/python -m pytest                          # 全部测试，不调外部 API
+node --test 'tests/frontend/*.test.mjs'             # 前端测试，不装任何依赖
 .venv/bin/python -m tools.balance_sim               # 蒙特卡洛，2 万局/人设
-.venv/bin/python -m tools.classify_eval             # 分类器跑批（真实调模型，189 条，连跑两次才作数）
+.venv/bin/python -m tools.classify_eval             # 分类器跑批（真实调模型，199 条，连跑两次才作数）
+.venv/bin/python -m tools.classify_eval --model qwen3.8-max --protocol openai \
+    --base-url https://dd-ai-api.eastmoney.com/coding/v1   # 换个模型跑同一份标注集
 .venv/bin/python -m tools.act_eval --scenario chen  # 演绎跑批（真实调模型，960 次，一次一个场景）
 .venv/bin/python -m tools.stats_seed --dry-run      # 造复盘用的对局数据（不连 Redis）
 .venv/bin/python -m tools.loadtest                  # 压测（要服务起着）
@@ -341,7 +381,10 @@ REDESIGN-TRAINER D1 写了三个月的"投顾训练器"定位，虚构设定一�
 | 演绎跑批 | `tools/act_eval.py` | `--scenario` 分场景；三条门槛 + 英文思考外漏 / 中文旁白外漏两个观测指标 |
 | 回放路线 | `tests/data/act_routes.jsonl` | **20 条**：5 场景 × 4 种施压形状 |
 | **造对局数据** | `tools/stats_seed.py` | 给 Redis 灌复盘用的样本 / 清掉它们；经 `Stats` 写，五个计数器一起动 |
-| 前端三件 | `static/*` | 冷开场、企业微信、**时机与追问窗口可视化** |
+| 前端三件 | `static/*` | 冷开场、企业微信、**时机与追问窗口可视化**；复盘第一屏收到五块 |
+| **对局留存** | `app/transcripts.py` `app/redact.py` | ADR-0006 的例外；**默认关**，脱敏与告知各有测试 |
+| **离线演示** | `app/offline.py` | `OFFLINE_DEMO=true`，一个请求都不发，判分照常 |
+| **前端测试** | `tests/frontend/` | `node:vm` 沙箱跑 `static/app.js`，零 npm 依赖，已进 CI |
 
 ### 未完成（按建议顺序）
 
