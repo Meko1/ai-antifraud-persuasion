@@ -15,7 +15,7 @@ import logging
 import time
 import uuid
 from collections import OrderedDict
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, List
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -29,9 +29,11 @@ from .persona import opening_for
 from .scenario import pick_scenario, scenario_for
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
+from .offline import OfflineGateway
 from .scoring import MAX_ROUNDS, WIN_THRESHOLD, mood_for
 from .state_token import InvalidStateToken, new_session, sign_session, verify_token
 from .stats import stats
+from .transcripts import disclosure, transcripts
 
 logging.basicConfig(
     level=settings.log_level,
@@ -41,8 +43,16 @@ logger = logging.getLogger(APP_ID)
 
 STATIC_DIR = BASE_DIR / "static"
 
-# 启动时选定，运行期不自动切换（ADR-0005）
-_gateway = ModelGateway()
+# 启动时选定，运行期不自动切换（ADR-0005）。
+#
+# 离线演示模式在这里换掉整个网关（app/offline.py）：**同一个选择时刻、
+# 同样的"选定就不再变"**，因此它与 ADR-0005 不冲突——那条决策否掉的是
+# 运行期悄悄换供应商，不是启动期显式选一个。
+_gateway: Any = OfflineGateway() if settings.offline_demo else ModelGateway()
+if settings.offline_demo:
+    logger.warning(
+        "离线演示模式已开启：台词为预置内容，不调用大模型。判分照常（ADR-0001）。"
+    )
 
 app = FastAPI(
     title="AI 反诈劝阻",
@@ -138,6 +148,15 @@ async def game_start() -> JSONResponse:
             "mood": mood_for(session.state.trust).value,
             "win_threshold": WIN_THRESHOLD,
             "contest_id": settings.contest_id,
+            # 开口之前那句告知（ADR-0006）。**由服务端下发，不写死在 index.html**：
+            # 留存开着和关着说的不是同一句话，而"页面上写着不留存、服务端在留存"
+            # 这种不一致，只可能以对用户说谎的形式出现。
+            #
+            # 离线演示时"数据去向"那一段整段换掉（不是追加一句），
+            # 理由同源：**看不出来是演示的演示，就不是演示**，而自相矛盾的
+            # 两句话比不说更糟。
+            "notice": disclosure(),
+            "offline_demo": settings.offline_demo,
             # 整个剧本的界面素材：客户档案、揭晓清单、金额、结局文案。
             # **前端不再写死任何一条**——写死的话，加场景时那些地方
             # 没有一处会提醒你漏改了（app/scenario.py 的 payload）
@@ -233,14 +252,38 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
         yield _sse("error", {"code": "replayed"})
         return
 
+    # 台词只在 sentence 事件里出现，而留存要的是完整的一轮。事件顺序恒为
+    # meta → sentence* → score → …（§7.1），所以攒到 score 那一刻就是全的。
+    spoken: List[str] = []
+    round_ = 0
+
     try:
         async for event in play_turn(
             session, body.utterance, gateway=gateway, secret=settings.state_signing_secret, now=now
         ):
             # 统计在这一层旁听，不塞进 engine：编排层不该知道 Redis 存在，
             # 而这里本来就是所有事件的必经之路
+            if event.name == "meta":
+                round_ = event.data.get("round", 0)
+            elif event.name == "sentence":
+                spoken.append(event.data.get("text", ""))
             if event.name == "score":
                 stats.record_turn(event.data.get("hits", ()))
+                # 对局语料（ADR-0006）。**脱敏在 transcripts 那一层做**，
+                # 这里一个字都不预处理——只有一个入口，就只有一处会漏。
+                transcripts.record_turn(
+                    gid=session.gid,
+                    sid=session.sid,
+                    round_=round_,
+                    utterance=body.utterance,
+                    reply="".join(spoken),
+                    hits=event.data.get("hits", ()),
+                    grounded=event.data.get("grounded", False),
+                    delta=event.data.get("delta", 0),
+                    judged_mood=event.data.get("judged_mood", ""),
+                    efficacy=event.data.get("efficacy"),
+                    degraded=event.data.get("degraded", False),
+                )
             elif event.name == "ending":
                 kind = event.data.get("kind", "")
                 stats.record_ending(kind)
@@ -278,6 +321,9 @@ async def healthz(probe: int = 0) -> JSONResponse:
         "port": settings.port,
         "llm_provider": settings.llm.provider,
         "llm_configured": settings.llm.configured,
+        # 离线演示模式必须在这里报出来。**一个看不出来是演示的演示是骗局**，
+        # 而健康检查是运维唯一会看的那一处
+        "offline_demo": settings.offline_demo,
     }
     if probe:
         body["llm_probe"] = await llm_client.probe()

@@ -49,6 +49,14 @@ class Settings:
     # 与其带着一个可伪造的签名上线，不如直接拒绝启动。
     state_signing_secret: str
     redis_url: str
+    # 落不落对局语料（ADR-0006）。**默认 false**：留存这件事不该由
+    # "忘了配环境变量"来决定方向，"开始存了"必须是一个有人按下去的动作。
+    # 打开之后聊天页那句告知会跟着变，两者由 tests/test_transcripts.py 钉在一起。
+    transcript_retention: bool
+    # 离线演示模式（app/offline.py）。**启动期的显式开关，不是运行期降级**——
+    # ADR-0005 否掉的是"悄悄换一个供应商"，而这一个在 /healthz 上报着、
+    # 在聊天页第一行写着。8-22 网关停了八小时，路演不会挑好天气来。
+    offline_demo: bool
     # 分享卡上印的参赛编号（§8）。没配就空着——分享卡会发到社交平台上，
     # 空一行远好过印一个占位符出去。
     contest_id: str
@@ -72,6 +80,8 @@ def load_settings() -> Settings:
     return Settings(
         state_signing_secret=secret,
         redis_url=os.getenv("REDIS_URL", "").strip(),
+        transcript_retention=_bool("TRANSCRIPT_RETENTION", False),
+        offline_demo=_bool("OFFLINE_DEMO", False),
         contest_id=os.getenv("CONTEST_ID", "").strip(),
         # 平台强制固定 21818；保留环境变量只是为了本地调试时能换端口
         port=int(os.getenv("PORT", "21818")),
