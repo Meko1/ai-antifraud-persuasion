@@ -341,10 +341,13 @@ async def play_route(
             continue
 
         buffer = SentenceBuffer()
+        # 兜底句按场景取。**跑批这一处传错，量出来的就是假的**：8-23 的 hang
+        # 基线里「反正老师推的那只，我心里有数」出现 14 次，正是这句荐股局的
+        # 台词被替进了顾之然那一局——它同时污染了"被重复最多的整句"这一栏
         screened = [
             text
             for sentence in buffer.feed(raw) + buffer.flush()
-            if (text := screen_sentence(sentence)) is not None
+            if (text := screen_sentence(sentence, scene.safe_fallback)) is not None
         ]
         replies.append(
             Reply(

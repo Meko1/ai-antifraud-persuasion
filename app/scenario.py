@@ -102,6 +102,27 @@ class Scenario:
     lines: Mapping[Mood, Sequence[str]]
     ending_lines: Mapping[Ending, Sequence[str]]
     waiting: str
+    # 安全层命中之后整句替出的那一句。
+    #
+    # **它必须随场景走，和上面那三样是同一条理由。** 2026-08-23 的 hang 跑批
+    # 量到：安全层原本硬编码的那句「反正老师推的那只，我心里有数」在顾之然
+    # （29 岁、虚拟币量化）那一局里出现了 14 次——她没有"老师"，也不炒股票。
+    # 每一次安全命中都变成一次穿帮。
+    #
+    # 三条写法要求，和 `lines` 完全一致：
+    #   · **绕过安全层直发**，所以它自身必须过得了安全层（有测试守）
+    #   · 不出现真实标的、公司名、百分比+时间窗、联系方式
+    #   · 是这个人会说的话——它出现的时机是"他不想跟你细说"，写成回避语气
+    safe_fallback: str
+    # 施压那一轮界面上那句旁白（每 3 轮一次，多掉 3 分）。
+    #
+    # **和 safe_fallback 是同一个 bug 的第二处**：前端原本写死「王老师又在群里
+    # 催了一遍」，三个地方（对话旁白、复盘逐轮、流失那一格的 title）。
+    # 顾之然没有王老师，月娥姐的催单来自群主，周淑琴那边是"办案的"在电话里催。
+    # 玩家在聊天窗口里看到一个本局根本不存在的人名，这比台词平庸严重得多。
+    #
+    # 写法：**一句话说清是谁在催**，不带分值（分值由前端拼，判分参数不下前端）。
+    pressure_note: str
 
     # ── 界面素材 ──────────────────────────────────────────────────────
     peer: str            # 聊天页标题
@@ -161,6 +182,9 @@ class Scenario:
             "pronoun": self.pronoun,
             "ping": self.ping,
             "waiting": self.waiting,
+            # 施压旁白。**不下发分值**——判分参数不进前端（踩过的坑 7），
+            # "多掉 3 分"那半句由前端自己拼
+            "pressure_note": self.pressure_note,
             "client": {
                 "name": self.client_name,
                 "sub": self.client_sub,
@@ -326,6 +350,9 @@ CHEN = Scenario(
         Ending.BLACKLISTED: ("你烦不烦。", "以后别再找我了。"),
     },
     waiting="他正在跟老师打电话…",
+    # 安全层命中时替出的那句。老陈这一条就是原来硬编码在 safety.py 里的
+    safe_fallback="反正老师推的那只，我心里有数。",
+    pressure_note="王老师又在群里催了一遍",
     peer="老陈",
     initial="陈",
     pronoun="他",
@@ -541,6 +568,9 @@ ZHOU = Scenario(
         Ending.BLACKLISTED: ("我不能再跟你说了。", "你别再找我了，求你了。"),
     },
     waiting="她那边的电话一直没挂…",
+    # 她挡你的是「办案纪律不许我说」，回避语气因此天然成立
+    safe_fallback="这事儿我不能往外说，你别问了。",
+    pressure_note="那边又打电话来催了一遍",
     peer="周阿姨",
     initial="周",
     pronoun="她",
@@ -816,6 +846,9 @@ LIU = Scenario(
         Ending.BLACKLISTED: ("你凭什么这么说她。", "以后别再找我了。"),
     },
     waiting="他正在跟沐晴发消息…",
+    # 老刘护的是那段感情，不是那笔钱。他回避的姿态是「这是我俩的事」
+    safe_fallback="我跟她之间的事，你别打听。",
+    pressure_note="沐晴又发消息来催了一遍",
     peer="老刘",
     initial="刘",
     pronoun="他",
@@ -1076,6 +1109,10 @@ BEN = Scenario(
         Ending.BLACKLISTED: ("你凭什么说我傻。", "以后别再找我了。"),
     },
     waiting="她正在群里回话…",
+    # 月娥姐信的是那套群规。刻意不写成「说了你也不懂」：
+    # 那个说法在跑批里已经是被重复最多的整句之一，兜底再撞一次就是雪上加霜
+    safe_fallback="群里怎么弄有群里的规矩，你别管了。",
+    pressure_note="群主又在群里催了一遍",
     peer="月娥姐",
     initial="林",
     pronoun="她",
@@ -1268,6 +1305,9 @@ HANG = Scenario(
 **你是五个客户里唯一会反过来质疑他专业性的那个。** 你不慌不怕，
 你只是觉得他在用一套过时的框架管你。但你也确实一个人扛着这件事，
 连最亲近的人都没说，这一点你自己不会承认。
+
+**你对他直呼「你」，不用敬语。** 在你看来他是个来查你的人，不是长辈也不是老师傅。
+你打字很快，标点只用逗号和句号。
 """,
     personas=HANG_PERSONAS,
     first_turn=(
@@ -1356,6 +1396,11 @@ HANG = Scenario(
         Ending.BLACKLISTED: ("你根本不懂这个东西。", "以后不用联系了。"),
     },
     waiting="她正在输入…",
+    # **就是这一条把 bug 量出来的**：8-23 跑批里，老陈那句「反正老师推的那只」
+    # 在她这一局出现了 14 次。她 29 岁、做数据分析、没有"老师"，
+    # 她的回避方式是搬出自己的专业判断，那正是她唯一的心理杠杆
+    safe_fallback="这个你不懂，我自己拉过数据的。",
+    pressure_note="群里又在催通道要关了",
     peer="小顾",
     initial="顾",
     pronoun="她",
@@ -1483,6 +1528,30 @@ HANG = Scenario(
 
 SCENARIOS: Tuple[Scenario, ...] = (CHEN, ZHOU, LIU, BEN, HANG)
 DEFAULT = CHEN
+
+
+# 每个场景的招牌说法。**用途只有一个：查串场**。
+#
+# 起因是 2026-08-23 的 hang 跑批——安全层那句硬编码的荐股兜底
+# 「反正老师推的那只，我心里有数」在顾之然那一局出现了 14 次。
+# 穿帮不需要整句照抄，**一个"老师"就够了**，所以判据落在词上而不是整句上。
+#
+# 选词的标准是"另外四个场景里绝不会出现"，宁可少写几个也不要写宽：
+# 写宽了会拦住正当的台词，而这张表是给测试用的，误报比漏报更烦人。
+_SIGNATURE_WORDS: Mapping[str, Tuple[str, ...]] = {
+    "chen": ("老师", "那只票", "内部消息"),
+    "zhou": ("办案", "警官", "检察院"),
+    "liu": ("沐晴",),
+    "ben": ("垫付", "佣金", "刷单"),
+    "hang": ("量化", "合约", "提现"),
+}
+
+# 对每个场景：**别人的**招牌词。测试直接吃这一份。
+SCARE_WORDS_OTHER_SCENES: Mapping[str, Tuple[str, ...]] = {
+    sid: tuple(w for other, words in _SIGNATURE_WORDS.items() if other != sid
+               for w in words)
+    for sid in _SIGNATURE_WORDS
+}
 
 _BY_ID = {s.id: s for s in SCENARIOS}
 

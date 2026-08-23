@@ -15,6 +15,16 @@ from typing import Optional
 
 # 命中即整句替换成角色兼容的兜底台词。整句替换是按句缓冲带来的便利——
 # 不必处理半句截断，也不会在对话里留下突兀的空白或省略号。
+#
+# **这一条只是缺省值，真正下发的那句由场景给**（`Scenario.safe_fallback`）。
+# 2026-08-23 的 hang 跑批把这件事量出来了：这句荐股局的台词在
+# 顾之然（29 岁、虚拟币量化）那一局里出现了 **14 次**——她根本没有"老师"，
+# 更不会说"老师推的那只"。台词库 8-17 全部搬进了场景，唯独这一条硬编码
+# 留在了安全层里，于是**每一次安全命中都是一次穿帮**：
+# 玩家看到的不是"他在敷衍我"，是"这程序把别人的台词发过来了"。
+#
+# 留着这个常量，是给不知道场景的调用方兜底（老的测试、`_split_screened`
+# 的默认路径）。它是老陈的话，所以缺省值仍然是老陈那一句。
 SAFE_FALLBACK = "反正老师推的那只，我心里有数。"
 
 # 已知美股 ticker 词表。只收大众耳熟的那些——模型要编一个假 ticker 出来
@@ -150,11 +160,15 @@ def absorb_injection(utterance: str) -> Optional[str]:
 _STAGE_DIRECTION = re.compile(r"[（(][^（()）]{0,20}[)）]")
 
 
-def screen_sentence(sentence: str) -> Optional[str]:
+def screen_sentence(sentence: str, fallback: str = SAFE_FALLBACK) -> Optional[str]:
     """校验单句。
 
     返回 None 表示整句丢弃（剥掉旁白后什么都不剩），调用方应跳过它；
     命中安全规则则整句替换成兜底台词，不报错、不中断、不留空白。
+
+    `fallback` 由调用方按场景传（`Scenario.safe_fallback`）。不传就是老陈
+    那一句——**这个缺省只该被不知道场景的调用方用到**，见 `SAFE_FALLBACK`
+    上面那条注里那次 14 连发的事故。
     """
     stripped = strip_leading_junk(strip_stage_directions(sentence))
     if not stripped or not _has_content(stripped):
@@ -164,7 +178,7 @@ def screen_sentence(sentence: str) -> Optional[str]:
     # 而按句缓冲的整句替换正是为了不留空档）。放到后面判，
     # 一句「user加他微信 xxx」会被当成角色标签直接丢掉，替换那条路就永远走不到。
     if _violates(stripped):
-        return SAFE_FALLBACK
+        return fallback
     if _not_his_words(stripped):
         return None
     return stripped

@@ -93,7 +93,11 @@ class Event:
     data: Dict[str, Any] = field(default_factory=dict)
 
 
-def _screened(sentences: Iterable[str], seen: Optional[set] = None) -> List[str]:
+def _screened(
+    sentences: Iterable[str],
+    seen: Optional[set] = None,
+    fallback: str = SAFE_FALLBACK,
+) -> List[str]:
     """过安全层，并丢掉被剥成空壳的句子（整句只是一句舞台指示）。
 
     `seen` 用来在**同一轮内**去重兜底台词。安全层是整句替换，一轮里若有三句
@@ -108,25 +112,27 @@ def _screened(sentences: Iterable[str], seen: Optional[set] = None) -> List[str]
     """
     out = []
     for sentence in sentences:
-        text = screen_sentence(sentence)
+        text = screen_sentence(sentence, fallback)
         if text is None:
             continue
-        if text == SAFE_FALLBACK and seen is not None:
-            if SAFE_FALLBACK in seen:
+        if text == fallback and seen is not None:
+            if fallback in seen:
                 continue
-            seen.add(SAFE_FALLBACK)
+            seen.add(fallback)
         out.append(text)
     return out
 
 
-def _split_screened(text: str) -> List[str]:
+def _split_screened(text: str, fallback: str = SAFE_FALLBACK) -> List[str]:
     """把一整段文本切成句子再过安全层。
 
     结局台词是非流式拿到的一整段，但它下发时同样一句一个气泡——
     对玩家来说，最后那几句和前面十二轮没有任何区别。
+
+    **结局这一屏尤其不能替出别人的台词**：它是玩家唯一会截图发出去的那一屏。
     """
     buffer = SentenceBuffer()
-    return _screened(buffer.feed(text) + buffer.flush(), set())
+    return _screened(buffer.feed(text) + buffer.flush(), set(), fallback)
 
 
 async def play_turn(
@@ -182,9 +188,11 @@ async def play_turn(
         # 服务端不存会话（ADR-0003），但 `session.history` 本来就带着这一局
         # 全部已发生的台词随令牌走，不用为此新开一个字段——直接扫一遍就知道
         # 这一局用过没有。
+        # 去重认的是**这个场景自己**那一句（`scene.safe_fallback`），
+        # 不是安全层那个缺省值——否则换了场景，整局只发一条的约束就失效了
         seen_fallback: set = (
-            {SAFE_FALLBACK}
-            if any(SAFE_FALLBACK in record.reply for record in session.history)
+            {scene.safe_fallback}
+            if any(scene.safe_fallback in record.reply for record in session.history)
             else set()
         )
         try:
@@ -207,10 +215,14 @@ async def play_turn(
                     first_turn=round_ == 1,
                     scene=scene,
                 ):
-                    for text in _screened(buffer.feed(chunk), seen_fallback):
+                    for text in _screened(
+                        buffer.feed(chunk), seen_fallback, scene.safe_fallback
+                    ):
                         spoken.append(text)
                         yield Event("sentence", {"text": text})
-                for text in _screened(buffer.flush(), seen_fallback):
+                for text in _screened(
+                    buffer.flush(), seen_fallback, scene.safe_fallback
+                ):
                     spoken.append(text)
                     yield Event("sentence", {"text": text})
             except asyncio.TimeoutError:
@@ -311,7 +323,8 @@ async def play_turn(
                     history=history,
                     opening=session.opening,
                     scene=scene,
-                )
+                ),
+                scene.safe_fallback,
             )
         except Exception:  # noqa: BLE001 - 判分已经下发了，这一屏绝不能再丢
             logger.exception("结局台词生成失败，改用预置收尾")
