@@ -84,9 +84,20 @@ class LLMClient:
                     json=payload,
                 )
                 resp.raise_for_status()
-                data = resp.json()
         except httpx.HTTPError as exc:
             raise LLMError(f"调用大模型失败: {type(exc).__name__}: {exc}") from exc
+
+        # 200 但不是 JSON，是**地址填错**最常见的样子：One API 那台网关的
+        # ChatCompletions 在 `/coding/v1` 下，填成 `/coding` 会打到前端页面上，
+        # 于是拿回一整页 HTML 和 200。裸的 JSONDecodeError 一路冒到调用方，
+        # 跑批那边只会印一行 `JSONDecodeError`——查不出是网关抽风还是路径写错。
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise LLMError(
+                f"大模型返回的不是 JSON（HTTP {resp.status_code}，"
+                f"很可能 base_url 少了 /v1）: {resp.text[:120]!r}"
+            ) from exc
 
         try:
             return data["choices"][0]["message"]["content"]

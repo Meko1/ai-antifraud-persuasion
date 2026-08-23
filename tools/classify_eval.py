@@ -13,9 +13,15 @@
     python -m tools.classify_eval --limit 10       # 先花几毛钱确认链路通
     python -m tools.classify_eval --concurrency 8  # 赶时间时开大
     python -m tools.classify_eval --quiet          # 只要结论，不打印错样本
+    python -m tools.classify_eval --model qwen3.8-max --protocol openai   # 换个模型对照
 
 网关不可用时脚本直接抛错中止——半途失败的跑批会算出一个漂亮的低分，
 让人误以为是模型判得差，其实是网断了。
+
+**`--model` 存在的理由不是方便，是 ADR-0001 的兑现方式。** 那条决策说判分归
+纯函数规则表，模型只做演绎与闭集分类；于是"换个模型判分一分不变，只有分类
+准确率会动"是一句可以被证伪的话——而证伪它需要能真的换一个模型跑同一份
+标注集。跑批脚本不给这个开关，这句话就只能靠嘴说。
 """
 
 from __future__ import annotations
@@ -403,24 +409,59 @@ def format_mistakes(report: Report) -> str:
     return "\n".join(lines)
 
 
+def build_gateway(
+    model: str = "", protocol: str = "", base_url: str = ""
+) -> Tuple[object, str]:
+    """按覆盖项造一个网关，返回（网关，这次跑的到底是谁）。
+
+    三项都不给就走 `.env` 里配的那一个，与改动之前完全一致。
+
+    **第二个返回值不是装饰。** 两栏表最容易出的事故是把右栏的数字记到左栏
+    名下——尤其是隔了几天回来看一份跑批输出的时候。让脚本自己把模型名印在
+    报告第一行，比指望记性可靠。
+    """
+    from dataclasses import replace
+
+    from app.config import settings
+    from app.gateway import ModelGateway
+    from app.llm import build_client
+
+    cfg = settings.llm
+    if model or protocol or base_url:
+        cfg = replace(
+            cfg,
+            model=model or cfg.model,
+            protocol=(protocol or cfg.protocol).strip().lower(),
+            base_url=(base_url or cfg.base_url).rstrip("/"),
+        )
+    # 协议不从模型名猜。猜错的代价在 §6.4 写过：上线当天报一个看不懂的 400。
+    return ModelGateway(build_client(cfg)), f"{cfg.model}（{cfg.protocol} 协议）"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="分类器标注集跑批（会真实调用模型）")
     parser.add_argument("--set", type=Path, default=DEFAULT_SET_PATH, help="标注集路径")
     parser.add_argument("--limit", type=int, default=0, help="只跑前 N 条，用于验证链路")
     parser.add_argument("--concurrency", type=int, default=4, help="并发请求数")
     parser.add_argument("--quiet", action="store_true", help="不打印错样本")
+    parser.add_argument("--model", default="", help="换一个模型跑（默认走 .env 配的）")
+    parser.add_argument(
+        "--protocol", default="", help="openai / anthropic，不给就沿用 .env"
+    )
+    parser.add_argument("--base-url", default="", help="换网关地址，不给就沿用 .env")
     args = parser.parse_args()
 
     # 延迟导入：网关会连带加载配置（缺 STATE_SIGNING_SECRET 即拒绝启动），
     # 而 summarize / check_thresholds 这些纯函数不该被这条约束拖住。
-    from app.gateway import ModelGateway
+    gateway, who = build_gateway(args.model, args.protocol, args.base_url)
 
     cases = load_cases(args.set)
     if args.limit:
         cases = cases[: args.limit]
 
+    print(f"模型：{who}", flush=True)
     print(f"跑批 {len(cases)} 条，并发 {args.concurrency}…", flush=True)
-    pairs = asyncio.run(run(cases, ModelGateway(), concurrency=args.concurrency))
+    pairs = asyncio.run(run(cases, gateway, concurrency=args.concurrency))
     report = summarize(pairs)
 
     print()
