@@ -1,5 +1,19 @@
 # Daily Microtraining Implementation Plan
 
+> ## ⛔ 作废（2026-08-23）—— **不要执行这份计划**
+>
+> 定位已于 2026-08-22 转向 **C 端异动干预**
+> （[POSITIONING.md](../../POSITIONING.md)、[PIVOT-C-END.md](../../PIVOT-C-END.md)），
+> 而本计划要做的是投顾日常短练闭环，前提不再成立。
+>
+> 它尤其危险的地方在于**架构动作很大**：新增 `app.training` 域、引入 SQLite
+> 服务端持久化、把短练前端放到 `/`、把现有十二轮挪到 `/game`。
+> 照着执行会同时撞上三件事——ADR-0003（服务端不持有对局状态）、
+> ADR-0006 划定的留存范围，以及转向明令不许碰的判分闭集。
+>
+> 设计规格那一份的留档说明见
+> [specs/2026-08-18-daily-microtraining-design.md](../specs/2026-08-18-daily-microtraining-design.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a local-first 3–5 minute anti-fraud microtraining loop for investment advisers, with six fixed drills, deterministic evidence-based reviews, same-drill retry, and progress over time.
