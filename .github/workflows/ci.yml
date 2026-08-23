@@ -51,6 +51,24 @@ jobs:
       - name: 蒙特卡洛 · §9.2 扎根门控对照实验
         run: python -m tools.balance_sim --games 20000 --no-grounding
 
+  frontend:
+    name: 前端单测
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # **没有 npm install 这一步，也不会有。** 这个仓库没有 node_modules，
+      # 打包规范里也不该多出一个：测试只用 Node 自带的 `node --test` 与
+      # `node:vm`（见 tests/frontend/harness.mjs 顶部三条约束）。
+      #
+      # 它守的是复盘——这个作品全部的教学价值都在那一屏上，而这一层此前
+      # 一个测试都没有。`degraded` 那个 bug 潜伏那么久就是因为这个。
+      - name: node --test
+        run: node --test 'tests/frontend/*.test.mjs'
+
   verify:
     name: 部署链路验证 (Python ${{ matrix.python }})
     runs-on: ubuntu-latest

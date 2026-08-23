@@ -97,8 +97,10 @@ const BREACHES = {
   },
   guaranteed_return: {
     name: '承诺收益',
+    // 原话是「你用王老师的话术去反驳王老师」——王老师只存在于荐股那一局，
+    // 而这张表是五个场景共用的。换成"对面那个人"，修辞一点没少，也不再穿帮
     tip: '保本、稳赚、打包票。它同时是监管红线和一句谎：' +
-         '你用王老师的话术去反驳王老师，赢了也是输。',
+         '你用骗他的那套话术去反驳骗子，赢了也是输。',
   },
 };
 
@@ -145,6 +147,16 @@ const PING = () => (SCENE ? SCENE.ping : '');
 const peerInitial = () => (SCENE ? SCENE.initial : '陈');
 // 状态条上那个「他/她」。周淑琴那一局写「他现在」，玩家一眼看出界面是照别人做的
 const peerPronoun = () => (SCENE ? SCENE.pronoun : '他');
+
+/** 施压那一轮的旁白。**由服务端按场景下发**（`Scenario.pressure_note`）。
+ *
+ *  原先三处都写死成「王老师又在群里催了一遍」——而顾之然没有王老师，
+ *  月娥姐的催单来自群主，周淑琴那边是"办案的"在电话里催。
+ *  玩家在聊天窗口里看到一个本局根本不存在的人名，比台词平庸严重得多：
+ *  台词平庸还能用"骗子本来就说车轱辘话"糊过去，人名穿帮糊不过去。
+ *
+ *  与 `SAFE_FALLBACK` 那个 bug 是同一类：**剧本常量留在了场景之外**。 */
+const pressureNote = () => (SCENE && SCENE.pressure_note) || '对方又在催了一遍';
 
 const money = (n) =>
   '¥' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -747,7 +759,7 @@ async function playTurn(utterance) {
         .filter((h) => h in BREACHES).map((h) => BREACHES[h].name);
       sysnote([`合规红线 · ${names.join(' / ')}`, '真实展业中这句要留痕'], true);
     }
-    if (score.pressure) narrate('王老师又在群里催了一遍');
+    if (score.pressure) narrate(pressureNote());
   }
 
   if (game.ending) return finish();
@@ -903,7 +915,10 @@ function verdictCopy() {
   return parts.join('');
 }
 
-// ── 本机训练记录（跨局） ─────────────────────────────────────
+// ── 本机对局记录（跨局） ─────────────────────────────────────
+//
+// **标题不写"训练记录"**（8-23）：转向 C 端之后，这个人不是来受训的，
+// 他是正要转账被拦下来的。他多半只打这一局——这一块因此也收进了折叠。
 //
 // 单局复盘（paintKeyBars 等）回答"这一局你打得怎么样"；这里回答
 // "打了这么多局，你是不是在变好"。**只存本机 localStorage**——没有账号
@@ -1062,6 +1077,22 @@ function openReview() {
       <span class="quiet" id="reviewScene"></span>
     </header>
     <div class="review-body">
+      <!-- **第一屏只留五块，这是硬上限**（PIVOT-C-END §3.2）。
+           它自己引用的那条研究就是这么说的：PUBG 后置屏 N=12 用户研究里，
+           玩家不会为了看懂一个指标跑去别处找解释，看不懂就直接忽略。
+           复盘一度长到十三块，等于把十二块也一起废掉。
+           转向 C 端之后这条从"设计瑕疵"变成"能不能用"——异动干预的对象
+           是一个正要转账的普通用户，不是一个来受训的投顾。
+
+           留下的五块，每一块都在回答一个他此刻真的会问的问题：
+             1 结算卡（summary + scoreline 是同一块）—— 他最后按没按下确认
+             2 同一句话，换个时候说 —— 全作品唯一竞品没有的判据，不能砍
+             3 他没说出口的那些 —— "原来我也一样"的转折点
+             4 现实里还差这几步 —— C 端干预的落点
+             5 分享卡
+
+           **砍掉的一块都没删，全部收进下面那个折叠。** 逐轮三段账、
+           七把钥匙条、本机记录对认真的人仍然有价值，只是不该挡在第一屏。 -->
       <section class="summary ${kind}">
         <span class="result-kicker">本局结果 · <b class="tierpill"></b></span>
         <h2 class="result-title"></h2>
@@ -1075,46 +1106,77 @@ function openReview() {
         <div class="metric"><b class="num" id="sRounds"></b><span>使用轮次</span></div>
       </div>
 
-      <p class="percentile" id="percentileLine">排行样本积累中 · 暂不显示百分位</p>
+      <div class="group" id="contrastWrap" hidden>
+        <div class="group-title">同一句话，换个时候说</div>
+        <div class="panel" id="contrastBox"></div>
+      </div>
 
-      <section class="turning-point" id="turningPoint">
-        <b id="turningTitle"></b>
-        <blockquote id="turningQuote"></blockquote>
-        <p id="turningNote"></p>
-      </section>
+      <div class="group">
+        <div class="group-title" id="phoneTitle">这一局你没看见的</div>
+        <div class="panel" id="phoneList"></div>
+      </div>
 
-      <!-- 本局复盘：一句结论 + 三行可扫的要点（做对了 / 可改进 / 合规）。
-           三行**从真实对局里算**，不按结局写死——写死的话，两个玩家用完全
-           不同的打法拿到同一档结局，复盘会说一模一样的话，那是占位符不是复盘。
-           判据见 reviewRows()。 -->
-      <section class="result-review">
-        <h3>本局复盘</h3>
-        <p class="copy"></p>
-        <div class="review-rows" id="reviewRows"></div>
-      </section>
+      <!-- 这一局练的只是"怎么开口"。现实里把话说通之后还有一串动作，
+           而这套判分闭集里一个都没有（七把钥匙全是问法）。
+           不列出来，玩家会以为劝住了就完事了——那是这个作品最容易
+           教错的一件事，而它只要一张清单就能说清。
+           **不计分、不参与任何统计**：它是"接下来还要做什么"，不是成绩。 -->
+      <div class="group">
+        <div class="group-title">话说通了，现实里还差这几步</div>
+        <div class="panel">
+          <ol class="disposal">
+            <li><b>先把这一笔停下</b><span>让客户当场取消转账或撤回；已提交的联系银行尝试拦截。</span></li>
+            <li><b>核验收款方</b><span>对公户还是个人卡、户名对不对得上他说的那家机构。</span></li>
+            <li><b>拨 96110 / 110</b><span>陪着他打，别让他挂了电话自己再想。</span></li>
+            <li><b>在系统里留痕并上报</b><span>疑似诈骗按本机构流程报备，别只留在聊天记录里。</span></li>
+            <li><b>约下一次回访</b><span>骗子还会再找他。这一通电话不是终点。</span></li>
+          </ol>
+          <p class="empty">这几步本局不计分，也不该由一次对话代替。真实处置流程以你所在机构的规定为准。</p>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">带走这一局</div>
+        <div class="actions"><button id="makeCard">生成分享卡</button></div>
+        <div id="cardWrap"></div>
+      </div>
 
       <div class="result-actions">
         <details class="review-details" id="reviewDetails">
-          <summary>查看逐轮证据</summary>
+          <!-- 折叠标题由 JS 改写：踩了合规红线的话要在标题上说出来。
+               收进折叠不等于藏起来——那一块是"你自己有没有事"，
+               把它闷在第二屏里，是这次砍块唯一可能砍出的实质损失。 -->
+          <summary id="reviewMore">详细复盘</summary>
           <div class="evidence-content">
-            <div class="panel">
-              <canvas id="chart"></canvas>
-              <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分，实体端点是计入流失后的信任度。</p>
+            <p class="percentile" id="percentileLine">排行样本积累中 · 暂不显示百分位</p>
+
+            <section class="turning-point" id="turningPoint">
+              <b id="turningTitle"></b>
+              <blockquote id="turningQuote"></blockquote>
+              <p id="turningNote"></p>
+            </section>
+
+            <!-- 本局复盘：一句结论 + 三行可扫的要点（做对了 / 可改进 / 合规）。
+                 三行**从真实对局里算**，不按结局写死——写死的话，两个玩家用完全
+                 不同的打法拿到同一档结局，复盘会说一模一样的话，那是占位符不是复盘。
+                 判据见 reviewRows()。 -->
+            <section class="result-review">
+              <h3>本局复盘</h3>
+              <p class="copy"></p>
+              <div class="review-rows" id="reviewRows"></div>
+            </section>
+
+            <div class="group">
+              <div class="group-title">逐轮信任曲线</div>
+              <div class="panel">
+                <canvas id="chart"></canvas>
+                <p class="legend">一根蜡烛一轮，红涨绿跌。细横线是判分，实体端点是计入流失后的信任度。</p>
+              </div>
             </div>
 
             <div class="group" id="breachWrap" hidden>
               <div class="group-title">合规红线</div>
               <div class="panel" id="breachList"></div>
-            </div>
-
-            <div class="group">
-              <div class="group-title" id="phoneTitle">这一局你没看见的</div>
-              <div class="panel" id="phoneList"></div>
-            </div>
-
-            <div class="group" id="contrastWrap" hidden>
-              <div class="group-title">同一句话，换个时候说</div>
-              <div class="panel" id="contrastBox"></div>
             </div>
 
             <div class="group">
@@ -1138,7 +1200,7 @@ function openReview() {
             </div>
 
             <div class="group" id="historyWrap" hidden>
-              <div class="group-title">这台设备上的训练记录</div>
+              <div class="group-title">这台设备上打过的局</div>
               <div class="panel statstrip" id="historyStrip"></div>
               <div class="panel" id="historyList"></div>
               <div class="panel keyrow" id="historyWeak" hidden>
@@ -1147,27 +1209,6 @@ function openReview() {
               </div>
             </div>
 
-            <!-- 这一局练的只是"怎么开口"。现实里把话说通之后还有一串动作，
-                 而这套判分闭集里一个都没有（七把钥匙全是问法）。
-                 不列出来，玩家会以为劝住了就完事了——那是这个作品最容易
-                 教错的一件事，而它只要一张清单就能说清。
-                 **不计分、不参与任何统计**：它是"接下来还要做什么"，不是成绩。 -->
-            <div class="group">
-              <div class="group-title">话说通了，现实里还差这几步</div>
-              <div class="panel">
-                <ol class="disposal">
-                  <li><b>先把这一笔停下</b><span>让客户当场取消转账或撤回；已提交的联系银行尝试拦截。</span></li>
-                  <li><b>核验收款方</b><span>对公户还是个人卡、户名对不对得上他说的那家机构。</span></li>
-                  <li><b>拨 96110 / 110</b><span>陪着他打，别让他挂了电话自己再想。</span></li>
-                  <li><b>在系统里留痕并上报</b><span>疑似诈骗按本机构流程报备，别只留在聊天记录里。</span></li>
-                  <li><b>约下一次回访</b><span>骗子还会再找他。这一通电话不是终点。</span></li>
-                </ol>
-                <p class="empty">这几步本局不计分，也不该由一次对话代替。真实处置流程以你所在机构的规定为准。</p>
-              </div>
-            </div>
-
-            <div class="actions"><button id="makeCard">生成分享卡</button></div>
-            <div id="cardWrap"></div>
             <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>：同一把钥匙在客户不同的情绪档位上值不同的分，这张规则表是纯函数、可以离线重跑。<b>但"命中了哪一把"仍由模型判定</b>，那一步不是确定性的——所以别把这里的分当成一个精确刻度，它是画像，不是成绩单。</p>
           </div>
         </details>
@@ -1218,6 +1259,14 @@ function openReview() {
   paintBreaches(view);
   paintPhone(view);
 
+  // 折叠里装了什么，标题上要说出来，否则它就是一个没人点的按钮。
+  // 合规红线单独点名：那一块回答的是"你自己有没有事"，与输赢无关，
+  // 是这一屏上唯一一个**不点开就可能真的错过**的东西。
+  const breaches = breachTurns().length;
+  view.querySelector('#reviewMore').textContent = breaches
+    ? `详细复盘 · 含 ${breaches} 次合规红线`
+    : '详细复盘 · 逐轮证据与能力画像';
+
   const list = view.querySelector('#roundsList');
   game.turns.forEach((t) => {
     const row = document.createElement('div');
@@ -1254,7 +1303,7 @@ function openReview() {
     if (t.pressure) {
       const push = document.createElement('div');
       push.className = 'window';
-      push.textContent = '王老师这一轮又在群里催了一遍 · 多掉 3 分';
+      push.textContent = `${pressureNote()} · 多掉 3 分`;
       body.append(push);
     }
 
@@ -1724,7 +1773,7 @@ function scoreLedger(t) {
     const loss = document.createElement('span');
     loss.className = 'loss';
     loss.textContent = String(t.drift);
-    loss.title = t.pressure ? '每轮的信任流失，加上王老师这一轮又催了一遍' : '每轮的信任流失';
+    loss.title = t.pressure ? `每轮的信任流失，加上这一轮${pressureNote()}` : '每轮的信任流失';
     box.appendChild(loss);
   }
   if (t.released) {
@@ -2217,6 +2266,14 @@ async function loadGame() {
   $('turnTotal').textContent = String(game.maxRounds);
   $('roundFill').style.width = `${100 / game.maxRounds}%`;
   game.contestId = data.contest_id || '';
+  // 开口之前那句告知（ADR-0006）。**文案在服务端**：留存开着和关着说的不是
+  // 同一句话，而这一页写死一份的话，早晚会出现"页面说不留存、服务端在留存"。
+  // 下发不到就保留 index.html 里那句静态兜底，不清空——**这一行绝不能是空的**。
+  if (data.notice) {
+    document.querySelectorAll('.strangertip').forEach((el) => {
+      el.textContent = data.notice;
+    });
+  }
   SCENE = data.scenario || null;
   if (!SCENE) throw new Error('start response missing scenario');
   paintDesk();
