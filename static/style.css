@@ -387,7 +387,7 @@ body {
 /* 李经理＝你。用一个更正式的蓝，跟老陈那一侧的人区分 */
 .av-li { background: #3f5a80; }
 /* 下面这几个只在复盘揭晓老陈手机那一节出现（首页已经不是他的手机了） */
-.av-bank { background: #c0392b; }
+.av-bank { background: #a85b50; }
 .av-wife { background: #b7845c; }
 .av-daughter { background: #7d9f7a; }
 .av-gov { background: #4a6fa5; }
@@ -411,7 +411,7 @@ body {
   grid-template-rows: 1fr 1fr;
   place-items: stretch;
   gap: 2px;
-  padding: 3px;
+  padding: 4px;
   background: #d6d6d6;
 }
 
@@ -1473,6 +1473,20 @@ button:disabled { cursor: not-allowed; }
 .disposal b { display: block; font-weight: 700; }
 .disposal span { color: var(--wx-note); }
 
+/* 开场那句「坐到对面来」。
+   排在预警上方、用比正文更小的字：它是**框住这一屏的话**，不是这一屏的内容。
+   做大了会盖过下面那个金额，而那个金额才是要让人心里一紧的东西。
+   底部一条细线把它和预警隔开——两件事，不是一段话。 */
+.bridge {
+  margin: 0 0 22px;
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.85;
+}
+.bridge b { color: var(--wx-text); font-weight: 700; }
+
 /* 异常事件 */
 /* 内容块在可用空间里**光学居中**，而不是顶在上面（8-22）。
  *
@@ -1731,9 +1745,10 @@ button:disabled { cursor: not-allowed; }
 .phone-state.yes { color: var(--success); }
 .phone-clue { display: block; margin-top: 3px; white-space: normal; }
 .chatrow.missed { opacity: .65; }
-.av-group { grid-template-columns: 1fr 1fr; gap: 2px; padding: 4px; background: #d6d6d6; }
-.av-group i:nth-child(1) { background:#b8a06a; }.av-group i:nth-child(2) { background:#8fa8c4; }.av-group i:nth-child(3) { background:#c49a8f; }.av-group i:nth-child(4) { background:#9db08c; }
-.av-bank { background:#a85b50; }.av-wife { background:#b7845c; }.av-daughter { background:#7d9f7a; }.av-gov { background:#4a6fa5; }.av-doc { background:#8a6d3b; }.av-son { background:#5f7f8f; }
+/* 头像色**只在上面那一处定义**（8-23 合并）。这里原先有一份一模一样的
+   重复声明，两处只有两个值不同——而不同的那两处后者胜出，前者是死代码：
+   `.av-bank` 在上面写着 #c0392b，页面上从来没红过。
+   加场景时改错哪一份都不会报错，只会难看，所以只留一份。 */
 .round { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; }
 .round.pivot { background: #fbfaf3; }
 .round .no { color: var(--muted); font-size: 12px; }

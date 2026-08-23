@@ -279,6 +279,124 @@ const game = {
 const $ = (id) => document.getElementById(id);
 const thread = $('thread');
 
+// ── 断线续局 ──────────────────────────────────────────────────────
+//
+// **刷新一次整局就没了。** 在旧定位下这只是个瑕疵；转向之后它是硬伤：
+// 用户正要转账时被弹出这一屏，切出去看一眼真实的转账页面再回来，
+// 是最自然不过的动作——而手机在内存吃紧时会把后台标签整个重载。
+// 回来发现要从头再打十二轮，他不会从头再打，他会去把那笔钱转了。
+// **完成率是转向之后定下的护栏指标之一，这一条直接吃掉它。**
+//
+// 用 sessionStorage 不用 localStorage：这是"同一次会话里接着打"，
+// 不是"三天后接着打"。标签页关掉就该干净——一次干预只属于这一刻，
+// 隔天弹出一句"要不要接着上次那局"是骚扰，不是服务。
+//
+// **服务端仍然什么都不存**（ADR-0003 没被动）：判分状态一直在签名令牌里，
+// 这里存的只是前端这一侧的展示状态。令牌自带 2 小时有效期，TTL 与它对齐——
+// 拿一个服务端必然拒绝的令牌去续局，换来的只是一句看不懂的错误提示。
+const RESUME_KEY = 'aap.game.v1';
+const RESUME_TTL_MS = 2 * 60 * 60 * 1000;
+
+function saveGame() {
+  if (!game.token || !SCENE) return;
+  try {
+    sessionStorage.setItem(RESUME_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      scene: SCENE,
+      notice: game.notice || '',
+      game: {
+        token: game.token, contestId: game.contestId, opening: game.opening,
+        trust: game.trust, mood: game.mood, threshold: game.threshold,
+        maxRounds: game.maxRounds, remaining: game.remaining,
+        turns: game.turns, ending: game.ending, quote: game.quote,
+      },
+    }));
+  } catch {
+    // 隐私模式 / 配额满：续局能力没了，这一局照常打得完。
+    // **不提示**——它是兜底，不是功能，玩家没有为此做任何决定
+  }
+}
+
+function loadSaved() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(RESUME_KEY) || 'null');
+    if (!saved || !saved.game || !saved.game.token || !saved.scene) return null;
+    if (Date.now() - saved.savedAt > RESUME_TTL_MS) {
+      clearSaved();
+      return null;
+    }
+    return saved;
+  } catch {
+    return null;
+  }
+}
+
+function clearSaved() {
+  try { sessionStorage.removeItem(RESUME_KEY); } catch { /* 同上 */ }
+}
+
+/** 把存下来的那一局重新画出来。
+ *
+ *  **只重画玩家真看见过的东西**：他说的、对方回的、踩过的合规红线。
+ *  判分卡本来就不在对局中出现，所以这里不存在"少画了什么"的问题——
+ *  这也是这个作品能低成本续局的原因：对局中的界面本来就极薄。
+ *
+ *  施压旁白不重画：它是"刚刚发生了一件事"，补在历史里会变成一句
+ *  时态不对的话。
+ */
+function resumeGame(saved) {
+  SCENE = saved.scene;
+  Object.assign(game, saved.game);
+  game.entered = true;
+
+  // 那句告知也存了一份：留存开着和关着说的不是同一句话，
+  // 续局时重新拿服务端那句拿不到，用静态兜底会说错（ADR-0006）
+  if (saved.notice) {
+    document.querySelectorAll('.strangertip').forEach((el) => {
+      el.textContent = saved.notice;
+    });
+  }
+  paintDesk();
+  paintOpening();
+
+  const 已打 = game.turns.length;
+  const 当前轮 = Math.min(已打 + 1, game.maxRounds);
+  $('turnTotal').textContent = String(game.maxRounds);
+  $('turnCurrent').textContent = String(当前轮);
+  $('roundFill').style.width = `${(当前轮 / game.maxRounds) * 100}%`;
+  $('remaining').textContent = String(game.remaining);
+  paintMood(game.mood);
+
+  divider('下午 2:47');
+  say('me', PING());
+  say('them', game.opening);
+  game.turns.forEach((t) => {
+    say('me', t.utterance);
+    const lines = (t.lines && t.lines.length) ? t.lines : [t.reply];
+    lines.forEach((line) => { if (line) say('them', line); });
+    if (t.breached) {
+      const names = (t.hits || [])
+        .filter((h) => h in BREACHES).map((h) => BREACHES[h].name);
+      if (names.length) {
+        sysnote([`合规红线 · ${names.join(' / ')}`, '真实展业中这句要留痕'], true);
+      }
+    }
+  });
+
+  showScreen('chat');
+
+  if (game.ending) {
+    // 打完之后才刷新的：把结局那几句补回去，直接开复盘。
+    // **不重播那段逐句动画**——他已经看过一次了，再演一遍是在浪费他的时间
+    (game.ending.lines || []).forEach((line) => say('them', line));
+    $('composer').hidden = true;
+    openReview();
+  } else {
+    syncSend();   // 续局回来输入框是空的，发送键就该是灰的
+    $('say').focus();
+  }
+}
+
 // ── SSE over POST ───────────────────────────────────────────
 // EventSource 只能发 GET，而每轮要把令牌 POST 上去，因此自己解一遍协议。
 
@@ -623,6 +741,22 @@ function paintMood(mood) {
 
 // ── 一轮 ────────────────────────────────────────────────────
 
+/** 发送键的可用状态。**只有这一个地方决定它**。
+ *
+ *  提交那一路本来就有 `if (!text) return`，所以空输入从来没真的发出去过——
+ *  问题是按钮**看上去能按，按了却一点反应都没有**。一个按下去什么都不发生
+ *  的控件，比一个明确禁用的控件更难懂：玩家不知道是自己没按对，还是程序坏了。
+ *
+ *  别在别处直接写 `disabled = false`：那会在"正忙"或"输入框是空的"时候
+ *  把它放开。这个函数存在的全部理由就是把那两个条件收在一处。
+ */
+function syncSend() {
+  const input = $('say');
+  const send = $('send');
+  if (!input || !send) return;
+  send.disabled = game.busy || !input.value.trim();
+}
+
 async function playTurn(utterance) {
   game.busy = true;
   $('send').disabled = true;
@@ -762,11 +896,12 @@ async function playTurn(utterance) {
     if (score.pressure) narrate(pressureNote());
   }
 
+  saveGame();
   if (game.ending) return finish();
 
   game.busy = false;
-  $('send').disabled = false;
   $('say').disabled = false;
+  syncSend();
   $('say').focus();
 }
 
@@ -780,12 +915,12 @@ function failTurn(code) {
     $('composer').hidden = true;
     const again = document.createElement('button');
     again.textContent = '重开一局';
-    again.onclick = () => location.reload();
+    again.onclick = startNewClient;   // 清存档再重载，别把这一局又续回来
     sysnote([code === 'replayed' ? '这一局没法接着打了' : '这一局放得太久了', again], true);
     return;
   }
-  $('send').disabled = false;
   $('say').disabled = false;
+  syncSend();
   $('say').focus();
 }
 
@@ -2247,7 +2382,10 @@ function makeCard(view) {
 
 // 随机派发页至少停留一个短节拍：让用户知道这是一位由系统分配的真实客户，
 // 又不把等待演成抽卡。低动态偏好下不增加人为等待。
-showScreen('assignment');
+// 有存档就直接进对话，不闪那一下"正在接入高风险客户"——
+// 续局的人不是在开新局，给他看接入动画是在撒谎
+const savedGame = loadSaved();
+showScreen(savedGame ? 'chat' : 'assignment');
 const assignmentStartedAt = Date.now();
 let startError = null;
 
@@ -2276,11 +2414,24 @@ async function loadGame() {
   }
   SCENE = data.scenario || null;
   if (!SCENE) throw new Error('start response missing scenario');
+  game.notice = data.notice || '';
   paintDesk();
   paintOpening();
+  saveGame();
 }
 
 const ready = (async () => {
+  if (savedGame) {
+    try {
+      resumeGame(savedGame);
+      return true;
+    } catch (error) {
+      // 存的东西和现在这版代码对不上（改过字段、换过场景 id）就当没存过。
+      // **要把已经画出去的那半截清掉**，否则新的一局会接在旧对话后面
+      clearSaved();
+      thread.replaceChildren();
+    }
+  }
   try {
     await loadGame();
     const elapsed = Date.now() - assignmentStartedAt;
@@ -2482,6 +2633,9 @@ async function enterGame() {
 }
 
 function startNewClient() {
+  // **必须先清。** 它走的是 location.reload()，而启动那一步现在会优先续局——
+  // 不清的话这个按钮会把刚打完的那一局原样再放一遍
+  clearSaved();
   location.reload();
 }
 
@@ -2508,6 +2662,11 @@ $('composer').addEventListener('submit', (e) => {
   input.value = '';
   playTurn(text);
 });
+
+// 输入一变就重算发送键。**用 input 不用 keyup**：粘贴、输入法上屏、
+// 清空按钮都只触发 input，用 keyup 会漏掉它们
+$('say').addEventListener('input', syncSend);
+syncSend();
 
 // 回车发送。isComposing 那一层不能少：中文输入法用回车确认候选词，
 // 少了它，玩家选词时会把半句话发出去。

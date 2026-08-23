@@ -63,6 +63,19 @@ function anything() {
   return proxy;
 }
 
+
+/** 一份最小的 Storage 替身。localStorage 与 sessionStorage 各要一份**独立的**，
+ *  共用一个对象会让"续局存在 session 里、primer 存在 local 里"这条分工失效。 */
+function store() {
+  return {
+    _v: {},
+    getItem(k) { return Object.prototype.hasOwnProperty.call(this._v, k) ? this._v[k] : null; },
+    setItem(k, v) { this._v[k] = String(v); },
+    removeItem(k) { delete this._v[k]; },
+    clear() { this._v = {}; },
+  };
+}
+
 /** 加载 app.js，返回它的顶层作用域。
  *
  *  `vm.createContext` 之后，脚本里所有的 `const` / `function` 都挂在
@@ -74,19 +87,17 @@ export function loadApp() {
     document: dom,
     window: dom,
     navigator: { userAgent: 'node' },
-    location: { href: 'http://localhost/' },
+    location: { href: 'http://localhost/', reload() { this._reloaded = true; } },
     console,
     setTimeout,
     clearTimeout,
     requestAnimationFrame: (fn) => setTimeout(fn, 0),
     // 永远挂着：加载期那个 ready IIFE 因此既不发请求，也不报错
     fetch: () => new Promise(() => {}),
-    localStorage: {
-      _v: {},
-      getItem(k) { return Object.prototype.hasOwnProperty.call(this._v, k) ? this._v[k] : null; },
-      setItem(k, v) { this._v[k] = String(v); },
-      removeItem(k) { delete this._v[k]; },
-    },
+    localStorage: store(),
+    // 续局存在这里（app.js 的 `aap.game.v1`）。**与 localStorage 分开**
+    // 不是随手写的：sessionStorage 标签页一关就没，正是"这一次干预"该有的寿命
+    sessionStorage: store(),
     Date,
     Math,
     JSON,
