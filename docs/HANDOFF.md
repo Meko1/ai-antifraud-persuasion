@@ -8,12 +8,15 @@
 >
 > 下面三条**逐条实测过**，不是转述。
 >
-> 1. **本地领先远端**：这个会话的改动还没提交。
->    `pytest` **529 全绿**（约 60 秒），另加前端 17 个：
+> 1. **全部已提交并推到远端，CI 绿。**
+>    `pytest` **551 全绿**（约 60 秒），另加前端 26 个：
 >    ```
->    node --test 'tests/frontend/*.test.mjs'
+>    node --test tests/frontend/*.test.mjs
 >    ```
 >    前端那套零 npm 依赖（`node:vm` + `node --test`），已进 CI。
+>    **那个 glob 千万别加引号**：加了就得由 Node 自己展开，而那是 Node 22
+>    才有的能力，CI 上钉的是 20，直接报 `Could not find '.../*.test.mjs'`。
+>    本机 Node 24 跑得过，所以这个差异在本地永远看不见——CI 因此红过两次提交。
 > 2. **网关会抽风，而且是一整天来回抽。** 8-22 这一天实测到四种状态：
 >    开工时正常；跑到第四批时 `AuthenticationError: ip restriction!`（与 8-15 同类）；
 >    等了几分钟自己好了；再跑二十分钟后变成 `401 该令牌状态不可用`——
@@ -350,12 +353,12 @@ REDESIGN-TRAINER D1 写了三个月的"投顾训练器"定位，虚构设定一�
 
 ## 当前状态
 
-端到端可玩，**529 个测试全绿**（`python -m pytest`，约 60 秒），
-另加 **17 个前端测试**（`node --test`，零 npm 依赖）。
+端到端可玩，**551 个测试全绿**（`python -m pytest`，约 60 秒），
+另加 **26 个前端测试**（`node --test`，零 npm 依赖）。
 
 ```
 .venv/bin/python -m pytest                          # 全部测试，不调外部 API
-node --test 'tests/frontend/*.test.mjs'             # 前端测试，不装任何依赖
+node --test tests/frontend/*.test.mjs             # 前端测试，不装任何依赖
 .venv/bin/python -m tools.balance_sim               # 蒙特卡洛，2 万局/人设
 .venv/bin/python -m tools.classify_eval             # 分类器跑批（真实调模型，199 条，连跑两次才作数）
 .venv/bin/python -m tools.classify_eval --model <对照模型> --protocol openai \

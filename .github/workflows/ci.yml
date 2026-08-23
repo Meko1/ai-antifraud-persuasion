@@ -67,7 +67,12 @@ jobs:
       # 它守的是复盘——这个作品全部的教学价值都在那一屏上，而这一层此前
       # 一个测试都没有。`degraded` 那个 bug 潜伏那么久就是因为这个。
       - name: node --test
-        run: node --test 'tests/frontend/*.test.mjs'
+        # **不要给这个 glob 加引号。** 加了引号就得由 Node 自己展开，
+        # 而那是 Node 22 才有的能力——CI 上钉的是 20，于是它报
+        # `Could not find '.../tests/frontend/*.test.mjs'` 直接挂。
+        # 本机 Node 24 跑得过，这个差异因此在本地永远看不见（实测栽过一次）。
+        # 不加引号让 bash 展开，Node 收到的是两个明确的文件路径，哪个版本都行。
+        run: node --test tests/frontend/*.test.mjs
 
   verify:
     name: 部署链路验证 (Python ${{ matrix.python }})

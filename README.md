@@ -94,8 +94,8 @@ python -m tools.classify_eval --model <另一个模型> --protocol openai \
 输出安全层、24 个人格变体、复盘与分享卡全部在线。
 
 ```bash
-python -m pytest                          # 529 个测试，约 60 秒，不调外部 API
-node --test 'tests/frontend/*.test.mjs'   # 17 个前端测试，零 npm 依赖
+python -m pytest                          # 551 个测试，约 60 秒，不调外部 API
+node --test tests/frontend/*.test.mjs   # 26 个前端测试，零 npm 依赖
 ```
 
 **但端到端不是确定性的**：规则表吃的标签由模型分类器给出，而 `claude-opus-5` 上
