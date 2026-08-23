@@ -13,7 +13,7 @@
     python -m tools.classify_eval --limit 10       # 先花几毛钱确认链路通
     python -m tools.classify_eval --concurrency 8  # 赶时间时开大
     python -m tools.classify_eval --quiet          # 只要结论，不打印错样本
-    python -m tools.classify_eval --model qwen3.8-max --protocol openai   # 换个模型对照
+    python -m tools.classify_eval --model <对照模型> --protocol openai   # 换个模型对照
 
 网关不可用时脚本直接抛错中止——半途失败的跑批会算出一个漂亮的低分，
 让人误以为是模型判得差，其实是网断了。

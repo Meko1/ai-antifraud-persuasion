@@ -47,14 +47,14 @@
 | 任务 | 结果 | 落在哪 |
 |---|---|---|
 | 一 · 改写定位 | ✅ | POSITIONING「一句话」「成功标准」两节 |
-| 二 · 妙想对照 | ⚠️ **半成品**：妙想不在这台网关上 | TECH-DESIGN §9.3.1、`classify_eval --model` |
+| 二 · 自研金融大模型对照 | ⚠️ **半成品**：自研金融大模型不在这台网关上 | TECH-DESIGN §9.3.1、`classify_eval --model` |
 | 三 · 3.2 砍复盘 | ✅ 13 → 5，其余收进折叠 | `static/app.js` `openReview` |
 | 三 · 3.1 落数据 | ✅ 默认关，脱敏与告知各有测试 | ADR-0006、`app/transcripts.py`、`app/redact.py` |
 | 四 · 前端测试 | ✅ 17 个，零 npm 依赖，已进 CI | `tests/frontend/` |
 | 四 · 离线演示 | ✅ 一个请求都不发，判分照常 | `OFFLINE_DEMO=true`、`app/offline.py` |
 
-**这一轮里最该记住的一件事**：任务二的结论不是"妙想不行"，是**"没量到"**。
-网关列得出 25 个模型，一个妙想都没有；拿国产通用模型跑的那一栏两次里有一次
+**这一轮里最该记住的一件事**：任务二的结论不是"自研金融大模型不行"，是**"没量到"**。
+网关列得出 25 个模型，一个自研金融大模型都没有；拿国产通用模型跑的那一栏两次里有一次
 不过门槛，而且不过的那一次里 8 条是网关错误。**右栏空着比填一个像样的数字
 诚实**——那道必答题真正能答的是"换模型是一个 flag"，不是"我们量过了"。
 
@@ -358,8 +358,8 @@ REDESIGN-TRAINER D1 写了三个月的"投顾训练器"定位，虚构设定一�
 node --test 'tests/frontend/*.test.mjs'             # 前端测试，不装任何依赖
 .venv/bin/python -m tools.balance_sim               # 蒙特卡洛，2 万局/人设
 .venv/bin/python -m tools.classify_eval             # 分类器跑批（真实调模型，199 条，连跑两次才作数）
-.venv/bin/python -m tools.classify_eval --model qwen3.8-max --protocol openai \
-    --base-url https://dd-ai-api.eastmoney.com/coding/v1   # 换个模型跑同一份标注集
+.venv/bin/python -m tools.classify_eval --model <对照模型> --protocol openai \
+    --base-url $INTERNAL_LLM_BASE_URL   # 换个模型跑同一份标注集
 .venv/bin/python -m tools.act_eval --scenario chen  # 演绎跑批（真实调模型，960 次，一次一个场景）
 .venv/bin/python -m tools.stats_seed --dry-run      # 造复盘用的对局数据（不连 Redis）
 .venv/bin/python -m tools.loadtest                  # 压测（要服务起着）
@@ -992,7 +992,7 @@ S 组 29 条。四把新钥匙各 ≥5 条，另有 8 条 false_friend 专防这
 
 ### 病
 
-首页那六条会话（启航财经群、招行、老伴、小雨、反诈中心）**把这一局要挖的东西
+首页那六条会话（启航财经群、银行短信、老伴、小雨、反诈中心）**把这一局要挖的东西
 一次性全给了玩家**。而 CONTEXT.md「对局」写的是：「开局时投资顾问只知道客户
 账户转出过一笔钱，骗局的一切都得从他嘴里挖出来。信息差不是设定上的偷懒，
 它就是玩法。」两份定义文件当面打架。
@@ -1021,7 +1021,7 @@ S 组 29 条。四把新钥匙各 ≥5 条，另有 8 条 false_friend 专防这
 
 判据是"**他**说没说过"，不是"你猜没猜到"——匹配跑在老陈的台词上
 （`hisSpeech()`，不复用 `hisLines()`：那个按句切、掐 8–44 字、去重，
-掐掉一个字就可能让某条线索误判成"他没提"）。招行那条单标「你已有」，
+掐掉一个字就可能让某条线索误判成"他没提"）。银行短信那条单标「你已有」，
 它在清单上的作用是让"开局你只有这一条"看得见，不计入 4 条的分母。
 
 这一改顺带把教学点的顺序倒了过来：「"这是诈骗"四个字没用」原先是开局提前告知，
@@ -1065,7 +1065,7 @@ S 组 29 条。四把新钥匙各 ≥5 条，另有 8 条 false_friend 专防这
 
 三十万（赌注、`TOTAL`、转账凭证、四档结局金额）**一个字没动**。
 
-改动面：`SCAM_SCRIPT` 与演绎提示词、首页招行短信与那段说明、`PING`、
+改动面：`SCAM_SCRIPT` 与演绎提示词、首页银行短信短信与那段说明、`PING`、
 `persona.py` 骨架表、标注集 T02（账面数字对实际划出的数字那条）、
 TECH-DESIGN §1/§8、安全层金额测试（新增 `100000` 与 `28000` 两个形状）。
 

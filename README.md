@@ -54,7 +54,7 @@
 
 ```bash
 python -m tools.classify_eval --model <另一个模型> --protocol openai \
-  --base-url https://dd-ai-api.eastmoney.com/coding/v1
+  --base-url $INTERNAL_LLM_BASE_URL
 ```
 
 ## 四、主张边界
