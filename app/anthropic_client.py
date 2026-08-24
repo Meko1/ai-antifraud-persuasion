@@ -25,7 +25,7 @@ import logging
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from .config import LLMSettings, settings
-from .llm import LLMError, Message
+from .llm import LLMError, Message, wrap_llm_error
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,13 @@ class AnthropicClient:
         self.cfg = cfg or settings.llm
         self._client: Any = None
         self._loop: Any = None
+
+    def status(self) -> Dict[str, Any]:
+        """与 `LLMClient.status` 同一个理由：接口对齐，`/healthz` 不用分叉。"""
+        return {
+            "active_provider": self.cfg.provider, "switched": False,
+            "switched_at": None, "reason": "",
+        }
 
     def _sdk(self) -> Any:
         """惰性建连。导入本模块不产生任何网络行为，与 LLMClient 一致。
@@ -136,7 +143,7 @@ class AnthropicClient:
                 **self._payload(system, turns, kwargs)
             )
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"调用大模型失败: {type(exc).__name__}: {exc}") from exc
+            raise wrap_llm_error("调用大模型失败", exc) from exc
 
         # content 是块的列表，可能混有非文本块。只取文本，其余一概忽略——
         # 判分与安全层吃的都是纯文本
@@ -160,7 +167,7 @@ class AnthropicClient:
                     if text:
                         yield text
         except Exception as exc:  # noqa: BLE001
-            raise LLMError(f"流式调用失败: {type(exc).__name__}: {exc}") from exc
+            raise wrap_llm_error("流式调用失败", exc) from exc
 
     def _payload(
         self, system: str, turns: List[Message], kwargs: Dict[str, Any]

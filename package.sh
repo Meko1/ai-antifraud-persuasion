@@ -6,7 +6,26 @@
 #   - ZIP 内路径必须用 / 分隔，不得含绝对路径、盘符、冒号或 ..
 #   - 不得包含密钥、缓存、日志、无关构建目录
 #   - 单包 <= 500 MiB，条目数 <= 10000，解压后 <= 2 GiB
+#
+# ── PACKAGE_INCLUDE_SECRETS：上面那条"不得包含密钥"的显式例外 ──────────────
+#
+# 默认（不设这个变量）行为跟这条规范写的一样：`.env` 排除在外，
+# 部署机靠 start.sh 的 ${RUNTIME_DIR}/env 拿密钥（见 start.sh 那段注释）。
+#
+# 2026-08-24 加了这个开关：这台机器是公司内部机器，且 `.env` 只应该进
+# **本地这个 ZIP**，绝不进 git——ZIP 不提交、不 push，`dist/` 在
+# .gitignore 里；CI 从没有 `.env` 的 checkout 打包，这个开关在那边永远
+# 不生效，行为跟以前一模一样，不会有真密钥被 CI 的 artifact upload 带出去。
+#
+# **不做成默认值。** 这是这个仓库一贯的做法（TRANSCRIPT_RETENTION、
+# OFFLINE_DEMO 都默认关）：任何一次让密钥离开这台机器的动作，
+# 都该是一次显式的、有人按下去的选择，不该是"忘了配置就自动发生"。
+#
+#   PACKAGE_INCLUDE_SECRETS=1 ./package.sh
+#
 set -euo pipefail
+
+INCLUDE_SECRETS="${PACKAGE_INCLUDE_SECRETS:-0}"
 
 APP_ID="ai-antifraud-persuasion"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,8 +39,16 @@ fail() { echo "[package][ERROR] $*" >&2; exit 1; }
 command -v zip >/dev/null 2>&1 || fail "未找到 zip 命令"
 mkdir -p "${DIST_DIR}"
 
-if [ -f "${APP_DIR}/.env" ]; then
-  log "检测到 .env（含密钥），已在排除列表中，不会进包"
+ZIP_INCLUDES=(install.sh start.sh stop.sh requirements.txt app static)
+
+if [ "${INCLUDE_SECRETS}" = "1" ]; then
+  [ -f "${APP_DIR}/.env" ] \
+    || fail "PACKAGE_INCLUDE_SECRETS=1 但 ${APP_DIR}/.env 不存在，没有东西可以打进去"
+  ZIP_INCLUDES+=(.env)
+  log "PACKAGE_INCLUDE_SECRETS=1：.env 会被打进这个 ZIP"
+  log "这个包只能留在这台机器上部署——绝不能提交进 git、绝不能上传到任何非本机的地方"
+elif [ -f "${APP_DIR}/.env" ]; then
+  log "检测到 .env（含密钥），已在排除列表中，不会进包（要打进去见本文件顶部 PACKAGE_INCLUDE_SECRETS 那段注释）"
 fi
 
 cd "${APP_DIR}"
@@ -29,9 +56,7 @@ cd "${APP_DIR}"
 log "打包 -> ${ZIP_PATH}"
 # 在项目根目录内执行 zip，条目路径天然是相对路径，不会带绝对路径或盘符
 zip -r -q "${ZIP_PATH}" \
-  install.sh start.sh stop.sh \
-  requirements.txt \
-  app static \
+  "${ZIP_INCLUDES[@]}" \
   -x '*.pyc' \
   -x '*__pycache__*' \
   -x '*/.DS_Store' \
@@ -60,8 +85,15 @@ if grep -qE '^/|\.\./|\\' <<< "${ENTRY_LIST}"; then
   fail "ZIP 内存在绝对路径、上级目录或反斜杠"
 fi
 
-# 禁止密钥文件混入
-if grep -qE '(^|/)\.env$|\.key$|\.pem$' <<< "${ENTRY_LIST}"; then
+# 禁止密钥文件混入。**.key / .pem 不管开没开 PACKAGE_INCLUDE_SECRETS 都拦**：
+# 这个仓库没有任何理由往包里塞私钥文件，出现了大概率是别的东西泄漏进来，
+# 不是这次要的功能，不能被这个开关一起放过。
+if grep -qE '\.key$|\.pem$' <<< "${ENTRY_LIST}"; then
+  fail "ZIP 内混入了密钥文件"
+fi
+# .env 只在**没有显式打开开关**时才算意外混入；开了的话它就是故意打进去的，
+# 上面已经打过一条日志说清楚了
+if [ "${INCLUDE_SECRETS}" != "1" ] && grep -qE '(^|/)\.env$' <<< "${ENTRY_LIST}"; then
   fail "ZIP 内混入了密钥文件"
 fi
 
@@ -70,4 +102,7 @@ fi
 
 log "自检通过：条目 ${ENTRIES} 个，${SIZE_MB}MB"
 log "产物: ${ZIP_PATH}"
+if [ "${INCLUDE_SECRETS}" = "1" ]; then
+  log "⚠️  这个包含真实密钥（.env）—— 只能部署到这台机器上，别提交、别外发"
+fi
 exit 0

@@ -100,6 +100,35 @@ class Test配置摘要:
         }
 
 
+class TestADR0007自动切换目标:
+    """ADR-0007。`llm_fallback` 只是"有没有一个能切的目标"，
+    什么时候真的切由 app/llm.py 的 FailoverLLMClient 判——这里只测装载。"""
+
+    def test_provider是internal时装载公网配置(self, monkeypatch) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "internal")
+        fb = load_settings().llm_fallback
+        assert fb is not None
+        assert fb.provider == "public"
+        assert fb.configured
+
+    def test_provider已经是public时没有第三个方向可切(self, monkeypatch) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "public")
+        assert load_settings().llm_fallback is None
+
+    def test_公网配置不全就当没有(self, monkeypatch) -> None:
+        """半份配置比没配置更危险——真触发时才发现 fallback 也打不通，
+        那时候用户已经在等一个永远不会来的回复。"""
+        monkeypatch.setenv("LLM_PROVIDER", "internal")
+        monkeypatch.setenv("PUBLIC_LLM_API_KEY", "")
+        assert load_settings().llm_fallback is None
+
+    def test_不设PUBLIC_LLM_PROTOCOL就落到openai(self, monkeypatch) -> None:
+        """DeepSeek 是 OpenAI 兼容协议，这是 .env.example 那份默认值的来历。"""
+        monkeypatch.setenv("LLM_PROVIDER", "internal")
+        monkeypatch.delenv("PUBLIC_LLM_PROTOCOL", raising=False)
+        assert load_settings().llm_fallback.protocol == "openai"
+
+
 class Test限流配置:
     def test_默认不是不限(self, monkeypatch) -> None:
         """**默认要是 0（不限），限流就成了一个"需要记得打开"的功能**，

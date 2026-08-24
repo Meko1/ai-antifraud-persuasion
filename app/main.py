@@ -516,6 +516,10 @@ async def healthz(request: Request, probe: int = 0) -> JSONResponse:
         "port": settings.port,
         "llm_provider": settings.llm.provider,
         "llm_configured": settings.llm.configured,
+        # ADR-0007：这个进程是不是已经自动切到公网模型了。**这一位不能省**——
+        # ADR-0005 反对自动切换的理由正是"无人知情"，自动切换本身没错，
+        # 悄悄切才是问题。切没切、什么时候切的、原始报错是什么，都在这儿。
+        "llm_failover": llm_client.status(),
         # 离线演示模式必须在这里报出来。**一个看不出来是演示的演示是骗局**，
         # 而健康检查是运维唯一会看的那一处
         "offline_demo": settings.offline_demo,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -90,6 +91,11 @@ class Settings:
     log_level: str
     enable_docs: bool
     llm: LLMSettings
+    # ADR-0007。只在 provider=internal 且运维自己填好了 PUBLIC_LLM_* 时才有值——
+    # 留空就是没开这条路，行为与 ADR-0007 之前完全一致。**判据不在这里**：
+    # 这里只负责"有没有一个能切的目标"，什么时候切由 app/llm.py 的
+    # FailoverLLMClient 按网关报错内容判定。
+    llm_fallback: Optional[LLMSettings]
     # 对局状态由客户端持有并签名（ADR-0003）。密钥缺失时整个防线就是空的，
     # 与其带着一个可伪造的签名上线，不如直接拒绝启动。
     state_signing_secret: str
@@ -110,6 +116,28 @@ class Settings:
     # 一条 curl 循环打不出量来。
     rate_limit_start: int
     rate_limit_turn: int
+
+
+def _load_fallback(provider: str) -> Optional[LLMSettings]:
+    """ADR-0007 的自动切换目标。只在 provider=internal 时才有意义——
+    provider 已经是 public 的话，没有第三个方向可切。
+
+    `PUBLIC_LLM_PROTOCOL` 未设时落到 openai：DeepSeek 是 OpenAI 兼容协议，
+    这也是 `.env.example` 里那份默认值的来历。
+    """
+    if provider != "internal":
+        return None
+    cfg = LLMSettings(
+        provider="public",
+        base_url=os.getenv("PUBLIC_LLM_BASE_URL", "").rstrip("/"),
+        api_key=os.getenv("PUBLIC_LLM_API_KEY", ""),
+        model=os.getenv("PUBLIC_LLM_MODEL", ""),
+        timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "30")),
+        protocol=_enum(
+            "PUBLIC_LLM_PROTOCOL", os.getenv("PUBLIC_LLM_PROTOCOL", ""), PROTOCOLS, "openai",
+        ),
+    )
+    return cfg if cfg.configured else None
 
 
 def load_settings() -> Settings:
@@ -148,6 +176,7 @@ def load_settings() -> Settings:
                 "openai",
             ),
         ),
+        llm_fallback=_load_fallback(provider),
     )
 
 

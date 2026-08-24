@@ -269,6 +269,14 @@ class Test存活与就绪分开:
         monkeypatch.setattr("app.main.settings", _settings(offline=True, configured=False))
         assert client.get("/readyz").status_code == 200
 
+    def test_healthz报出是否已自动切到公网(self, client: TestClient) -> None:
+        """ADR-0007。反对自动切换的原始理由是"无人知情"——自动切换本身
+        没错，悄悄切才是问题，所以这一位必须在 healthz 上，不能只在日志里。"""
+        body = client.get("/healthz").json()
+        failover = body["llm_failover"]
+        assert set(failover) == {"active_provider", "switched", "switched_at", "reason"}
+        assert isinstance(failover["switched"], bool)
+
 
 class Test探测不对公网开放:
     """P0-6。`?probe=1` 会让服务**从公网请求触发一次对内网网关的出站调用**，
