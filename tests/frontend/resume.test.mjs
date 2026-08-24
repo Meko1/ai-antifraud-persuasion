@@ -28,10 +28,9 @@
  */
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test, { describe } from 'node:test';
 
-import { APP_JS, loadApp, turn } from './harness.mjs';
+import { SOURCE, loadApp, turn } from './harness.mjs';
 
 const SCENE = {
   id: 'chen',
@@ -124,12 +123,17 @@ describe('过期与脏数据一律当没存过', () => {
 describe('声明顺序：loadSaved 在被调用那一刻必须已经初始化', () => {
   /* 沙箱看不见 TDZ——`loadSaved()` 抛 ReferenceError 之后，它自己的
      catch 会把结果变成 null，和"真的没有存档"完全一样。所以这一组
-     直接读源码断言顺序。丑，但它是唯一拦得住第一版那个 bug 的写法。 */
-  const src = fs.readFileSync(APP_JS, 'utf8');
+     直接读源码断言顺序。丑，但它是唯一拦得住第一版那个 bug 的写法。
+
+     2026-08-24 拆分模块之后这一条**变强了**：`RESUME_KEY` 在 state.js，
+     调用点在 opening.js，而 opening.js import state.js —— ES module 保证
+     被依赖的先求值完。这里读的 SOURCE 是按同一个顺序拼起来的，
+     所以它同时钉住了拼接顺序（harness.mjs 的 MODULES）没被人改反。 */
+  const src = SOURCE;
 
   test('RESUME_KEY 声明在 loadSaved 的调用点之前', () => {
     const 声明 = src.indexOf('const RESUME_KEY');
-    const 调用 = src.indexOf('const savedGame = loadSaved()');
+    const 调用 = src.indexOf('savedGame = loadSaved()');
 
     assert.ok(声明 >= 0, '找不到 RESUME_KEY 的声明');
     assert.ok(调用 >= 0, '找不到启动时那次 loadSaved() 调用');
@@ -142,7 +146,7 @@ describe('声明顺序：loadSaved 在被调用那一刻必须已经初始化', 
 
   test('TTL 也一样', () => {
     assert.ok(
-      src.indexOf('const RESUME_TTL_MS') < src.indexOf('const savedGame = loadSaved()'),
+      src.indexOf('const RESUME_TTL_MS') < src.indexOf('savedGame = loadSaved()'),
     );
   });
 });
@@ -164,7 +168,7 @@ describe('「开始一位新客户」必须先把存档清掉', () => {
   test('源码里不许再有不清存档就 reload 的出路', () => {
     // 令牌过期、令牌重放那两条出路也走 reload。漏掉任何一条，
     // 玩家点"重开一局"会原样回到那个再也发不出去的局面
-    const src = fs.readFileSync(APP_JS, 'utf8');
+    const src = SOURCE;
     const 裸的 = src
       .split('\n')
       .filter((line) => {

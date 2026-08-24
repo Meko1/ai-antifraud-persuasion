@@ -15,8 +15,10 @@
 > 那份文档里最该先看的是第三节——**三条做不了的**（真实交易结果、
 > 真人证据、可信身份），它们不在代码这一侧，不要照着代码去找。
 >
-> 两条**故意没做**、建议单独一轮做的：拆分 `static/app.js`（现约 2900 行）、
-> 界面的培训/游戏语言改写。理由同样写在那份文档里。
+> 那份文档里两条"故意没做"的，**拆分 `static/app.js` 与真实浏览器 E2E
+> 已在 2026-08-24 那一轮做掉**（见它的第 3.1 节）：前端现在是 13 个
+> ES module，仍然零构建、零 npm 依赖。**还欠着的只剩一条**：
+> 界面的培训/游戏语言改写。
 
 > ### ⚠️ 上手前必须知道的三件事
 >
@@ -27,9 +29,14 @@
 >    ```
 >    node --test tests/frontend/*.test.mjs
 >    ```
->    前端那套零 npm 依赖（`node:vm` + `node --test`），已进 CI。
->    **那个 glob 千万别加引号**：加了就得由 Node 自己展开，而那是 Node 22
->    才有的能力，CI 上钉的是 20，直接报 `Could not find '.../*.test.mjs'`。
+>    另有一套真浏览器 E2E（要 Chrome）：
+>    ```
+>    node --test tests/e2e/*.test.mjs
+>    ```
+>    两套都零 npm 依赖（`node:vm` / 手写 CDP + `node --test`），都已进 CI。
+>    **那个 glob 别加引号**：加了就得由 Node 自己展开，而那是 Node 22
+>    才有的能力。CI 现在钉的是 22（E2E 要内建 WebSocket），加引号也跑得动了，
+>    但没理由去改——让 bash 展开，哪个版本都行。
 >    本机 Node 24 跑得过，所以这个差异在本地永远看不见——CI 因此红过两次提交。
 > 2. **网关会抽风，而且是一整天来回抽。** 8-22 这一天实测到四种状态：
 >    开工时正常；跑到第四批时 `AuthenticationError: ip restriction!`（与 8-15 同类）；
@@ -65,7 +72,7 @@
 |---|---|---|
 | 一 · 改写定位 | ✅ | POSITIONING「一句话」「成功标准」两节 |
 | 二 · 自研金融大模型对照 | ⚠️ **半成品**：自研金融大模型不在这台网关上 | TECH-DESIGN §9.3.1、`classify_eval --model` |
-| 三 · 3.2 砍复盘 | ✅ 13 → 5，其余收进折叠 | `static/app.js` `openReview` |
+| 三 · 3.2 砍复盘 | ✅ 13 → 5，其余收进折叠 | `static/review.js` `openReview` |
 | 三 · 3.1 落数据 | ✅ 默认关，脱敏与告知各有测试 | ADR-0006、`app/transcripts.py`、`app/redact.py` |
 | 四 · 前端测试 | ✅ 零 npm 依赖，已进 CI | `tests/frontend/` |
 | 四 · 离线演示 | ✅ 一个请求都不发，判分照常 | `OFFLINE_DEMO=true`、`app/offline.py` |
@@ -368,13 +375,14 @@ REDESIGN-TRAINER D1 写了三个月的"投顾训练器"定位，虚构设定一�
 ## 当前状态
 
 端到端可玩，**测试全绿**（`python -m pytest`，约 60 秒），
-另加前端一套（`node --test tests/frontend/*.test.mjs`，零 npm 依赖）。
+另加前端两套（单测 `tests/frontend/`、真浏览器 E2E `tests/e2e/`，都零 npm 依赖）。
 
 > 具体条数不写在文档里，理由见 README 里那条注：手写的数从来没被改对过。
 
 ```
 .venv/bin/python -m pytest                          # 全部测试，不调外部 API
-node --test tests/frontend/*.test.mjs             # 前端测试，不装任何依赖
+node --test tests/frontend/*.test.mjs               # 前端单测，不装任何依赖
+node --test tests/e2e/*.test.mjs                    # 真浏览器 E2E，要 Chrome，仍然不装依赖
 .venv/bin/python -m tools.balance_sim               # 蒙特卡洛，2 万局/人设
 .venv/bin/python -m tools.classify_eval             # 分类器跑批（真实调模型，199 条，连跑两次才作数）
 .venv/bin/python -m tools.classify_eval --model <对照模型> --protocol openai \
@@ -403,7 +411,8 @@ node --test tests/frontend/*.test.mjs             # 前端测试，不装任何�
 | 前端三件 | `static/*` | 冷开场、企业微信、**时机与追问窗口可视化**；复盘第一屏收到五块 |
 | **对局留存** | `app/transcripts.py` `app/redact.py` | ADR-0006 的例外；**默认关**，脱敏与告知各有测试 |
 | **离线演示** | `app/offline.py` | `OFFLINE_DEMO=true`，一个请求都不发，判分照常 |
-| **前端测试** | `tests/frontend/` | `node:vm` 沙箱跑 `static/app.js`，零 npm 依赖，已进 CI |
+| **前端单测** | `tests/frontend/` | `node:vm` 沙箱跑那 13 个模块（按依赖顺序拼起来），零 npm 依赖，已进 CI |
+| **前端 E2E** | `tests/e2e/` | 手写 CDP 驱真 Chrome（Node 22 内建 WebSocket），验模块图与渲染结果，零 npm 依赖，已进 CI |
 
 ### 未完成（按建议顺序）
 
@@ -477,7 +486,10 @@ node --test tests/frontend/*.test.mjs             # 前端测试，不装任何�
 
 - `static/index.html` — 结构（首页工作台 + 聊天页）
 - `static/style.css` — 设计令牌与全部样式
-- `static/app.js` — SSE 解析、K 线绘制、复盘、分享卡
+- `static/app.js` — **入口**，只串模块与挂监听（2026-08-24 起）
+- `static/*.js` — 另外 12 个 ES module。分工写在 `app.js` 顶部那张模块图上，
+  一句话：**视图依赖状态，状态不依赖视图**。仍然零构建，
+  浏览器靠 `<script type="module">` 自己解析
 
 **界面语法整体照搬微信**，这是全部设计决策的根。理由不是"微信好看"——微信恰恰
 极度克制——而是这类荐股骗局本来就发生在聊天软件里。玩家在这套熟悉的语法里劝阻，
@@ -495,7 +507,7 @@ node --test tests/frontend/*.test.mjs             # 前端测试，不装任何�
 
 **首页 8-17 从「老陈的手机」改成了「李经理的工作台」**，理由见下面「首页改造」
 一节。它现在只给李经理真正看得到的东西：一条资产异动预警 + 一张客户档案。
-老陈手机上那六条会话搬到了**复盘**（`app.js` 的 `PHONE` / `paintPhone`），
+老陈手机上那六条会话搬到了**复盘**（`review.js` 的 `phoneRows` / `paintPhone`），
 逐条揭晓、逐条打勾。
 
 开局请求在玩家读这一屏时就发出去了，点"给陈叔发消息"时开场白通常已经到手——

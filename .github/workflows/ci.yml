@@ -69,7 +69,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # 2026-08-24 从 20 提到 22。提的理由在下面那个 e2e job 里：
+          # CDP 要 WebSocket，而 **Node 22 起 WebSocket 是内建全局**，
+          # 20 上没有。两个 job 钉同一个版本，免得"单测过了 E2E 没过"
+          # 这种只跟版本有关的红。
+          node-version: "22"
 
       # **没有 npm install 这一步，也不会有。** 这个仓库没有 node_modules，
       # 打包规范里也不该多出一个：测试只用 Node 自带的 `node --test` 与
@@ -78,12 +82,50 @@ jobs:
       # 它守的是复盘——这个作品全部的教学价值都在那一屏上，而这一层此前
       # 一个测试都没有。`degraded` 那个 bug 潜伏那么久就是因为这个。
       - name: node --test
-        # **不要给这个 glob 加引号。** 加了引号就得由 Node 自己展开，
-        # 而那是 Node 22 才有的能力——CI 上钉的是 20，于是它报
-        # `Could not find '.../tests/frontend/*.test.mjs'` 直接挂。
-        # 本机 Node 24 跑得过，这个差异因此在本地永远看不见（实测栽过一次）。
-        # 不加引号让 bash 展开，Node 收到的是两个明确的文件路径，哪个版本都行。
+        # **这个 glob 不加引号。** 加了引号就得由 Node 自己展开，那是
+        # Node 22 才有的能力——此前 CI 钉的是 20，于是它报
+        # `Could not find '.../tests/frontend/*.test.mjs'` 直接挂，
+        # 而本机 Node 24 跑得过，差异在本地永远看不见（实测栽过一次）。
+        # 现在钉的是 22，加引号也能跑了，但**没有理由去改它**：
+        # 让 bash 展开，Node 收到的是几个明确的文件路径，哪个版本都行。
         run: node --test tests/frontend/*.test.mjs
+
+  frontend-e2e:
+    name: 前端 E2E（真浏览器）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          # 内建 WebSocket 从 22 起才有。CDP 客户端是手写的（tests/e2e/cdp.mjs），
+          # 没有它就得自己实现 WebSocket 帧编解码——那不值得
+          node-version: "22"
+
+      # 服务要真起来（离线演示态，不需要任何 API key），页面要真加载。
+      # 这一步是这个 job 与上面那个的全部差别：上面只要 Node
+      - name: 安装依赖
+        run: python -m pip install --quiet -r requirements.txt
+
+      # **不允许静默跳过。** 测试本身在没有 Chrome 时会跳过整组并打一行警告，
+      # 那是给本机开发用的；在 CI 上跳过等于这个 job 什么都没验，
+      # 而它还是绿的——那比没有这个 job 更糟。所以先在这里硬查一遍。
+      - name: 确认 runner 上有 Chrome
+        run: |
+          test -x /usr/bin/google-chrome || {
+            echo "::error::runner 上没有 /usr/bin/google-chrome，E2E 会静默跳过"
+            exit 1
+          }
+          /usr/bin/google-chrome --version
+
+      # 它验的是另外那 86 条天生看不见的两样：模块图连不连得起来、
+      # 画出来是什么样（见 tests/e2e/browser.test.mjs 顶部）。
+      - name: node --test（E2E）
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node --test tests/e2e/*.test.mjs
 
   verify:
     name: 部署链路验证 (Python ${{ matrix.python }})

@@ -95,7 +95,8 @@ python -m tools.classify_eval --model <另一个模型> --protocol openai \
 
 ```bash
 python -m pytest                        # 约 60 秒，不调外部 API
-node --test tests/frontend/*.test.mjs   # 前端，零 npm 依赖
+node --test tests/frontend/*.test.mjs   # 前端单测，零 npm 依赖
+node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 npm 依赖
 ```
 
 > **这里不写测试数量。** 写了就得在每次加测试时记得改，而实测它从来没被改对过——

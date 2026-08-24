@@ -557,7 +557,10 @@ K 线没有丢，它留在复盘里——那是给认真打完的人和评审看
 
 **这是用数据说出来的，不是编的。**
 
-**已完成**：`static/{index.html,style.css,app.js}`，三个文件，零构建，`package.sh` 整目录打包。
+**已完成**：`static/`——`index.html`、`style.css`，加上 13 个 ES module
+（入口 `app.js`，模块图写在它顶部）。**仍然零构建**：浏览器靠
+`<script type="module">` 自己按 import 解析，同源，`script-src 'self'` 照旧成立。
+`package.sh` 整目录打包，多几个文件不影响条目数与体积上限。
 
 ### 8.1 界面语法：整体照搬微信
 

@@ -152,16 +152,25 @@ def test_施压旁白必须是这一局真有的那个人(scene) -> None:
 
 
 def test_前端不许再写死任何一句施压旁白() -> None:
-    """写死一次就会漏改一次——这正是它当初出事的方式。"""
-    app_js = (STATIC / "app.js").read_text(encoding="utf-8")
-    for line in app_js.splitlines():
-        剥掉注释 = line.split("//")[0].strip()
-        # 块注释那几行（` * …`）同样不算代码。**这一条是被自己抓出来的**：
-        # 第一版只剥了 `//`，于是解释这个 bug 的那句注释把测试自己弄红了
-        if not 剥掉注释 or 剥掉注释.startswith(("*", "/*")):
-            continue
-        if "王老师" in 剥掉注释:
-            raise AssertionError(f"app.js 里还写死着剧本人名：{line.strip()}")
+    """写死一次就会漏改一次——这正是它当初出事的方式。
+
+    **扫的是 static/ 下全部的 .js，不是只扫 app.js。** 2026-08-24 前端拆成
+    十三个模块之后，app.js 只剩九十来行的入口——只读它的话这条测试会一直绿，
+    而它本来要拦的东西全都搬进了别的文件。一条永远绿的测试比没有测试更糟。
+    """
+    模块 = sorted(STATIC.glob("*.js"))
+    assert len(模块) > 1, "static/ 下只找到一个 .js，前端模块是不是被合回去了？"
+    for 文件 in 模块:
+        for line in 文件.read_text(encoding="utf-8").splitlines():
+            剥掉注释 = line.split("//")[0].strip()
+            # 块注释那几行（` * …`）同样不算代码。**这一条是被自己抓出来的**：
+            # 第一版只剥了 `//`，于是解释这个 bug 的那句注释把测试自己弄红了
+            if not 剥掉注释 or 剥掉注释.startswith(("*", "/*")):
+                continue
+            if "王老师" in 剥掉注释:
+                raise AssertionError(
+                    f"{文件.name} 里还写死着剧本人名：{line.strip()}"
+                )
 
 
 @pytest.mark.parametrize("scene", 场景)

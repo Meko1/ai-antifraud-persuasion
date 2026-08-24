@@ -175,6 +175,10 @@
 <!-- 底部动作面板。退出、七种问法、换客户三处共用这一个容器——
      一套焦点捕获、一套 Esc、一套返回焦点，写三遍必然有一遍会漏掉其中一样。 -->
 <div class="sheet-host" id="sheetHost" hidden></div>
-<script src="static/app.js"></script>
+<!-- **type="module" 不是可选的。** app.js 从 2026-08-24 起是入口模块，
+     其余十二个模块由浏览器自己按 import 拉（全部同源，`script-src 'self'`
+     照旧成立）。**没有打包步骤**，改回普通 script 会当场 SyntaxError。
+     module 天然是 defer 的，因此这个标签放哪儿都行，仍然留在 body 末尾。 -->
+<script type="module" src="static/app.js"></script>
 </body>
 </html>

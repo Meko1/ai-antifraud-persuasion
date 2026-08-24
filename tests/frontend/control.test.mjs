@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test, describe } from 'node:test';
 
-import { APP_JS, loadApp, turn } from './harness.mjs';
+import { bodyOf, loadApp, sourceOf, turn } from './harness.mjs';
 
 describe('用户控制：主动结束之后不许编造资金结局', () => {
   test('没结局也没主动结束时仍然按转账算', () => {
@@ -107,8 +107,6 @@ describe('模拟反应 ≠ 真实交易结果', () => {
 });
 
 describe('识别优于回忆：七种问法可以随时翻回来看', () => {
-  const src = fs.readFileSync(APP_JS, 'utf8');
-
   test('入口在对局中一直在（不是只在开打前那一屏）', () => {
     const html = fs.readFileSync(
       new URL('../../static/index.html', import.meta.url), 'utf8');
@@ -120,8 +118,7 @@ describe('识别优于回忆：七种问法可以随时翻回来看', () => {
   test('翻开的那一层只给 brief，不给 tip', () => {
     // **词汇是课程，时机是答案。** tip 里写着"他越防着你别的招越没用"
     // 这类时机信息，对局中给出来就是泄题。
-    const body = src.slice(src.indexOf('function openMethodsSheet'),
-                           src.indexOf('function openClientSheet'));
+    const body = bodyOf(sourceOf('control.js'), 'openMethodsSheet');
     assert.match(body, /\.brief/);
     assert.doesNotMatch(body, /\.tip/, '对局中不许给 tip —— 那是复盘才讲的时机');
   });
@@ -160,9 +157,7 @@ describe('灵活与效率：挑客户', () => {
   test('判据是服务端下发的清单，不是前端自己判演示态', () => {
     // "什么时候允许挑客户"是业务规则，规则只该有一处（app/main.py）。
     // 前端要是自己按 source === 'demo' 判，规则就有了两份。
-    const src = fs.readFileSync(APP_JS, 'utf8');
-    const body = src.slice(src.indexOf('function paintClientPicker'),
-                           src.indexOf('function paintClientPicker') + 400);
+    const body = bodyOf(sourceOf('opening.js'), 'paintClientPicker');
     assert.match(body, /game\.catalog/);
     assert.doesNotMatch(body, /source\s*===\s*['"]demo/,
       '别在前端复制一份"什么时候能挑客户"的规则');
@@ -170,9 +165,8 @@ describe('灵活与效率：挑客户', () => {
 });
 
 describe('退出留痕不许挡住退出', () => {
-  const src = fs.readFileSync(APP_JS, 'utf8');
-  const body = src.slice(src.indexOf('function reportExit'),
-                         src.indexOf('function openExitSheet'));
+  // 埋点这一下 2026-08-24 随 P2-1 挪进了 api.js（全站唯一的 fetch 出口）
+  const body = bodyOf(sourceOf('api.js'), 'reportExit');
 
   test('不 await 埋点', () => {
     assert.doesNotMatch(body, /await\s+fetch/, '埋点绝不能挡住用户离开');

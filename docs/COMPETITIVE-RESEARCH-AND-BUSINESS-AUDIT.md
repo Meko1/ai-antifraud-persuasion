@@ -155,7 +155,8 @@
 - 当前系统没有要求完成任何安全动作；
 - “保住 30 万”“保住 28 万”由前端常量直接给出，不是业务行为产生的结果。
 
-证据见 [`app/scoring.py`](../app/scoring.py#L400) 和 [`static/app.js`](../static/app.js#L64)。
+证据见 [`app/scoring.py`](../app/scoring.py#L400) 和 [`static/state.js`](../static/state.js#L113)
+（8-24 前端拆分之前这段在 `static/app.js`）。
 
 建议：把结局从单一信任度改成至少三个维度：
 
@@ -209,7 +210,8 @@
 
 分类超时或失败时，引擎按“没有命中钥匙、没有失误”进行中性判分，并在事件里发送 `degraded: true`。但前端把 score 写入 `game.turns` 时没有保存或展示该字段。
 
-证据见 [`app/engine.py`](../app/engine.py#L74)、[`app/engine.py`](../app/engine.py#L226) 和 [`static/app.js`](../static/app.js#L496)。
+证据见 [`app/engine.py`](../app/engine.py#L74)、[`app/engine.py`](../app/engine.py#L226) 和
+[`static/chat.js`](../static/chat.js#L267)（8-24 前端拆分之前这段在 `static/app.js`）。
 
 结果是：用户可能因为系统故障而掉分，最后仍看到一份声称由规则精确计算的复盘。这对游戏是小瑕疵，对训练是不可接受的错误反馈。
 

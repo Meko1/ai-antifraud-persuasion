@@ -14,10 +14,9 @@
  */
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test, { describe } from 'node:test';
 
-import { APP_JS, loadApp, turn } from './harness.mjs';
+import { loadApp, sourceOf, turn } from './harness.mjs';
 
 /** 每个用例一份干净的作用域：app.js 的状态挂在顶层，用例之间会互相污染。 */
 function fresh(turns = [], scene = null) {
@@ -149,7 +148,7 @@ describe('resultAmount：结算卡上那个大数', () => {
  * 8-22 一天里往里加了两块，没有任何东西拦一下。
  */
 describe('复盘第一屏：五块是硬上限', () => {
-  const source = fs.readFileSync(APP_JS, 'utf8');
+  const source = sourceOf('review.js');
   const template = source.slice(
     source.indexOf('<div class="review-body">'),
     source.indexOf('<div class="result-actions">'),
