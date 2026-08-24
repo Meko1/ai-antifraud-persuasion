@@ -1250,6 +1250,15 @@ body {
   --line: #d9ddd8;
   --navy: #243d4f;
   --navy-soft: #365b71;
+  /* 东方财富品牌橙，取自 eastmoney.com 首页实测最高频色值（29 次命中，
+     远超其他任何颜色），不是配的。只用在入场引导的主按钮上（查看异常记录 /
+     联系客户 / 知道了开始）——对局中段与结束态那些按钮继续用 --navy，
+     橙色只在"这是东方财富自己的东西"的第一印象那一刻出现，不铺开。 */
+  --em-orange: #ea5404;
+  /* 页面画布底色：body 一直引用 --canvas，但这张变量表里从未定义过它——
+     实际渲染因此落到 transparent，桌面端手机框外露出的是浏览器默认白。
+     现在补上，顺带把这块交给 --em-orange 呼应一点暖度，不进任何一屏内部。 */
+  --canvas: #efe9e1;
   --signal: #bd4f40;
   --signal-soft: #f8e9e5;
   --success: #245f4c;
@@ -1520,7 +1529,7 @@ button:disabled { cursor: not-allowed; }
   padding: 13px 16px;
   border: 0;
   border-radius: 13px;
-  background: var(--navy);
+  background: var(--em-orange);
   color: #fff;
   font-size: 16px;
   font-weight: 760;
