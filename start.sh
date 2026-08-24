@@ -34,6 +34,7 @@ PID_FILE="${RUNTIME_DIR}/app.pid"
 LOG_FILE="${RUNTIME_DIR}/logs/app.log"
 PORT="${PORT:-21818}"
 HEALTH_URL="http://127.0.0.1:${PORT}/healthz"
+READY_URL="http://127.0.0.1:${PORT}/readyz"
 START_TIMEOUT=60
 
 log()  { echo "[start] $*"; }
@@ -121,6 +122,54 @@ PY
   fi
 }
 
+# /readyz 报的是"这一局能不能真的调模型"（llm.configured || offline_demo），
+# 与 /healthz 是两件事，**不能拿它当部署门槛**：ADR-0005 明确接受"网关故障时
+# 降级到兜底台词，不改变数据流向"，本地测试与离线演示都合法地"活着但没配模型"。
+# 拿它卡部署，等于把一个设计上允许的降级状态变成部署失败——不是这个函数该管的事。
+#
+# 它只负责在这里**喊出来**：2026-08-24 那次事故是配置链断在部署机上
+# （.env 按规范不进包，运维没在 RUNTIME_DIR/env 补上），/healthz 全程 ok，
+# 于是没人发现——玩家看到的每一句都是兜底台词，直到有人截图问「AI 呢」。
+# 这条检查探到就打印，探不到也不影响退出码，纯粹是运维肉眼能看见的那一行。
+warn_if_not_ready() {
+  local body
+  body="$("${VENV_PY}" - "${READY_URL}" <<'PY' 2>/dev/null
+import json, sys, urllib.request
+try:
+    with urllib.request.urlopen(sys.argv[1], timeout=3) as r:
+        print(r.read().decode())
+except urllib.error.HTTPError as e:
+    print(e.read().decode())
+except Exception:
+    pass
+PY
+  )"
+  [ -n "${body}" ] || return 0
+  # RUNTIME_DIR 当第二个参数传进去，**不能指望 Python 里插值**：
+  # 这个 heredoc 用的是带引号的 'PY'（防止 body 里的反引号/$ 被 bash 当命令展开），
+  # 带引号就意味着 bash 不会展开里面任何 ${VAR}，写在 Python 字符串里的
+  # ${RUNTIME_DIR} 只会原样打印成这几个字符，而不是那个真实路径。
+  "${VENV_PY}" - "${body}" "${RUNTIME_DIR}" <<'PY'
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+if d.get("ready"):
+    sys.exit(0)
+reason = d.get("reason", "未知原因")
+runtime_dir = sys.argv[2]
+print("", file=sys.stderr)
+print("=" * 70, file=sys.stderr)
+print("[start][警告] 服务已启动，但 /readyz 未就绪：" + reason, file=sys.stderr)
+print("玩家现在看到的每一句台词都来自兜底台词库，不是大模型生成的回复。", file=sys.stderr)
+print(f"请检查 {runtime_dir}/env 里的 *_LLM_* 变量，改完 ./stop.sh && ./start.sh 即可。",
+      file=sys.stderr)
+print("=" * 70, file=sys.stderr)
+print("", file=sys.stderr)
+PY
+}
+
 log "等待服务就绪 (最长 ${START_TIMEOUT}s)…"
 for i in $(seq 1 "${START_TIMEOUT}"); do
   if ! kill -0 "${APP_PID}" 2>/dev/null; then
@@ -132,6 +181,7 @@ for i in $(seq 1 "${START_TIMEOUT}"); do
   if probe_health; then
     log "服务就绪，健康检查通过 (${i}s)"
     log "访问地址: http://<server-ip>:${PORT}/"
+    warn_if_not_ready
     exit 0
   fi
   sleep 1
