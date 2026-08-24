@@ -129,6 +129,7 @@ const EPILOGUE = `
   get BREACHES() { return BREACHES; },
   get TONES() { return TONES; },
   get MOODS() { return MOODS; },
+  get RESULT_BASIS() { return RESULT_BASIS; },
   get SCENE() { return SCENE; },
   set SCENE(v) { SCENE = v; },
 };

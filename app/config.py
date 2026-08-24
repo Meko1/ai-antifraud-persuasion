@@ -13,8 +13,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
+class ConfigError(RuntimeError):
+    """配置缺失或非法。启动期抛出，不做任何默认值兜底。"""
+
+
 def _bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+# ── provider 与 protocol 是闭集，不是自由字符串 ────────────────────────────
+#
+# 原先这里只判 `provider == "internal"`，**其余任何字符串都落到 PUBLIC_***。
+# 于是 `LLM_PROVIDER=internla` 这一个字母的手滑，会让服务安安静静地起来、
+# 健康检查一路绿、然后把每一句用户输入发到公网 DeepSeek 上——
+# 日志里没有一行说过它换了供应商。协议那一侧同样：只有 `anthropic` 被认出来，
+# `anthropicc` 会落进 OpenAI 客户端，上线当天换来一个看不懂的 400。
+#
+# 金融数据的处理边界不能由拼写决定。**未知值一律启动失败**：
+# 一个起不来的服务，比一个把数据发错地方的服务好得多。
+PROVIDERS = frozenset({"internal", "public"})
+PROTOCOLS = frozenset({"openai", "anthropic"})
+
+
+def _enum(name: str, value: str, allowed: frozenset, default: str) -> str:
+    """闭集校验。不做"猜一个最接近的"——那正是静默兜底的另一种写法。"""
+    text = (value or default).strip().lower()
+    if text not in allowed:
+        raise ConfigError(
+            f"{name}={value!r} 不是合法取值。允许的是 {sorted(allowed)}。"
+            "拼错会把数据发往错误的供应商或协议，因此这里拒绝启动而不是兜底。"
+        )
+    return text
 
 
 @dataclass(frozen=True)
@@ -23,6 +52,9 @@ class LLMSettings:
 
     拿到目标服务器后如果发现内网网关不可达，只需改一个环境变量即可切换，
     不用动任何代码。
+
+    `provider` 与 `protocol` 都是闭集（见上面那两个常量），非法值在
+    `load_settings` 里就抛掉了，构造到这里的一定是合法的。
     """
 
     provider: str
@@ -37,6 +69,19 @@ class LLMSettings:
     @property
     def configured(self) -> bool:
         return bool(self.base_url and self.api_key and self.model)
+
+    def summary(self) -> dict:
+        """启动日志与 readiness 用的非敏感配置摘要。**不含 api_key。**
+
+        它回答的是运维在出事那一刻唯一想知道的事：这台服务到底在跟谁说话。
+        """
+        return {
+            "provider": self.provider,
+            "protocol": self.protocol,
+            "model": self.model,
+            "base_url": self.base_url,
+            "configured": self.configured,
+        }
 
 
 @dataclass(frozen=True)
@@ -60,14 +105,15 @@ class Settings:
     # 分享卡上印的参赛编号（§8）。没配就空着——分享卡会发到社交平台上，
     # 空一行远好过印一个占位符出去。
     contest_id: str
-
-
-class ConfigError(RuntimeError):
-    """配置缺失或非法。启动期抛出，不做任何默认值兜底。"""
+    # 每分钟每个来源允许开几局 / 打几轮（§P0-6）。0 = 不限，本机调试用。
+    # 默认值按"一局最多 12 轮、一局约 3 分钟"定：正常用户够用得多，
+    # 一条 curl 循环打不出量来。
+    rate_limit_start: int
+    rate_limit_turn: int
 
 
 def load_settings() -> Settings:
-    provider = os.getenv("LLM_PROVIDER", "internal").strip().lower()
+    provider = _enum("LLM_PROVIDER", os.getenv("LLM_PROVIDER", ""), PROVIDERS, "internal")
     prefix = "INTERNAL" if provider == "internal" else "PUBLIC"
 
     secret = os.getenv("STATE_SIGNING_SECRET", "").strip()
@@ -83,6 +129,8 @@ def load_settings() -> Settings:
         transcript_retention=_bool("TRANSCRIPT_RETENTION", False),
         offline_demo=_bool("OFFLINE_DEMO", False),
         contest_id=os.getenv("CONTEST_ID", "").strip(),
+        rate_limit_start=int(os.getenv("RATE_LIMIT_START", "20")),
+        rate_limit_turn=int(os.getenv("RATE_LIMIT_TURN", "60")),
         # 平台强制固定 21818；保留环境变量只是为了本地调试时能换端口
         port=int(os.getenv("PORT", "21818")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -93,7 +141,12 @@ def load_settings() -> Settings:
             api_key=os.getenv(f"{prefix}_LLM_API_KEY", ""),
             model=os.getenv(f"{prefix}_LLM_MODEL", ""),
             timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "30")),
-            protocol=os.getenv(f"{prefix}_LLM_PROTOCOL", "openai").strip().lower(),
+            protocol=_enum(
+                f"{prefix}_LLM_PROTOCOL",
+                os.getenv(f"{prefix}_LLM_PROTOCOL", ""),
+                PROTOCOLS,
+                "openai",
+            ),
         ),
     )
 

@@ -8,7 +8,12 @@
   <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
-<main class="app-shell" aria-label="AI 反诈劝阻">
+<!-- **整个文档只有一个 main，就是对话区那一个。**
+     原先是外层 app-shell 一个、开场屏一个、课程表屏一个、对话区一个，
+     四个 main 层层嵌套——嵌套的 main 是无效结构，屏幕阅读器报出来的
+     landmark 会是乱的，而这一屏上唯一真正称得上"主内容"的是对话本身。
+     其余几层改回 div，屏幕的语义由各自的 section + 标题层级承担。 -->
+<div class="app-shell">
   <section class="screen on assignment" id="assignment" aria-live="polite">
     <div class="osbar"><span>14:47</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
     <div class="assignment-main">
@@ -34,7 +39,7 @@
       <div class="brand"><span class="brandmark" aria-hidden="true">李</span>客户风险协作</div>
       <span class="quiet" id="todayCount">今日第 1 位客户</span>
     </header>
-    <main class="opening-body">
+    <div class="opening-body">
       <!-- **这一段是整个转向在界面上唯一的落点。**
            在它之前，第一屏是一套 B 端投顾 CRM：「今日第 1 位客户」+ 别人的
            账户异动。而定位说的是"用户自己正要转账时弹出，让他去劝一个和他
@@ -57,10 +62,16 @@
         <dd class="num" id="openingMoney"></dd>
         <dd class="opening-hint" id="openingHint"></dd>
       </dl>
-    </main>
+    </div>
     <div class="primary-foot">
       <button class="primary-action" id="openProfile" type="button">查看异常记录</button>
-      <p>约 3 分钟 · 最多 12 轮</p>
+      <!-- **挑客户只在演示态出现**（JS 按 origin.source 决定显不显示）。
+           真实接入时场景由用户自己那笔异动决定，让他挑等于让他挑一个
+           和自己处境无关的剧本，"角色对调"那个想法就落空了。
+           演示态没有"他自己那笔异动"这回事，挑一个反而是对的：
+           想再看一遍某个场景，不该靠反复重开去抽。 -->
+      <button class="ghost-action" id="pickClient" type="button" aria-haspopup="dialog" hidden>换一位客户</button>
+      <p>约 3 分钟 · 最多 12 轮 · 随时可以退出</p>
     </div>
   </section>
 
@@ -103,11 +114,11 @@
       <strong>你手里有这七种问法</strong>
       <button class="skip-button" id="primerSkip" type="button">跳过</button>
     </header>
-    <main class="primer-body">
+    <div class="primer-body">
       <p class="primer-lead">这不是攻略——<b>什么时候用哪一种，它不会告诉你</b>，那正是这一局要练的。</p>
       <ol class="primer-list" id="primerList"></ol>
       <p class="primer-foot">对面是活人写的回应，没有选项可选。你说什么，他就接什么。</p>
-    </main>
+    </div>
     <div class="primary-foot">
       <button class="primary-action" id="primerGo" type="button">知道了，开始</button>
       <p>七种问法在复盘里会逐条给你打分</p>
@@ -120,6 +131,14 @@
       <div class="chat-name-line">
         <strong id="peer"></strong>
         <span class="chat-mood"><i></i><b id="mood" role="status" aria-live="polite">戒备</b></span>
+        <!-- **退出必须在这一屏上一直看得见。**
+             定位文档写着"不做成必须通过才能交易的障碍"，而在此之前这一屏
+             只有输入框和发送键——没有关闭、没有稍后继续、没有明确放弃。
+             一个关不掉的弹窗，在真实的转账前场景里换来的是投诉，不是反思。
+
+             放在标题行右端而不是左上角：左上角在手机上只有一个意思——返回上一屏，
+             而这里要表达的是"离开这次干预"，两者不是一回事。 -->
+        <button class="chat-exit" id="chatExit" type="button" aria-haspopup="dialog">退出</button>
       </div>
       <div class="turn-line">
         <span>第 <b class="num" id="turnCurrent">1</b> 轮 / <span class="num" id="turnTotal">12</span></span>
@@ -137,13 +156,25 @@
     </main>
     <form class="composer" id="composer" autocomplete="off">
       <div class="inputrow">
+        <!-- 「七种问法」在对局中要能随时翻回来看。
+             **这是识别优于回忆**：开打前那一屏（primer）只出现一次，
+             之后玩家要么记住七个名字，要么就是在凭空回忆——而这个作品
+             判的从来不是"你背没背下来"，是"你此刻选得对不对"。
+             翻开的那一层只给名字和一句话（brief），**不给时机、不给分值**，
+             那些是答案，留在复盘里（见 app.js 顶部 KEYS 那段注）。 -->
+        <button class="composer-help" id="openMethods" type="button"
+                aria-haspopup="dialog" aria-label="查看七种问法">问法</button>
         <input id="say" maxlength="120" enterkeyhint="send" aria-label="跟客户说">
         <button id="send" type="submit" aria-label="发送消息">↑</button>
       </div>
       <p>不要提供密码、验证码或要求客户提供敏感信息</p>
     </form>
   </section>
-</main>
+</div>
+
+<!-- 底部动作面板。退出、七种问法、换客户三处共用这一个容器——
+     一套焦点捕获、一套 Esc、一套返回焦点，写三遍必然有一遍会漏掉其中一样。 -->
+<div class="sheet-host" id="sheetHost" hidden></div>
 <script src="static/app.js"></script>
 </body>
 </html>

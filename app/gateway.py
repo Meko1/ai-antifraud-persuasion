@@ -93,7 +93,10 @@ ACT_SYSTEM_PROMPT = """\
 CLASSIFY_SYSTEM_PROMPT = """\
 你在给一段反诈劝阻对话做标注。只输出 JSON，不要任何解释。
 
-格式：{{"hit_keys": [...], "grounded": true/false}}
+格式：{{"hit_keys": [...], "grounded": true/false, "evidence": "..."}}
+
+evidence：如果 grounded 是 true，把你认定被引用的**那一句原话**照抄进来
+（十几个字即可，不要写分析）。grounded 是 false 就给空字符串。
 
 hit_keys 只能从下面这个闭集里选，可以为空数组：
 {labels}
@@ -184,8 +187,12 @@ hit_keys 只能从下面这个闭集里选，可以为空数组：
      同一句后面加上「这钱打过去就要不回来了」，才换成 informed_warning。
 
 grounded：分两步判，不要凭感觉。
-第一步：在"本轮玩家说"里，指出一个从"上一轮劝阻对象说"里拿来的具体成分——
-       他提到的人、数字、时间、金额，或者他刚才那个具体说法。指不出来就是 false。
+第一步：在"本轮玩家说"里，指出一个从**劝阻对象说过的话**里拿来的具体成分——
+       他提到的人、数字、时间、金额，或者他那个具体说法。指不出来就是 false。
+       优先看"上一轮劝阻对象说"；如果载荷里给了"更早说过的话"，
+       **那几轮同样算数**：引用两轮之前的事实、把几轮的说法并起来指出矛盾、
+       回到一个之前没答上来的问题，都是扎根，而且往往是更难做到的那种。
+       没给"更早说过的话"这一段时，就只看上一轮。
 第二步：指得出来，再确认它是被真的用上了，而不是顺口带过。
 
 只是同属"劝人别被骗"这个话题**不算**扎根。骗局、转账、被骗、执迷不悟这些词是
@@ -349,13 +356,74 @@ def _history_messages(history: Sequence[Any]) -> List[Dict[str, str]]:
     return messages
 
 
+# 早前轮次的证据池给到几轮。给全 12 轮会把分类请求撑成一个长上下文任务——
+# 分类的耗时靠"短"来掩在台词流式输出后面，那是整个并行架构的前提。
+# 6 轮是实测的落点：跨轮引用几乎都发生在最近几轮，再往前的内容玩家自己也不记得了。
+EVIDENCE_TURNS = 6
+
+# 单条证据的长度上限。台词有时会飘成一大段，全塞进去会把最近那几轮挤掉
+EVIDENCE_CHARS = 100
+
+
 def _classify_payload(
     utterance: str, history: Sequence[Any], opening: str = ""
 ) -> str:
+    """分类请求的载荷。
+
+    ## 为什么要有"更早说过的话"这一段（P1-12）
+
+    在此之前这里**只取上一轮劝阻对象的回复**，于是扎根判据实际退化成了
+    "有没有引用上一句"。下面这些完全正当的劝阻动作会被判成未扎根：
+
+    - 引用两轮之前的事实（"你刚说三个月，那第一波是几月的事"）
+    - 总结跨轮的矛盾（这恰恰是 `expose_contradiction` 最强的形态）
+    - 把多处已披露的信息组合起来
+    - 回到一个此前没解决的问题
+
+    而扎根与否是 0.45 倍的折扣——判错它，玩家做对了最难的那件事却被扣分。
+
+    ## 为什么"上一轮"仍然单独占一段
+
+    它是主锚点，消歧规则和标注集都是照着它写的。把 12 轮平摊成一锅，
+    模型会开始拿三轮前的词去凑扎根，判据反而变松。所以结构是
+    **一个主锚点 + 一个背景池**，不是一个大上下文。
+
+    ## 单轮场景下这个函数的输出与改动前逐字节相同
+
+    标注集（tests/data/classification_set.jsonl）走的就是单轮路径
+    （`history=()` + `opening`）。多给一个字都会让那份标注集的
+    历史准确率不可比，而它是 §9.4 门槛的唯一依据。
+    """
     # 第 1 轮没有历史，可供扎根的只有开场白——不把它传进来，
     # 玩家开局说得再贴切也会被判成未扎根。
     last_reply = history[-1].reply if history else opening
-    return (
+    payload = (
         f"上一轮劝阻对象说：{last_reply or '（还没开口）'}\n"
         f"本轮玩家说：{utterance}"
     )
+
+    # 只有真的存在"更早"的时候才加这一段。少于两轮时输出与改动前完全一致
+    earlier = _evidence_pool(history, opening)
+    if not earlier:
+        return payload
+    return payload + "\n\n更早说过的话（可以作为扎根依据）：\n" + earlier
+
+
+def _evidence_pool(history: Sequence[Any], opening: str = "") -> str:
+    """更早那几轮劝阻对象说过的话，按轮次标号。
+
+    **只收劝阻对象那一侧。** 玩家自己说过的话不算扎根依据——
+    扎根判的是"有没有接住对方给的信息"，接住自己说过的话不算接住。
+    """
+    if len(history) < 2:
+        return ""
+    lines = []
+    if opening:
+        lines.append(f"- 开场：{opening[:EVIDENCE_CHARS]}")
+    # 去掉最后一轮：它已经作为主锚点单独给过了，重复给会让模型
+    # 把它当成"更早"，判据就糊了
+    for record in list(history[:-1])[-EVIDENCE_TURNS:]:
+        reply = (record.reply or "").strip()
+        if reply:
+            lines.append(f"- 第 {record.round} 轮：{reply[:EVIDENCE_CHARS]}")
+    return "\n".join(lines)

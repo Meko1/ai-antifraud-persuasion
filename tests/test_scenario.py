@@ -282,4 +282,31 @@ def test_下发给前端的那一份能序列化且不含判分参数(scene) -> 
     assert "mistimed_warning_moods" not in data
     assert data["id"] == scene.id
     assert data["client"]["facts"], "客户档案不能是空的"
-    assert data["money"]["total"] > data["money"]["test_transfer"] > 0
+    assert data["money"]["total"] > 0
+
+    # ── 揭晓内容不在开局那一份里（P1-14）──────────────────────────────────
+    #
+    # 他手机上那几条、每一条说明了什么、以及**收款方**，全部搬进了 `reveal()`。
+    # 收款方那一条最容易被忽略：它写着「转账给 启航财经-王」——
+    # **骗局的名字就在收款方里**，而"这是个什么局"正是玩家要挖出来的东西。
+    assert "phone" not in data, "揭晓清单不许在开局下发"
+    assert "payee" not in data["money"], "收款方带着骗局的名字，不许提前给"
+    assert "test_transfer" not in data["money"], "试水金额只有结算那一屏要用"
+
+    blob = json.dumps(data, ensure_ascii=False)
+    for row in scene.phone:
+        assert row.clue not in blob, f"线索泄露到开局响应里了：{row.clue[:20]}"
+
+
+@pytest.mark.parametrize("scene", 场景)
+def test_揭晓那一份带齐结算要用的东西(scene) -> None:
+    """搬走可以，搬丢了不行——复盘那一屏要的每一样都得在 `reveal()` 里。"""
+    import json
+
+    data = scene.reveal()
+    json.dumps(data, ensure_ascii=False)
+
+    assert data["phone"], "揭晓清单不能是空的"
+    assert all(r["clue"] for r in data["phone"]), "每一条都要说明它意味着什么"
+    assert data["money"]["payee"]
+    assert scene.total > data["money"]["test_transfer"] > 0

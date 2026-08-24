@@ -34,6 +34,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from tools.console import FAIL, guard
 import httpx
 
 DEFAULT_BASE_URL = "http://127.0.0.1:21818"
@@ -236,6 +237,8 @@ def check_threshold(report: Report) -> List[str]:
 
 
 def main() -> int:
+    # GBK 终端上打印不出来的字符降级成 ?，而不是让整个跑批崩掉
+    guard()
     parser = argparse.ArgumentParser(description="并发压测（§10.3）")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="被测服务地址")
     parser.add_argument("--concurrency", type=int, default=50, help="并发对局数")
@@ -266,7 +269,7 @@ def main() -> int:
     if failures:
         print("§9.4 门槛未通过：")
         for f in failures:
-            print(f"  ✗ {f}")
+            print(f"  {FAIL} {f}")
         return 1
 
     print(f"§9.4 首句延迟门槛通过（P95 ≤ {P95_CEILING_SECONDS}s）")

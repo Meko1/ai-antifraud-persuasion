@@ -94,9 +94,13 @@ python -m tools.classify_eval --model <另一个模型> --protocol openai \
 输出安全层、24 个人格变体、复盘与分享卡全部在线。
 
 ```bash
-python -m pytest                          # 551 个测试，约 60 秒，不调外部 API
-node --test tests/frontend/*.test.mjs   # 26 个前端测试，零 npm 依赖
+python -m pytest                        # 约 60 秒，不调外部 API
+node --test tests/frontend/*.test.mjs   # 前端，零 npm 依赖
 ```
+
+> **这里不写测试数量。** 写了就得在每次加测试时记得改，而实测它从来没被改对过——
+> 2026-08-23 复核时 README、PIVOT、HANDOFF 三处各写着一个不同的、都已经过时的数。
+> 要看当前有多少条，跑一下就知道；CI 每次 push 也会跑。
 
 **但端到端不是确定性的**：规则表吃的标签由模型分类器给出，而 `claude-opus-5` 上
 `temperature` 已废弃（§6.4），分类因此不可复现。这是本作品最容易被误读的一句话，

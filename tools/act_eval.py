@@ -48,6 +48,7 @@ from itertools import combinations
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from tools.console import FAIL, guard
 from app.persona import opening_for
 from app.safety import screen_sentence
 from app.scenario import DEFAULT, SCENARIOS, Scenario, scenario_for
@@ -688,6 +689,8 @@ async def measure_drift(
 
 
 def main() -> int:
+    # GBK 终端上打印不出来的字符降级成 ?，而不是让整个跑批崩掉
+    guard()
     parser = argparse.ArgumentParser(description="演绎跑批（会真实调用模型）")
     parser.add_argument("--routes-file", type=Path, default=DEFAULT_ROUTES_PATH)
     parser.add_argument(
@@ -795,7 +798,7 @@ def main() -> int:
     if failures:
         print("门槛未通过：")
         for f in failures:
-            print(f"  ✗ {f}")
+            print(f"  {FAIL} {f}")
         return 1
     if FIRST_DUP_CEILING is None:
         print("（首句重复与复述反问的门槛尚未标定，本次只出数字）")

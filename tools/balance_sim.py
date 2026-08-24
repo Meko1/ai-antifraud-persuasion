@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Dict, List, Sequence, Tuple
 
+from tools.console import FAIL, OK, guard
 from app.scenario import SCENARIOS, Scenario
 from app.scoring import (
     BLUNT,
@@ -504,13 +505,15 @@ def format_best_keys() -> str:
     ))
     lines.append(
         f"最接近的一对是 {worst[0]}/{worst[1]}（{worst[2]}/4）。"
-        + ("✅ 场景是可迁移的" if worst[2] >= 2
-           else "✗ 这两个场景最优解几乎一样——后一个没有存在的必要")
+        + (f"{OK} 场景是可迁移的" if worst[2] >= 2
+           else f"{FAIL} 这两个场景最优解几乎一样——后一个没有存在的必要")
     )
     return "\n".join(lines)
 
 
 def main() -> int:
+    # GBK 终端上打印不出来的字符降级成 ?，而不是让整个跑批崩掉
+    guard()
     parser = argparse.ArgumentParser(description="判分引擎平衡验证")
     parser.add_argument("--games", type=int, default=20000, help="每个人设的局数")
     parser.add_argument("--seed", type=int, default=SEED, help="随机种子")
@@ -548,7 +551,7 @@ def main() -> int:
             failed = True
             print(f"§9.4 门槛未通过（{scene.id}）：")
             for f in failures:
-                print(f"  ✗ {f}")
+                print(f"  {FAIL} {f}")
         else:
             print(f"§9.4 门槛全部通过（{scene.id}）")
 

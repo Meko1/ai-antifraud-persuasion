@@ -15,13 +15,31 @@ from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Protocol
 
 import logging
 
-from .classify import Classification, parse_classification
+from .classify import Classification, evidence_present, parse_classification
 from .fallback import ending_fallback, fallback_line
+from .guard import breaker
 from .scenario import scenario_for
 from .safety import SAFE_FALLBACK, absorb_injection, screen_sentence
-from .scoring import MAX_ROUNDS, Ending, Mood, evaluate_turn, mood_for, under_pressure
+from .scoring import (
+    MAX_ROUNDS,
+    Ending,
+    Mood,
+    evaluate_turn,
+    is_finished,
+    mood_for,
+    under_pressure,
+)
 from .state_token import Session, TurnRecord, sign_session
 from .streaming import SentenceBuffer
+
+
+class SessionFinished(Exception):
+    """拿一张已经收过场的令牌继续推进。
+
+    它是**状态机约束**，不是用户错误也不是服务端故障，所以既不降级也不兜底：
+    这一局的最后一屏已经发出去了，再发一轮就会重复写一次终局和统计，
+    而前端与服务端对"这一局有几轮"的认识会就此分叉。
+    """
 
 
 class Gateway(Protocol):
@@ -79,11 +97,16 @@ async def _classified(task: "asyncio.Task[str]", *, timeout: float) -> Optional[
     留在聊天记录里，令牌却停在上一轮，服务端当这一轮压根没发生过。
     """
     try:
-        return parse_classification(await asyncio.wait_for(task, timeout))
+        result = parse_classification(await asyncio.wait_for(task, timeout))
+        # 解析不出来也算一次故障：模型返回了东西，但格式对不上（P1-11 的严格
+        # schema 会在格式漂移时返回 None）。那和超时一样，都是"这一轮判不了分"
+        breaker.record(ok=result is not None)
+        return result
     except asyncio.TimeoutError:
         logger.warning("分类超时（L2 降级），本轮按中性判分")
     except Exception:  # noqa: BLE001 - 网关抛什么都不该让这一轮作废
         logger.exception("分类失败（L2 降级），本轮按中性判分")
+    breaker.record(ok=False)
     return None
 
 
@@ -146,6 +169,17 @@ async def play_turn(
     classify_timeout: float = CLASSIFY_TIMEOUT_SECONDS,
 ) -> AsyncIterator[Event]:
     state = session.state
+    # **终局封口。** 这一条要在任何副作用之前——分类请求、演绎请求、统计、
+    # 语料，一样都不能因为一张过期的令牌再发生一次。
+    #
+    # HTTP 层也拦一道（`main._turn_events`）。两层不是冗余：引擎这一层保护的是
+    # 直接调 `play_turn` 的调用方（跑批、蒙特卡洛、将来的其他入口），
+    # HTTP 那一层保护的是"根本不该走到引擎"的请求。
+    if is_finished(state):
+        raise SessionFinished(
+            f"这一局已经结束（round={state.round}, trust={state.trust}）"
+        )
+
     round_ = state.round + 1
     # 场景由令牌里的 sid 取回（ADR-0003：服务端不存任何东西）。
     # 它决定演什么、兜底说什么，以及**此刻哪一招管用**（效力矩阵）。
@@ -252,6 +286,17 @@ async def play_turn(
         hit_keys = classification.hit_keys if classification else ()
         grounded = classification.grounded if classification else False
 
+    # 模型说它扎根在哪一句上（P1-12）。**不参与判分**——它进语料，
+    # 给将来人工复核这批标签时当线索用。`evidence_present` 只写日志，
+    # 理由见 classify.Classification.evidence 上面那段
+    evidence = classification.evidence if classification else ""
+    if evidence and grounded:
+        pool = session.opening + "".join(r.reply for r in session.history)
+        if evidence_present(evidence, pool) is False:
+            logger.info(
+                "分类给的引文在对话里找不到（不改分，只记一笔）: %r", evidence[:40]
+            )
+
     outcome = evaluate_turn(
         state,
         hit_keys=hit_keys,
@@ -279,6 +324,9 @@ async def play_turn(
             "window_opened": outcome.window_opened,
             "hits": list(hit_keys),
             "grounded": grounded,
+            # 只为落进语料，前端一个字都不显示——对局中显示"你引用了这一句"
+            # 等于把扎根判据摊在玩家面前，那正是攻略化的开始
+            "evidence": evidence,
             "pool": outcome.state.pool,
             # 信任流失与蓄势池释放。少了这两个，复盘上的账对不上：
             # 「第 3 轮 23 分，第 4 轮 +18」，结果却是 39——玩家会去算 23+18=41
@@ -355,6 +403,11 @@ async def play_turn(
                     key: {mood.value: row[mood] for mood in Mood}
                     for key, row in scene.efficacy.items()
                 },
+                # **隐藏线索在这里下发，不在开局**（P1-14）。
+                # 他手机上那几条是这一局要挖的答案；开局响应里带着它，
+                # 打开开发者工具就能提前看完。挪到这一刻，对正常玩家
+                # 没有任何差别——他本来也是打完才看见的。
+                **scene.reveal(),
             },
         )
 
@@ -366,6 +419,9 @@ async def play_turn(
         # 开场白要一路带下去：服务端不存任何东西，令牌里没有的就是永远没有了，
         # 复盘要靠它才能还原出完整的对话
         opening=session.opening,
+        # 开局上下文同理。掉了它，第 2 轮起这一局就不再属于任何一条异动、
+        # 任何一个实验组——而那正是转向之后要算的第一个数
+        origin=session.origin,
     )
     yield Event(
         "state", {"token": sign_session(next_session, secret=secret, issued_at=now)}

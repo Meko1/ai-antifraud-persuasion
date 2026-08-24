@@ -192,6 +192,15 @@ function savedAmount(kind) {
  * 只是不再自称是业务结果。真实处置差哪几步，写在复盘末尾那张清单里。
  */
 function resultAmount(kind) {
+  // 主动结束：**这一局没有走到任何一个结局，所以它没有资金状态。**
+  //
+  // 在此之前没有这个分支，`openReview` 拿不到 ending 就落到 `'transferred'`——
+  // 于是一个第 3 轮自己点"结束"的用户，会看到"¥300,000 已全部转出"。
+  // 那是一句凭空捏造的结果，而且是最伤人的那种：他什么都没做错，
+  // 系统告诉他钱没了。
+  if (kind === 'unfinished') {
+    return { value: '未产生结果', label: '这次对话由你主动结束，没有走到结局' };
+  }
   if (kind === 'persuaded') {
     return { value: wholeMoney(TOTAL()), label: '他最后没按下确认' };
   }
@@ -221,6 +230,8 @@ function resultAmount(kind) {
 const RECEIPT = {
   persuaded: 'void', intercepted: 'sent', stalled: 'hold',
   transferred: 'sent', blacklisted: null,
+  // 主动结束不出凭证：那张卡说的是"这笔钱最后怎么了"，而这一局没走到那一步
+  unfinished: null,
 };
 
 // 复盘页的四色语义（设计稿的 data-tone）。见 openReview 里那段注。
@@ -230,9 +241,54 @@ const TONES = {
   stalled: 'plain',
   transferred: 'rust',
   blacklisted: 'rust',
+  // 中性灰。**不给红**：主动退出不是失败，它是这个产品明确允许的动作
+  // （定位文档：不做成必须通过才能交易的障碍）。用红色标它，
+  // 等于一边给退出按钮、一边惩罚按下去的人
+  unfinished: 'plain',
 };
 
+// 结算卡上那个大数的**出处**。
+//
+// 上面那个金额来自模拟信任度跨没跨过一条线（app/scoring.py 的结局阶梯），
+// 不来自任何交易系统。代码里早就在注释中承认了这一点
+// （`resultAmount` 顶部那段"「确认保住」这四个字 8-22 拿掉了"），
+// **但界面上从来没说过**——玩家看到的仍然是一个三十万的大数配一句
+// "他最后没按下确认"，读起来就是"这个产品挽回了三十万"。
+//
+// 分两种情况说，因为它们的性质确实不同：
+// · 走到结局的 —— 那是**虚构客户的反应**，是模拟出来的
+// · 主动结束的 —— 压根没有结果，别装作有
+const RESULT_BASIS = {
+  unfinished:
+    '这一局没有走到结局，因此没有资金状态。真实交易是否取消，只能由交易系统回传。',
+  // 走 textContent，所以这里不写 markdown 记号——写了会原样印在页面上
+  default:
+    '上面这个状态是虚构客户在本次模拟中的反应，由对话判分推算得出，'
+    + '不是真实交易结果。真实资金状态以交易系统回传为准。',
+};
+
+/** 这一局按哪个结局来复盘。
+ *
+ * **只此一份。** 原先三处各写一遍 `game.ending ? game.ending.kind : 'transferred'`，
+ * 那个兜底值在"打满十二轮但事件丢了"的场景下是对的，在"用户主动结束"
+ * 的场景下是一句谎话。判据集中到这里，三处就不会各自漂移。
+ */
+function reviewKind() {
+  if (game.ending) return game.ending.kind;
+  return game.exited ? 'unfinished' : 'transferred';
+}
+
 function endingMeta(kind) {
+  if (kind === 'unfinished') {
+    const n = game.turns.length;
+    return {
+      tier: '未完成',
+      title: n ? `你在第 ${n} 轮结束了这次对话` : '你没有开始这次对话',
+      savedCopy: '下面是你已经说过的那几轮，判分照常。',
+      receipt: null,
+      amount: 0,
+    };
+  }
   const copy = (SCENE && SCENE.endings[kind]) || {};
   return {
     tier: copy.tier || '转账',
@@ -274,6 +330,14 @@ const game = {
   quote: null,    // 分享卡上那句话 {round, text}
   busy: false,
   entered: false,
+  // 这一局是被什么触发的、属于哪个实验组、是不是演示态（服务端下发）
+  origin: null,
+  // 可选客户清单。**只有演示态才有内容**——真实接入时场景由用户自己
+  // 那笔异动决定，界面上不该出现"换一位客户"
+  catalog: [],
+  // 用户主动结束了这次对话。它让复盘走 `unfinished` 那一档：
+  // 判分照常，但不编造一个资金结局（见 reviewKind / resultAmount）
+  exited: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -297,6 +361,10 @@ const thread = $('thread');
 const RESUME_KEY = 'aap.game.v1';
 const RESUME_TTL_MS = 2 * 60 * 60 * 1000;
 
+// 「换一位客户」挑中的那一位，交给下一次加载。用 sessionStorage 不用 URL 参数：
+// 它是一次性的意图，不该留在地址栏里被分享或被刷新重放。
+const PICK_KEY = 'aap.pick.sid';
+
 function saveGame() {
   if (!game.token || !SCENE) return;
   try {
@@ -309,6 +377,9 @@ function saveGame() {
         trust: game.trust, mood: game.mood, threshold: game.threshold,
         maxRounds: game.maxRounds, remaining: game.remaining,
         turns: game.turns, ending: game.ending, quote: game.quote,
+        // 续局要还原"他已经主动结束过了"，否则刷新一次退出就被撤销了，
+        // 而复盘会重新落回那个凭空捏造的 transferred
+        exited: game.exited, origin: game.origin, catalog: game.catalog,
       },
     }));
   } catch {
@@ -391,10 +462,138 @@ function resumeGame(saved) {
     (game.ending.lines || []).forEach((line) => say('them', line));
     $('composer').hidden = true;
     openReview();
+  } else if (game.exited) {
+    // 他主动结束过，然后刷新了。**退出这个决定不该被一次刷新撤销**——
+    // 复盘照旧走 unfinished 那一档，不编造资金结局
+    $('composer').hidden = true;
+    openReview();
   } else {
     syncSend();   // 续局回来输入框是空的，发送键就该是灰的
     $('say').focus();
   }
+  paintClientPicker();
+}
+
+// ── 底部动作面板 ──────────────────────────────────────────────────────────
+//
+// 退出、七种问法、换客户三处共用这一个实现。写三遍的代价不是重复代码，
+// 是**三套焦点处理里必然有一套是错的**——而弹层的焦点做错，键盘用户会
+// 直接被困在背景里，屏幕阅读器读的还是下面那一屏。
+//
+// 它管四件事，一件都不能少：
+//   1. 焦点移进面板（打开时落在第一个可聚焦元素上）
+//   2. Tab / Shift+Tab 在面板内循环，出不去
+//   3. Esc 关闭 —— 这是"用户控制"最基本的那一下
+//   4. 关闭后焦点回到打开它的那个按钮，不是回到 body
+
+const sheetHost = $('sheetHost');
+let sheetCloser = null;
+
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+
+/** 打开一个底部面板。返回一个关掉它的函数。
+ *
+ *  `items` 里每一项是 {label, note, onPick, tone}。tone 只影响配色，
+ *  'danger' 给那些走了就回不来的动作。
+ */
+function openSheet({ title, note, items, onClose }) {
+  closeSheet();
+
+  const opener = document.activeElement;
+  const panel = document.createElement('div');
+  panel.className = 'sheet';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-label', title);
+
+  const head = document.createElement('div');
+  head.className = 'sheet-head';
+  const h = document.createElement('h2');
+  h.textContent = title;
+  head.appendChild(h);
+  if (note) {
+    const p = document.createElement('p');
+    p.textContent = note;
+    head.appendChild(p);
+  }
+  panel.appendChild(head);
+
+  const list = document.createElement('div');
+  list.className = 'sheet-list';
+  items.forEach((item) => {
+    // 纯展示项（七种问法那一层）不做成按钮：一个按下去什么都不发生的
+    // 控件，比一段普通文字更难懂
+    const node = document.createElement(item.onPick ? 'button' : 'div');
+    node.className = 'sheet-item' + (item.tone ? ` ${item.tone}` : '');
+    if (item.onPick) {
+      node.type = 'button';
+      node.onclick = () => { closeSheet(); item.onPick(); };
+    }
+    const b = document.createElement('b');
+    b.textContent = item.label;
+    node.appendChild(b);
+    if (item.note) {
+      const s = document.createElement('span');
+      s.textContent = item.note;
+      node.appendChild(s);
+    }
+    list.appendChild(node);
+  });
+  panel.appendChild(list);
+
+  const cancel = document.createElement('button');
+  cancel.className = 'sheet-cancel';
+  cancel.type = 'button';
+  cancel.textContent = '取消';
+  cancel.onclick = () => closeSheet();
+  panel.appendChild(cancel);
+
+  sheetHost.replaceChildren(panel);
+  sheetHost.hidden = false;
+  sheetHost.onclick = (e) => { if (e.target === sheetHost) closeSheet(); };
+
+  const onKey = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSheet();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    // 焦点捕获。少了它，Tab 会走到背景那一屏的输入框上，
+    // 而背景在视觉上是被盖住的——用户看不见光标去了哪儿
+    const nodes = [...panel.querySelectorAll(FOCUSABLE)];
+    if (!nodes.length) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener('keydown', onKey, true);
+
+  (panel.querySelector(FOCUSABLE) || panel).focus({ preventScroll: true });
+
+  sheetCloser = () => {
+    document.removeEventListener('keydown', onKey, true);
+    sheetHost.hidden = true;
+    sheetHost.replaceChildren();
+    sheetHost.onclick = null;
+    sheetCloser = null;
+    // 焦点回到打开它的那个按钮。不还回去的话，键盘用户下一次 Tab
+    // 会从文档开头重新走一遍
+    if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+    if (onClose) onClose();
+  };
+  return sheetCloser;
+}
+
+function closeSheet() {
+  if (sheetCloser) sheetCloser();
 }
 
 // ── SSE over POST ───────────────────────────────────────────
@@ -822,6 +1021,11 @@ async function playTurn(utterance) {
         score = ev.data;
       } else if (ev.name === 'ending') {
         game.ending = ev.data;
+        // 揭晓数据在这一刻才到（P1-14）：收款方与试水金额开局不下发，
+        // 因为**骗局的名字就写在收款方里**（「转账给 启航财经-王」），
+        // 而"这是个什么局"正是这一局要挖的东西。
+        // 合进 SCENE，下面 `receipt()` 与结算金额那几处的取值方式一行不用改。
+        if (ev.data.money && SCENE) Object.assign(SCENE.money, ev.data.money);
       } else if (ev.name === 'state') {
         game.token = ev.data.token;
       } else if (ev.name === 'error') {
@@ -915,7 +1119,7 @@ function failTurn(code) {
     $('composer').hidden = true;
     const again = document.createElement('button');
     again.textContent = '重开一局';
-    again.onclick = startNewClient;   // 清存档再重载，别把这一局又续回来
+    again.onclick = () => startNewClient();  // 清存档再重载，别把这一局又续回来
     sysnote([code === 'replayed' ? '这一局没法接着打了' : '这一局放得太久了', again], true);
     return;
   }
@@ -1005,7 +1209,7 @@ async function finish() {
 
 /** 用逐轮数据说一句具体的话。失败的结局也要能说出玩家做对了什么。 */
 function verdictCopy() {
-  const kind = game.ending ? game.ending.kind : 'transferred';
+  const kind = reviewKind();
   const best = game.turns.reduce(
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
   const parts = [];
@@ -1197,7 +1401,7 @@ function openReview() {
     (p) => game.turns.some((t) => t.hits.includes(p)));
   const best = game.turns.reduce(
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
-  const kind = game.ending ? game.ending.kind : 'transferred';
+  const kind = reviewKind();
   const meta = endingMeta(kind);
 
   const view = document.createElement('section');
@@ -1234,6 +1438,12 @@ function openReview() {
         <div class="savedamt num"></div>
         <div class="savedcap"></div>
         <div class="saved"></div>
+        <!-- **这一行是这一屏上最重要的一句话。**
+             上面那个大数来自模拟信任度跨没跨过一条线，而不是任何一个
+             交易系统的回传。不写清楚，玩家和评委都会读成"这个产品
+             挽回了三十万"——那是这个作品最容易被误读、也最不该被误读的一处。
+             判分闭集里七把钥匙全是问法，没有任何一把是"拦住这笔转账"。 -->
+        <p class="result-basis" id="resultBasis"></p>
       </section>
 
       <div class="scoreline">
@@ -1348,6 +1558,11 @@ function openReview() {
           </div>
         </details>
         <button class="restart-action" id="restart" type="button">开始一位新客户</button>
+        <!-- 「换一位」只在演示态出现（catalog 为空时隐藏）。
+             它和上面那个按钮的区别是**挑不挑**：随机来一位是默认，
+             想再打一遍某个场景不该靠反复重开去抽。 -->
+        <button class="ghost-action wide" id="pickAnother" type="button"
+                aria-haspopup="dialog" hidden>换一位客户</button>
       </div>
     </div>`;
 
@@ -1364,6 +1579,7 @@ function openReview() {
   view.querySelector('.summary .savedamt').textContent = result.value;
   view.querySelector('.summary .savedcap').textContent = result.label;
   view.querySelector('.summary .saved').textContent = meta.savedCopy;
+  view.querySelector('#resultBasis').textContent = RESULT_BASIS[kind] || RESULT_BASIS.default;
   view.querySelector('.result-review .copy').innerHTML = verdictCopy();
   paintReviewRows(view);
 
@@ -1458,7 +1674,10 @@ function openReview() {
   paintStats(view, kind);
   paintHistory(view, kind);
 
-  view.querySelector('#restart').onclick = startNewClient;
+  view.querySelector('#restart').onclick = () => startNewClient();
+  const another = view.querySelector('#pickAnother');
+  another.hidden = !(game.catalog && game.catalog.length > 1);
+  another.onclick = openClientSheet;
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
   view.querySelector('#reviewDetails').addEventListener('toggle', (event) => {
@@ -1605,7 +1824,13 @@ function paintBreaches(view) {
 // `test` 是正则源码字符串，在这儿编译。判据仍然是"**他**说没说过"，
 // 匹配跑在劝阻对象的台词上，与扎根同源。
 function phoneRows() {
-  return (SCENE ? SCENE.phone : []).map((r) => ({
+  // **数据源是 ending，不是 SCENE**（P1-14）。这几条是这一局要挖的答案，
+  // 开局响应里不再带着它们——否则打开开发者工具就能提前看完。
+  //
+  // 主动结束那一档没有 ending，因此这里是空的，而那是对的：他没打完，
+  // 揭晓清单里"哪几条他跟你说了"本来就无从谈起（`paintPhone` 会把整节收掉）。
+  const rows = (game.ending && game.ending.phone) || [];
+  return rows.map((r) => ({
     cls: r.avatar,
     text: r.initial,
     name: r.name,
@@ -1634,6 +1859,13 @@ function paintPhone(view) {
   const box = view.querySelector('#phoneList');
   const speech = hisSpeech();
   const rows = phoneRows();
+  // 没走到结局就没有揭晓清单（主动结束那一档）。**整节收掉，不留一个空面板**——
+  // 一个写着标题却什么都没有的区块，读起来像是坏了
+  if (!rows.length) {
+    const wrap = box.closest('.group');
+    if (wrap) wrap.hidden = true;
+    return;
+  }
   const diggable = rows.filter((x) => !x.own);
   const TA = peerPronoun();
   // 标题也随场景走。原先写死「老陈的手机」，周淑琴那一局照样这么印
@@ -1989,7 +2221,9 @@ function percentileHeadline(pct) {
 
 async function paintStats(view, kind) {
   // 被拉黑是提前出局，不属于四档完整对局，不拿 0 分和完成对局比较。
-  if (kind === 'blacklisted') return;
+  // 主动结束同理，而且更明显：他自己按下的结束，拿它跟打满的人比排名，
+  // 量出来的是"谁打得久"，不是"谁劝得好"。
+  if (kind === 'blacklisted' || kind === 'unfinished') return;
   let data;
   try {
     // **必须带 sid**：信任度分布按场景分开存（app/stats.py `key_trust`）。
@@ -1997,8 +2231,11 @@ async function paintStats(view, kind) {
     // 混在一起比，量出来的是"你抽到的场景是难是易"，不是你打得好不好。
     // 不带这个参数会读到空的默认桶，百分位于是永远不显示——**静默失效**，
     // 页面上看不出任何异常，所以这行不能省。
+    // **口径也要带**：演示态的局跟演示态的比，真实接入的局跟真实接入的比
+    // （app/stats.py `data_mode`）。混着比，那句"高于同场景 X%"就不成立了。
     const sid = encodeURIComponent(SCENE ? SCENE.id : '');
-    data = await (await fetch(`api/stats?sid=${sid}`)).json();
+    const src = encodeURIComponent(game.origin ? game.origin.source || '' : '');
+    data = await (await fetch(`api/stats?sid=${sid}&source=${src}`)).json();
   } catch (e) {
     return;
   }
@@ -2213,7 +2450,7 @@ function makeCard(view) {
   const pad = 40;
   const contentW = W - pad * 2;
   const c = palette();
-  const kind = game.ending ? game.ending.kind : 'transferred';
+  const kind = reviewKind();
   const meta = endingMeta(kind);
   const best = game.turns.reduce(
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
@@ -2390,9 +2627,25 @@ const assignmentStartedAt = Date.now();
 let startError = null;
 
 async function loadGame() {
-  const resp = await fetch('api/game/start', { method: 'POST' });
+  // 挑中的那一位客户（「换一位客户」按钮存下的）。**读完就清**：
+  // 它是一次性的意图，留着的话下一次刷新会莫名其妙又是同一个人。
+  let picked = '';
+  try {
+    picked = sessionStorage.getItem(PICK_KEY) || '';
+    sessionStorage.removeItem(PICK_KEY);
+  } catch { /* 隐私模式：随机来一位 */ }
+
+  const resp = await fetch('api/game/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // **不挑的时候也发一个空对象**：走的是和真实接入完全相同的那条
+    // 服务端逻辑（app/trigger.py），生产那条路径才不会长年没人走过
+    body: JSON.stringify(picked ? { sid: picked } : {}),
+  });
   if (!resp.ok) throw new Error(`start failed: ${resp.status}`);
   const data = await resp.json();
+  game.origin = data.origin || null;
+  game.catalog = data.catalog || [];
   game.token = data.token;
   game.opening = data.opening;
   game.trust = data.trust;
@@ -2417,7 +2670,20 @@ async function loadGame() {
   game.notice = data.notice || '';
   paintDesk();
   paintOpening();
+  paintClientPicker();
   saveGame();
+}
+
+/** 「换一位客户」只在演示态出现。
+ *
+ *  判据是服务端下发的 `catalog` 有没有内容——真实接入时它是空数组
+ *  （app/main.py 的 `game_start`），前端不自己判断这件事：
+ *  "什么时候允许挑客户"是业务规则，规则只该有一处。
+ */
+function paintClientPicker() {
+  const btn = $('pickClient');
+  if (!btn) return;
+  btn.hidden = !(game.catalog && game.catalog.length > 1);
 }
 
 const ready = (async () => {
@@ -2632,11 +2898,147 @@ async function enterGame() {
   $('say').focus();
 }
 
-function startNewClient() {
+function startNewClient(sid) {
   // **必须先清。** 它走的是 location.reload()，而启动那一步现在会优先续局——
   // 不清的话这个按钮会把刚打完的那一局原样再放一遍
   clearSaved();
+  // 指定客户时把它交给下一次加载。用 sessionStorage 而不是 URL 参数：
+  // 这是一次性的意图，不该留在地址栏里被分享出去或被刷新重放
+  try {
+    if (typeof sid === 'string' && sid) sessionStorage.setItem(PICK_KEY, sid);
+    else sessionStorage.removeItem(PICK_KEY);
+  } catch { /* 隐私模式：那就随机来一位，不影响任何别的东西 */ }
   location.reload();
+}
+
+// ── 用户控制：退出、暂停、提前结束 ────────────────────────────────────────
+//
+// **在此之前这一屏没有任何出口。** 十二轮打完之前，页面上只有输入框和
+// 发送键——而定位文档写着"不做成必须通过才能交易的障碍"。
+// 一个关不掉的弹窗，在真实的转账前场景里换来的是投诉，不是反思。
+//
+// 三条出路，对应三种真实意图，一个都不能省：
+//
+// · **稍后继续** —— 他想去看一眼真实的转账页面再回来。这是最该被支持的
+//   那一种，而且已经有现成的机制（sessionStorage 续局），此前只是没有入口。
+// · **结束并看复盘** —— 他觉得说完了。**这一条是"不必打完整局"的落点**：
+//   已经打的那几轮判分照常、复盘照常，只是不编造一个资金结局。
+// · **直接离开** —— 他不想要这个东西。**不设挽留、不加二次确认。**
+//   在退出路径上放障碍，正是这条定位明确要避免的事。
+//
+// 三条都会向服务端报一笔（`/api/game/exit`），那是护栏指标：
+// 直接关闭率、中断率是判断这个干预有没有伤到用户的第一组数。
+
+/** 把退出这件事告诉服务端。**绝不能挡住退出本身**——所以不 await、不看结果。 */
+function reportExit(reason) {
+  if (!game.token) return;
+  try {
+    const body = JSON.stringify({ token: game.token, reason });
+    // sendBeacon 在页面正在卸载时也送得出去，fetch 不一定。
+    // 拿不到（老浏览器）就退回 fetch + keepalive
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('api/game/exit', new Blob([body], { type: 'application/json' }));
+    } else {
+      fetch('api/game/exit', {
+        method: 'POST', body, keepalive: true,
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => {});
+    }
+  } catch { /* 埋点失败就失败，用户该走还是走 */ }
+}
+
+function openExitSheet() {
+  const played = game.turns.length;
+  openSheet({
+    title: '离开这次对话',
+    note: played
+      ? `已经进行了 ${played} 轮。这一局会给你留着，随时可以回来。`
+      : '还没开始。随时可以离开，不需要理由。',
+    items: [
+      {
+        label: '稍后继续',
+        note: '这一局给你留着。回到这个页面就接着打。',
+        onPick: () => { reportExit('abandoned'); showScreen('opening'); },
+      },
+      {
+        label: played ? '就到这儿，看复盘' : '就到这儿',
+        note: played
+          ? '不再继续，直接看这几轮的复盘。已经打的轮次照常判分。'
+          : '一轮都没打，没有可复盘的内容。',
+        onPick: () => (played ? endEarly() : leaveIntervention()),
+      },
+      {
+        label: '直接离开',
+        note: '关掉这次干预，不看复盘。',
+        tone: 'danger',
+        onPick: leaveIntervention,
+      },
+    ],
+  });
+}
+
+/** 主动结束并看复盘。**不发请求，不推进任何状态。**
+ *
+ *  这一局在服务端仍然停在原地——令牌没被消费，理论上他回来还能接着打。
+ *  前端这一侧把它标成"已结束"，复盘据此走 `unfinished` 那一档：
+ *  判分照常，**但不编造一个资金结局**（见 resultAmount 里那个分支）。
+ */
+function endEarly() {
+  game.exited = true;
+  game.busy = false;
+  reportExit('finished_early');
+  $('composer').hidden = true;
+  const tip = document.createElement('p');
+  tip.className = 'strangertip';
+  tip.textContent = '你结束了这次对话。这笔钱最后怎么样，本次模拟没有给出结果。';
+  thread.appendChild(tip);
+  saveGame();
+  openReview();
+}
+
+/** 退出这次干预，回到开场那一屏。
+ *
+ *  **不清存档**：他可能只是想喘口气。真要重开有"开始一位新客户"那个按钮，
+ *  而一个不小心点到退出就丢掉十轮对话的产品，只会让人再也不敢点任何东西。
+ */
+function leaveIntervention() {
+  reportExit(game.turns.length ? 'abandoned' : 'dismissed');
+  showScreen('opening');
+}
+
+/** 七种问法：对局中随时翻回来看。**识别优于回忆。**
+ *
+ *  只给名字和 `brief`，**不给 `tip`**——那两句话的分界写在 KEYS 顶部：
+ *  词汇是课程，时机是答案。开打前讲时机就是泄题，对局中讲更是。
+ */
+function openMethodsSheet() {
+  openSheet({
+    title: '你手里有这七种问法',
+    note: '什么时候用哪一种，这里不会告诉你——那正是这一局要练的。',
+    items: Object.keys(KEYS).map((k) => ({
+      label: KEYS[k].name,
+      note: KEYS[k].brief,
+    })),
+  });
+}
+
+/** 换一位客户。**只在演示态出现**（见 index.html 里那段注）。 */
+function openClientSheet() {
+  const list = (game.catalog || []).filter((c) => !SCENE || c.id !== SCENE.id);
+  if (!list.length) return;
+  openSheet({
+    title: '换一位客户',
+    note: '换人会重开一局。当前这一局不会保留。',
+    items: list.map((c) => ({
+      label: `${c.client} · ${c.name}`,
+      note: c.headline,
+      onPick: () => startNewClient(c.id),
+    })).concat([{
+      label: '随机一位',
+      note: '和真实接入时一样，由系统按异动类型分配。',
+      onPick: () => startNewClient(''),
+    }]),
+  });
 }
 
 // 它现在是个真 <button>，回车与空格由浏览器自己管，不用再补 keydown
@@ -2651,7 +3053,14 @@ $('openChen').addEventListener('click', enterGame);
 $('backHome')?.addEventListener('click', () => showScreen('home'));
 $('openProfile').addEventListener('click', () => showScreen('home'));
 $('backOpening').addEventListener('click', () => showScreen('opening'));
-$('retryStart').addEventListener('click', startNewClient);
+// `startNewClient` 现在收一个可选的 sid，而事件回调的第一个参数是 Event——
+// 直接挂上去会把一个 MouseEvent 当成场景 id。包一层
+$('retryStart').addEventListener('click', () => startNewClient());
+$('pickClient')?.addEventListener('click', openClientSheet);
+
+// 用户控制那三个入口
+$('chatExit').addEventListener('click', openExitSheet);
+$('openMethods').addEventListener('click', openMethodsSheet);
 
 $('composer').addEventListener('submit', (e) => {
   e.preventDefault();

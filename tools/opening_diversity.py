@@ -77,7 +77,7 @@ def format_report(sessions: Tuple[int, ...] = DEFAULT_SESSIONS) -> str:
     )
     lines.append(
         "表里的 K 局，指的是落到**这一个**场景的局数，不是玩家总共打了几局——"
-        f"场景从 2 个增加到 {len(SCENARIOS)} 个之后（`pick_scenario` 均匀分布），"
+        f"场景从 2 个增加到 {len(SCENARIOS)} 个之后（`scenario_for_trigger` 按异动类型分配），"
         f"打 K 局总数，落到某一个场景平均只有 K/{len(SCENARIOS)} 局，实际撞车率"
         "比表面数字更低。这也是当初把新场景至少设两个、而不是一个的理由之一。"
     )

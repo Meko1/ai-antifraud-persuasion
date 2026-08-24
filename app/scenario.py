@@ -168,11 +168,23 @@ class Scenario:
         return merged
 
     def payload(self) -> Dict[str, Any]:
-        """下发给前端的那一份。
+        """下发给前端的那一份。**开局时下发的那一份，不含隐藏线索。**
 
         **前端不再写死任何剧本常量。** 金额、收款方、客户档案、揭晓清单
         原先散在 `app.js` 与 `index.html` 里，加第二个场景时那些地方
         没有一处会提醒你漏改了。
+
+        ## `phone` 为什么搬走了（P1-14）
+
+        揭晓清单（他手机上那几条：荐股群、银行短信、家人、反诈中心）
+        **是这一局要挖的东西本身**，而开局响应把它连同 `clue`（"这一条说明了
+        什么"）一起发给了浏览器。任何人打开开发者工具就能提前看到全部答案。
+
+        比赛里这是公平问题；接进真实业务之后这是**实验数据可信度**问题——
+        一批"看过答案的对局"会把干预效果算高，而没有任何字段能把它们标出来。
+
+        所以它挪进了 `reveal()`，只在结局那一屏随 `ending` 事件下发。
+        对正常玩家没有任何差别：他本来也是打完才看见的。
         """
         return {
             "id": self.id,
@@ -201,6 +213,29 @@ class Scenario:
                 "hint": self.incident_hint,
             },
             "note": list(self.desk_note),
+            # **`phone` 不在这里**，见本方法的文档字符串。它在 `reveal()`。
+            "money": {
+                # **只给总额。** 它印在开场屏上（"本次异常金额"），是这一局的
+                # 已知条件。收款方和试水金额不给——见 `reveal`。
+                "total": self.total,
+            },
+            "endings": {k: dict(v) for k, v in self.ending_copy.items()},
+        }
+
+    def reveal(self) -> Dict[str, Any]:
+        """打完之后才下发的那一份：他手机上那几条，以及每一条说明了什么。
+
+        **只在 `ending` 事件里出现。** 理由见 `payload` 的文档字符串——
+        它是这一局要挖的答案，开局就发给浏览器等于把答案印在屏幕背面。
+
+        收款方（`payee`）也在这里，而不是在开局的 `money` 里：
+        它写着「转账给 启航财经-王」——**骗局的名字就在收款方里**，
+        而"这是个什么局"正是玩家要挖出来的东西。它只出现在结局那张转账凭证上，
+        本来就没有任何一处需要提前拿到它。
+
+        试水金额（`test_transfer`）同理：只有"拦下"那一档要用它算金额。
+        """
+        return {
             "phone": [
                 {"avatar": r.avatar, "initial": r.initial, "name": r.name,
                  "time": r.time, "line": r.line, "clue": r.clue,
@@ -208,11 +243,9 @@ class Scenario:
                 for r in self.phone
             ],
             "money": {
-                "total": self.total,
-                "test_transfer": self.test_transfer,
                 "payee": self.payee,
+                "test_transfer": self.test_transfer,
             },
-            "endings": {k: dict(v) for k, v in self.ending_copy.items()},
         }
 
 
@@ -1565,9 +1598,12 @@ def scenario_for(sid: Optional[str]) -> Scenario:
     return _BY_ID.get(sid or "", DEFAULT)
 
 
-def pick_scenario(gid: str) -> Scenario:
-    """开局分场景。与人格变体同一个做法：由 gid 哈希派生，服务端不存。"""
-    import hashlib
-
-    digest = hashlib.sha256(f"{gid}:scenario".encode("utf-8")).digest()
-    return SCENARIOS[int.from_bytes(digest[:8], "big") % len(SCENARIOS)]
+# `pick_scenario(gid)` 2026-08-23 删掉了。
+#
+# 它原来的做法是"由 gid 哈希派生场景"——而那正是复核 P0-1 指出的问题本身：
+# 场景由一个随机数决定，与用户自己那笔资产异动毫无关系，于是定位文档里的
+# "清仓""大额转出"只是剧本布景，不是系统的触发条件。
+#
+# 现在场景由异动类型在服务端选，见 `app/trigger.py` 的 `scenario_for_trigger`。
+# **留着这个函数比删掉更危险**：它和新路径长得一样像"开局怎么分场景"，
+# 下一个人很容易照着它改，然后发现改了没用。

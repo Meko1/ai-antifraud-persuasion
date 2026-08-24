@@ -26,6 +26,7 @@ import time
 from typing import Any, Dict, Iterable, Optional, Set
 
 from .config import settings
+from .provenance import provenance
 from .redact import redact
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,27 @@ except ImportError:  # pragma: no cover - 取决于部署环境装没装
     Redis = None  # type: ignore[assignment]
 
 _NS = "ai-antifraud-persuasion"
+
+# ── 逐条留存，不是整表一个 TTL ─────────────────────────────────────────────
+#
+# **原来这里是一个 List + 每次写入重置整表 TTL，那个"最多 90 天"的承诺不成立。**
+#
+# 原实现每写一条就 `EXPIRE KEY 90天`，注释还写着这是刻意的——"留存期限量的是
+# 最后一次有人在玩"。问题是**界面上对用户说的不是这句话**，界面说的是
+# 「你与虚构客户的对话会在脱敏后留存最多 90 天」。一个持续有人使用的库里，
+# 第 1 天写进去的那条记录会跟着第 89 天的写入一起续期，实际留存上限
+# 由 20000 条容量决定，而不是每条记录自己的 90 天年龄。
+#
+# 用户告知与实际处理不一致，这一条比"存久了"本身严重：它是在对用户说谎。
+#
+# 换成 Sorted Set，**score 就是这条记录的到期时间戳**：
+#   · 写入：ZADD key <到期时间> <json>
+#   · 清理：ZREMRANGEBYSCORE key -inf <现在>  —— 按记录自己的年龄删
+#   · 容量：ZREMRANGEBYRANK key 0 -(MAX+1)   —— 到顶丢最旧的
+# 三条命令一个 pipeline 发完，代价与原来的 LPUSH+LTRIM+EXPIRE 完全一样。
+#
+# 备份、导出副本仍在这套策略之外——**那是流程问题，代码兜不住**，
+# 写在 ADR-0006 里，不假装这里解决了。
 KEY_TRANSCRIPTS = f"{_NS}:transcripts"
 
 # 条数上限。共享 Redis 实例上不能无限长——这是别人的机器。
@@ -73,11 +95,25 @@ DISCLOSURE_LLM = "你输入的内容会发送至大模型用于生成回复。"
 DISCLOSURE_BASE = DISCLOSURE_FICTION + DISCLOSURE_LLM
 
 # 三件事都要说到，缺一条这句话就不算告知：**存什么、存多久、拿来干什么**。
-# 末尾那半句同样重要——用户最想知道的往往不是"你存了什么"，
-# 而是"你有没有存我的账户"。
+#
+# ## 2026-08-23 改了末尾那半句，因为原来那句是假的
+#
+# 原文是「账号、持仓与身份信息**不会被记录**」。这是一句关于**结果**的承诺，
+# 而实际能力只是一层正则（app/redact.py）。实测这些仍会原样留下：
+# 带空格的手机号、带空格的卡号、地址、工作单位、持仓名称、
+# 以及自由文本里的一切身份与健康信息。
+#
+# 正则漏项不可能靠继续加规则彻底解决——中文姓名、住址没有可靠的形状。
+# 所以改的不是脱敏，是**这句话本身**：承诺从"结果"退回"我们做了什么"，
+# 并且如实说清哪一半靠的是"根本没往那儿存"。
+#
+# 这不是把标准降低，是把话说准。一句做不到的承诺，在真实 C 端接入之后
+# 就是一份监管材料。
 DISCLOSURE_RETENTION = (
-    "你与虚构客户的对话会在脱敏后留存最多 {days} 天，仅用于改进本产品的判定模型；"
-    "账号、持仓与身份信息不会被记录。"
+    "你与虚构客户的对话会在脱敏后留存最多 {days} 天，仅用于改进本产品的判定模型。"
+    "我们不会主动记录你的账号、持仓与设备信息；"
+    "你自己打字输入的内容会经过自动去标识处理后留存，请不要在对话里填写真实的"
+    "身份证号、银行卡号、住址或联系方式。"
 )
 
 
@@ -142,6 +178,8 @@ class TranscriptStore:
         judged_mood: str,
         efficacy: Optional[float],
         degraded: bool,
+        evidence: str = "",
+        origin: Any = None,
     ) -> None:
         """记一轮。**脱敏在这里做，不在调用方做**——只有一个入口，就只有一处会漏。"""
         if not self.enabled:
@@ -158,21 +196,48 @@ class TranscriptStore:
             judged_mood=judged_mood,
             efficacy=efficacy,
             degraded=degraded,
+            evidence=evidence,
+            origin=origin,
         )
         _spawn(self._append(entry))
 
     async def _append(self, entry: Dict[str, Any]) -> None:
         try:
+            now = int(time.time())
             pipe = self._conn().pipeline()
-            pipe.lpush(KEY_TRANSCRIPTS, json.dumps(entry, ensure_ascii=False))
-            pipe.ltrim(KEY_TRANSCRIPTS, 0, MAX_ENTRIES - 1)
-            # 每次写都把 TTL 顶回去。**这是刻意的**：留存期限量的是"最后一次
-            # 有人在玩"，不是"第一条记录写进来的时间"。按后者算，一个持续在用的
-            # 库会在第 90 天整个消失。
-            pipe.expire(KEY_TRANSCRIPTS, _TTL_SECONDS)
+            # score = 这条记录自己的到期时间。**逐条**，不是整表一个 TTL
+            pipe.zadd(
+                KEY_TRANSCRIPTS,
+                {json.dumps(entry, ensure_ascii=False): now + _TTL_SECONDS},
+            )
+            # 到期的删掉。清理挂在写路径上而不是定时任务里，理由是这个作品
+            # 没有常驻调度器；代价是"没人玩的时候不清理"，而那种情况下
+            # 也没有新数据在产生——最坏是过期记录多留到下一次有人开局
+            pipe.zremrangebyscore(KEY_TRANSCRIPTS, "-inf", now)
+            # 容量到顶丢最旧的（score 最小＝最早到期＝最早写入）
+            pipe.zremrangebyrank(KEY_TRANSCRIPTS, 0, -(MAX_ENTRIES + 1))
             await pipe.execute()
         except Exception as exc:  # noqa: BLE001 - 旁路，绝不外抛
             logger.debug("对局留存写入失败（已忽略）: %s", exc)
+
+    async def purge(self, now: Optional[int] = None) -> int:
+        """删掉已经到期的记录，返回删了几条。
+
+        写路径上每次都会顺手清一遍，这个方法是给运维和审计用的：
+        **"某条数据什么时候被删的"要答得出来**，就得有一个能主动调、
+        能留下返回值的入口，而不是只有一个副作用。
+        """
+        if not self.enabled:
+            return 0
+        try:
+            return int(
+                await self._conn().zremrangebyscore(
+                    KEY_TRANSCRIPTS, "-inf", now or int(time.time())
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("过期清理失败: %s", exc)
+            return 0
 
 
 def build_entry(
@@ -188,32 +253,68 @@ def build_entry(
     judged_mood: str,
     efficacy: Optional[float],
     degraded: bool,
+    evidence: str = "",
+    origin: Any = None,
 ) -> Dict[str, Any]:
     """拼一条记录。**纯函数，脱敏在这里发生**，因此测试不需要 Redis。
 
     字段就这些，一个都不多。**没有的东西比有的东西更要紧**：
     没有账号、没有持仓、没有设备指纹、没有 IP、没有任何来自异动信号那一侧的
-    数据。转向之后触发这段对话的是一条真实的资产异动，把那条异动的内容也
+    **内容**。转向之后触发这段对话的是一条真实的资产异动，把那条异动的详情
     存进来是最自然不过的下一步，也正是 ADR-0006 明确划在范围外的那一步。
+
+    2026-08-23 加进来的是**关联键，不是内容**：`anomaly_id` / `arm` /
+    `trigger_type` 三个标识符。没有它们，这批语料回答不了"干预组比对照组
+    好在哪儿"；有了它们也仍然不含那笔交易的任何细节（金额、对手方、标的）。
+    `transaction_ref` 刻意留在服务端事件表里，一个字都不进语料。
 
     `gid` 是**每局随机生成**的对局号（签名令牌里那一个），不是用户标识：
     同一个人玩两局是两个 gid，跨局关联不起来。留着它只为把同一局的十二轮
     串成一段对话——语料的价值在整段对话上，逐轮拆散就没法标了。
+
+    ## 三段元数据，缺一段这批语料就不能用
+
+    · `provenance` —— 谁给的标签、哪种模式、哪一版规则（app/provenance.py）。
+      少了它，下一个人会拿模型自己的预测去训模型自己。
+    · `origin`     —— 哪条异动、哪个实验组。少了它，算不出干预效果。
+    · `idem`       —— 幂等键。同一个 (gid, round) 只该有一条记录，
+      重复写入在离线清洗时要能一眼认出来并去重。
     """
+    off = settings.offline_demo
+    src = getattr(origin, "source", "") if origin is not None else ""
     return {
-        "v": 1,
+        # v2：加了 provenance / origin / idem 三段。**版本号必须跟着涨**，
+        # 否则离线清洗脚本没法分辨一条记录该按哪套字段解析
+        "v": 2,
         "gid": gid,
         "sid": sid,
         "round": round_,
+        # 幂等键。**和服务端那把锁用同一个口径**（app/guard.py `turn_key`）
+        "idem": f"{gid}:{round_}",
         "utterance": redact(utterance),
         "reply": redact(reply),
-        "hits": sorted(hits),
+        "hits": sorted(set(hits)),
         "grounded": bool(grounded),
         "delta": int(delta),
         "judged_mood": judged_mood,
         "efficacy": efficacy,
         "degraded": bool(degraded),
+        # 模型说它扎根在哪一句上。**给标注人员看的**：复核这条 grounded
+        # 标签对不对时，"模型认为它引用了哪一句"是最快的线索。
+        # 它一样要过脱敏——玩家的话会被模型原样抄进这个字段
+        "evidence": redact(evidence),
         "ts": int(time.time()),
+        # 到期时间也写进记录本身。Redis 那边的 score 是同一个数——
+        # 两份是为了让导出的 JSONL 离开 Redis 之后**自己带着到期时间**，
+        # 否则一份导出文件就成了一份没有留存期限的副本
+        "expires_at": int(time.time()) + _TTL_SECONDS,
+        **provenance(offline=off or src == "demo", degraded=bool(degraded)),
+        "origin": {
+            "anomaly_id": getattr(origin, "anomaly_id", ""),
+            "arm": getattr(origin, "arm", ""),
+            "trigger_type": getattr(origin, "trigger_type", ""),
+            "source": src,
+        } if origin is not None else {},
     }
 
 

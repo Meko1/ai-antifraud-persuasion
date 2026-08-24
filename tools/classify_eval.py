@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
+from tools.console import FAIL, guard
 from app.classify import Classification, parse_classification
 from app.scoring import ALL_PENALTIES, KEY_VALUES
 
@@ -439,6 +440,8 @@ def build_gateway(
 
 
 def main() -> int:
+    # GBK 终端上打印不出来的字符降级成 ?，而不是让整个跑批崩掉
+    guard()
     parser = argparse.ArgumentParser(description="分类器标注集跑批（会真实调用模型）")
     parser.add_argument("--set", type=Path, default=DEFAULT_SET_PATH, help="标注集路径")
     parser.add_argument("--limit", type=int, default=0, help="只跑前 N 条，用于验证链路")
@@ -474,7 +477,7 @@ def main() -> int:
     if failures:
         print("§9.4 门槛未通过：")
         for f in failures:
-            print(f"  ✗ {f}")
+            print(f"  {FAIL} {f}")
         return 1
 
     print("§9.4 分类器门槛全部通过")

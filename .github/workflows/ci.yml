@@ -41,6 +41,17 @@ jobs:
           STATE_SIGNING_SECRET: ci-only-not-a-real-secret
         run: python -m pytest
 
+      # 尾随空格与冲突标记。2026-08-23 的复核里发现一处躺了几天没人看见——
+      # 它不该由人在 review 时用眼睛找。
+      #
+      # **排除 .md**：Markdown 里行尾两个空格是硬换行语法，是有意义的内容。
+      # 不排除的话这一步会在 `> 研究日期：2026-08-17  ` 这种正常写法上红，
+      # 而一个总是误报的门禁，两天之内就会被所有人习惯性忽略。
+      - name: git diff --check（尾随空格 / 冲突标记）
+        run: |
+          base="$(git rev-list --max-parents=0 HEAD | tail -1)"
+          git diff --check "$base" HEAD -- ':!*.md'
+
       # 判分脱离模型，于是平衡可以离线批量重跑。这一步把 §9.4 的数值门槛
       # 守住：改判分参数、增补钥匙、调整取整方向，任何一项动了都会在这里红。
       - name: 蒙特卡洛平衡验证 · §9.4 门槛

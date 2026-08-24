@@ -634,6 +634,20 @@ def decide_ending(trust: int, round_: int) -> Optional[Ending]:
     return None
 
 
+def is_finished(state: GameState) -> bool:
+    """这一局已经收过场了吗。
+
+    **判据与 `decide_ending` 是同一个，这一条很关键**：终局条件只此一份，
+    否则"什么时候算打完了"会在两处慢慢走散——引擎认为还能打，
+    HTTP 层认为不能，或者反过来。
+
+    在此之前没有任何一处问过这个问题。引擎直接 `round = state.round + 1`，
+    于是拿终局令牌再发一次请求会进第 13 轮、`remaining` 返回 −1，
+    统计和终局被重复写一遍。实测复现过（见 tests/test_engine.py 的终局封口用例）。
+    """
+    return decide_ending(state.trust, state.round) is not None
+
+
 def _round_half_up(value: float) -> int:
     """四舍五入，且对负数对称（−12.5 → −13），不用 Python 内建的银行家舍入。"""
     if value >= 0:

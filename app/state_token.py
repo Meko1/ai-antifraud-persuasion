@@ -27,7 +27,13 @@ from .scoring import GameState, new_game
 # · `breaches` 这一局踩过几次合规红线。这个字段第 2 步就加进 GameState 了，
 #   **却一直没进令牌**，于是每一轮都从 0 重新开始数。复盘那张合规卡是前端
 #   自己按 hits 数的，所以没被发现——一个"存在但从来没有真正生效"的字段。
-TOKEN_VERSION = 3
+#
+# **v4（2026-08-23）加的是开局上下文**（app/trigger.py）。它必须随令牌走，
+# 理由和 `sid` 完全一样：服务端不存任何东西，而每一轮的统计与语料都要能
+# 关联回**是哪条异动触发了这次干预、这一局属于哪个实验组**。
+# 少了它，业务事件就只能记到"有人打了一局"这个粒度，
+# 而干预组与对照组的对比正是这次转向要算的第一个数。
+TOKEN_VERSION = 4
 
 # 令牌有效期。签名本身不防重放，过期时间是那道兜底：
 # 一个泄漏的令牌最多只能被拿来续玩两小时。
@@ -72,6 +78,47 @@ class TurnRecord:
 
 
 @dataclass(frozen=True)
+class Origin:
+    """这一局是被什么触发的，属于哪个实验组。
+
+    是 `trigger.StartContext` 的**投影**，不是它本身：只带上关联与分组要用的
+    那几个字段。`transaction_ref`（真实交易号）刻意不进令牌——
+    令牌是客户端持有的，而交易号是可以拿去别处用的东西，
+    它只该活在服务端的事件表里。
+
+    这也是 P1-14 那条"客户端只持有不可推导隐藏信息的会话标识"的边界所在：
+    这里的每一项都是**关于用户自己的**，泄漏给他自己的浏览器不构成信息优势。
+    """
+
+    anomaly_id: str = ""
+    subject_ref: str = ""
+    arm: str = ""
+    source: str = ""
+    trigger_type: str = ""
+
+    def to_wire(self) -> dict:
+        return {
+            "a": self.anomaly_id,
+            "s": self.subject_ref,
+            "m": self.arm,
+            "o": self.source,
+            "t": self.trigger_type,
+        }
+
+    @classmethod
+    def from_wire(cls, data: dict) -> "Origin":
+        if not isinstance(data, dict):
+            return cls()
+        return cls(
+            anomaly_id=data.get("a", ""),
+            subject_ref=data.get("s", ""),
+            arm=data.get("m", ""),
+            source=data.get("o", ""),
+            trigger_type=data.get("t", ""),
+        )
+
+
+@dataclass(frozen=True)
 class Session:
     gid: str
     state: GameState
@@ -82,10 +129,16 @@ class Session:
     # 开场白。它是第 1 轮唯一可供"扎根"的对话内容，因此必须随令牌带着走，
     # 否则玩家开局说得再贴切也会被判成未扎根。
     opening: str = ""
+    # 开局上下文（v4）。见 `Origin`。
+    origin: Origin = Origin()
 
 
-def new_session(gid: str, opening: str = "", sid: str = "") -> Session:
-    return Session(gid=gid, state=new_game(), opening=opening, sid=sid)
+def new_session(
+    gid: str, opening: str = "", sid: str = "", origin: Origin = Origin()
+) -> Session:
+    return Session(
+        gid=gid, state=new_game(), opening=opening, sid=sid, origin=origin
+    )
 
 
 def sign_session(session: Session, *, secret: str, issued_at: int) -> str:
@@ -94,6 +147,7 @@ def sign_session(session: Session, *, secret: str, issued_at: int) -> str:
             "v": TOKEN_VERSION,
             "gid": session.gid,
             "sid": session.sid,
+            "org": session.origin.to_wire(),
             "round": session.state.round,
             "trust": session.state.trust,
             "pool": session.state.pool,
@@ -140,6 +194,7 @@ def verify_token(token: str, *, secret: str, now: int) -> Session:
         ),
         history=tuple(TurnRecord.from_wire(r) for r in data.get("history", ())),
         opening=data.get("op", ""),
+        origin=Origin.from_wire(data.get("org", {})),
     )
 
 
