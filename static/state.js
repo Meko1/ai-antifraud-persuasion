@@ -13,7 +13,6 @@ import { BREACHES } from './keys.js';
 
 export const game = {
   token: '',
-  contestId: '',
   opening: '',
   trust: 0,
   mood: 'irritated',
@@ -279,7 +278,7 @@ export function saveGame() {
       scene: SCENE,
       notice: game.notice || '',
       game: {
-        token: game.token, contestId: game.contestId, opening: game.opening,
+        token: game.token, opening: game.opening,
         trust: game.trust, mood: game.mood, threshold: game.threshold,
         maxRounds: game.maxRounds, remaining: game.remaining,
         turns: game.turns, ending: game.ending, quote: game.quote,

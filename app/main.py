@@ -261,7 +261,6 @@ async def game_start(
             # 开局这一下没有 score 事件可用，所以在这里给出初始档位
             "mood": mood_for(session.state.trust).value,
             "win_threshold": WIN_THRESHOLD,
-            "contest_id": settings.contest_id,
             # 这一局是被什么触发的、属于哪个分组、是不是演示态。
             # **前端要靠 source 决定说不说"这条异动是合成的"**——
             # 一个看不出来是演示的演示是骗局（与离线模式同一条原则）

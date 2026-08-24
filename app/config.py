@@ -108,9 +108,6 @@ class Settings:
     # ADR-0005 否掉的是"悄悄换一个供应商"，而这一个在 /healthz 上报着、
     # 在聊天页第一行写着。8-22 网关停了八小时，路演不会挑好天气来。
     offline_demo: bool
-    # 分享卡上印的参赛编号（§8）。没配就空着——分享卡会发到社交平台上，
-    # 空一行远好过印一个占位符出去。
-    contest_id: str
     # 每分钟每个来源允许开几局 / 打几轮（§P0-6）。0 = 不限，本机调试用。
     # 默认值按"一局最多 12 轮、一局约 3 分钟"定：正常用户够用得多，
     # 一条 curl 循环打不出量来。
@@ -156,7 +153,6 @@ def load_settings() -> Settings:
         redis_url=os.getenv("REDIS_URL", "").strip(),
         transcript_retention=_bool("TRANSCRIPT_RETENTION", False),
         offline_demo=_bool("OFFLINE_DEMO", False),
-        contest_id=os.getenv("CONTEST_ID", "").strip(),
         rate_limit_start=int(os.getenv("RATE_LIMIT_START", "20")),
         rate_limit_turn=int(os.getenv("RATE_LIMIT_TURN", "60")),
         # 平台强制固定 21818；保留环境变量只是为了本地调试时能换端口

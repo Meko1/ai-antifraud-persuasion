@@ -1060,7 +1060,7 @@ body {
 .round .timing.good { color: var(--gold-text); }
 .round .timing.bad { color: var(--fall-text); }
 
-/* 三把钥匙的维度条。
+/* 钥匙的维度条。
    同类的 AI 陪练产品人人都有维度评分，我们原先只有一张"没用上的钥匙"清单。
    条长按"这一局挣得最多的那把"归一：绝对分值没有天花板，拿一个想象出来的
    满分去除，条会长期趴在左边，什么也说明不了。 */
@@ -1114,7 +1114,7 @@ body {
 .keyrow.unused .keybar { display: none; }
 .keyrow.unused .keynote { margin-top: 5px; }
 
-/* 本机训练记录（跨局）。历史行借的还是"左名右注"那个排法，三色沿用
+/* 本机对局记录（跨局）。历史行借的还是"左名右注"那个排法，三色沿用
    .summary 的用法——保住了钱的绿、转账/拉黑的红，拖住不特殊上色，
    跟结算卡那句"三档结局只分三种颜色"是同一条道理。 */
 .historyrow { display: flex; align-items: center; gap: 10px;

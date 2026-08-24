@@ -124,9 +124,11 @@ node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 np
 ├── docs/
 │   ├── POSITIONING.md  产品身份 · 核心矛盾 / 成功标准 / 不做什么
 │   ├── PIVOT-C-END.md  转向 C 端异动干预 · 执行清单与逐项结果
+│   ├── POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md  一致性审计 · 旧逻辑残留清单，含转向本身站不站得住
+│   ├── CONTEST-POSITIONING.md  参赛定位 · V 创想家大赛专用叙事，不是产品定位本身
 │   ├── TECH-DESIGN.md  技术方案 · 施工图
 │   ├── HANDOFF.md      交接说明 · 踩过的坑
-│   └── adr/            六条不可轻易反转的决策及其理由
+│   └── adr/            七条不可轻易反转的决策及其理由
 ├── app/
 │   ├── scoring.py      判分引擎（纯函数，可蒙特卡洛离线重跑）
 │   ├── scenario.py     场景：剧本 / 人格 / 台词 / 界面素材 / 效力矩阵覆写
@@ -143,7 +145,10 @@ node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 np
 
 新会话先读 [docs/HANDOFF.md](docs/HANDOFF.md)；判断一个改动该不该做，读
 [docs/POSITIONING.md](docs/POSITIONING.md)；动手改判分或流式粒度之前，先读
-[docs/adr/](docs/adr/)——那里有几条看起来像 bug 的设计。
+[docs/adr/](docs/adr/)——那里有几条看起来像 bug 的设计。怀疑某处文档或代码跟
+现行定位对不上，先看
+[docs/POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md](docs/POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)，
+不要凭印象改。
 
 ## 本地运行
 

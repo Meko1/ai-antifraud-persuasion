@@ -115,7 +115,7 @@ def key_trust(sid: str, mode: str = DataMode.LIVE.value) -> str:
 
 # 只有走到阶梯里的四档才贡献一笔信任度分布；被拉黑「不入档」（CONTEXT.md
 # 「结局」），信任度必然是 0，混进分布会把所有人的百分位都顶得虚高——
-# 复盘里「本机训练记录」的最好成绩排名已经照这条排除过一次，这里是同一条原则。
+# 复盘里「本机对局记录」的最好成绩排名已经照这条排除过一次，这里是同一条原则。
 _LADDER_KINDS = {"persuaded", "intercepted", "stalled", "transferred"}
 
 # 5 分一档，20 个桶（0-4 … 95-100）。存分桶而不是每一局的原始信任度，

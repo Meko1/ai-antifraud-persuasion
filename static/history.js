@@ -195,7 +195,7 @@ export function makeCard(view) {
   const PCT_TOP = LEGEND_TOP + 30;
   const PCT_H = pct != null ? 68 : 0;
   const FOOT_TOP = PCT_TOP + PCT_H + (pct != null ? 16 : -8);
-  const H = FOOT_TOP + 56;
+  const H = FOOT_TOP + 16;
 
   const ctx = fitCanvas(canvas, W, H);
 
@@ -307,16 +307,6 @@ export function makeCard(view) {
     ctx.fillText(`信任度${percentileHeadline(pct)}`, pad + 18, PCT_TOP + PCT_H / 2);
     ctx.textBaseline = 'top';
   }
-
-  // 钩子放在右下角，正好接住下一步的"接话"入口
-  ctx.fillStyle = c.sub;
-  ctx.font = `400 14px ${c.sans}`;
-  if (game.contestId) ctx.fillText(`参赛编号 ${game.contestId}`, pad, FOOT_TOP + 22);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = c.gray;
-  ctx.font = `500 16px ${c.sans}`;
-  ctx.fillText('你的客户这么说，你怎么接？', W - pad, FOOT_TOP + 18);
-  ctx.textAlign = 'left';
 
   canvas.toBlob((blob) => {
     if (!blob) return;

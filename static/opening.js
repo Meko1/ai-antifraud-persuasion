@@ -62,7 +62,6 @@ export async function loadGame() {
   $('turnCurrent').textContent = '1';
   $('turnTotal').textContent = String(game.maxRounds);
   $('roundFill').style.width = `${100 / game.maxRounds}%`;
-  game.contestId = data.contest_id || '';
   // 开口之前那句告知（ADR-0006）。**文案在服务端**：留存开着和关着说的不是
   // 同一句话，而这一页写死一份的话，早晚会出现"页面说不留存、服务端在留存"。
   // 下发不到就保留 index.html 里那句静态兜底，不清空——**这一行绝不能是空的**。
@@ -135,7 +134,7 @@ export function paintOpening() {
  *
  * **原先写死成「今日 1 / 3」。** 那个分母是假的：客户由系统随机派发，
  * 一局一位，没有"今天一共三位"这回事，四个场景上线之后更对不上。
- * 界面上任何一个数都该有出处——这里的出处是本机训练记录里今天的局数
+ * 界面上任何一个数都该有出处——这里的出处是本机对局记录里今天的局数
  * （localStorage，与复盘那一节同源）。读不到就退回"今日第 1 位客户"，
  * 不因为一个装饰性的数字让开场屏崩掉。
  */
