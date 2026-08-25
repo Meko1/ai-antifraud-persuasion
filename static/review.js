@@ -694,7 +694,23 @@ export function paintPhone(view) {
  *       这是本条判据的**极端形态**，有就一定讲它
  *    2. 否则挑"实际效力与这一把最高效力差得最多"的那一轮——
  *       他做对了动作、只是挑错了时候，那正是这一节要教的
- *  两样都没有（比如一把钥匙都没用上），整块不出现——不留一个空壳。 */
+ *
+ *  ── 2026-08-25：补第 3、4 两条兜底，这一块从此**永远出现** ────────────────
+ *
+ *  原先的写法是"两样都没有就整块不出现——不留一个空壳"。这条原则在训练器
+ *  定位下成立（打得差的人会再打一局），转向 C 端之后它反过来咬人：
+ *
+ *  `balance_sim` 自己给的分布是**最低一档仍占 53.4%、novice 胜率 0.0%**，
+ *  而"一把钥匙都没命中"正是打得最差的那批人的典型结局。也就是说——
+ *  **最需要被解释"你差在时机"的那一半人，恰好是这块解释不给他们看的那一半人。**
+ *  评委只玩一局，玩砸的概率过半；这一块不出现，作品唯一的差异点就只剩文档在讲。
+ *
+ *  补的两条**不编任何评价**，只把矩阵里本来就有的数字念出来：
+ *    3. 一把钥匙都没命中 → 念这个场景里"四档之间落差最大"的那一把，
+ *       说清同一句话在两个时候差几倍
+ *    4. 命中了但时机挑得准（gap ≤ 0.15）→ 说他挑对了，再用他自己用得最多的
+ *       那一把把落差摊开
+ *  空壳仍然不留：`eff` 拿不到（老令牌、结局事件没下发）时照旧整块不出现。 */
 export function paintContrast(view) {
   const box = view.querySelector('#contrastBox');
   const eff = game.ending && game.ending.efficacy;
@@ -732,14 +748,48 @@ export function paintContrast(view) {
       const gap = bestVal - t.efficacy;
       if (!worst || gap > worst.gap) worst = { t, k, bestMood, bestVal, gap };
     });
-    if (!worst || worst.gap <= 0.15) return;   // 差得不明显就不硬讲
-    const { t, k, bestMood, bestVal } = worst;
-    quote = t.utterance;
-    head = `第 ${t.round} 轮 · ${KEYS[k] ? KEYS[k].name : k}`;
-    body =
-      `他当时${named(t.judgedMood)}，这一招值 ${t.efficacy}×。`
-      + `<br>同一句话，等他${named(bestMood)}再说，值 ${bestVal}×。`
-      + `<br><b>动作是对的，差的是时候。</b>`;
+    if (worst && worst.gap > 0.15) {
+      const { t, k, bestMood, bestVal } = worst;
+      quote = t.utterance;
+      head = `第 ${t.round} 轮 · ${KEYS[k] ? KEYS[k].name : k}`;
+      body =
+        `他当时${named(t.judgedMood)}，这一招值 ${t.efficacy}×。`
+        + `<br>同一句话，等他${named(bestMood)}再说，值 ${bestVal}×。`
+        + `<br><b>动作是对的，差的是时候。</b>`;
+    } else {
+      // 兜底：不讲某一轮，讲这张表本身。数字全部来自服务端下发的矩阵，
+      // 一个字都不是编的——这一块宁可少说，也不能说得比证据多。
+      const used = {};
+      scoredTurns().forEach((t) => {
+        (t.hits || []).forEach((h) => { if (rowOf(h)) used[h] = (used[h] || 0) + 1; });
+      });
+      const favourite = Object.entries(used).sort((a, b) => b[1] - a[1])[0];
+      // 没命中过就挑这个场景里落差最大的那一把，那是这张表最能说明问题的一格
+      const pick = favourite ? favourite[0] : Object.keys(eff).sort((a, b) => {
+        const spread = (k) => peak(eff[k])[1] - floor(eff[k])[1];
+        return spread(b) - spread(a);
+      })[0];
+      const row = pick && rowOf(pick);
+      if (!row) return;
+      const [bestMood, bestVal] = peak(row);
+      const [worstMood, worstVal] = floor(row);
+      const times = worstVal > 0 ? (bestVal / worstVal).toFixed(1) : null;
+      const name = KEYS[pick] ? KEYS[pick].name : pick;
+      head = favourite
+        ? `你用得最多的那一把 · ${name}`
+        : `这一局你一把钥匙都没打中 · 拿 ${name} 举个例`;
+      body = favourite
+        ? `时机你挑得不错——这一局没出现"动作对、时候错"那种明显的错位。`
+          + `<br>但同一把${name}，在他${named(bestMood)}时值 ${bestVal}×，`
+          + `在他${named(worstMood)}时只值 ${worstVal}×`
+          + (times ? `，<b>差 ${times} 倍</b>` : '') + `。`
+          + `<br><b>这一局判的就是这个差值。</b>`
+        : `同一句${name}，在他${named(bestMood)}时值 ${bestVal}×，`
+          + `在他${named(worstMood)}时只值 ${worstVal}×`
+          + (times ? `，<b>差 ${times} 倍</b>` : '') + `。`
+          + (MOODS[game.mood] ? `<br>这一局结束时，他停在${named(game.mood)}。` : '')
+          + `<br><b>不是话说得不够好，是时候没等到。</b>`;
+    }
   }
 
   if (!head) return;

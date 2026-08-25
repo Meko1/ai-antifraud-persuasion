@@ -170,6 +170,63 @@ print("", file=sys.stderr)
 PY
 }
 
+# ── 网关连通性：/readyz 答不了的那半个问题 ──────────────────────────────────
+#
+# `/readyz` 判的是 `llm.configured`，而 configured 只看**变量填没填**，
+# 不看**打不打得通**。这两件事在开发机上从来不会分开，在大赛服务器上大概率
+# 会分开——官方 FAQ Q2 写着分配的机器在嘉定独立网段，「与公司周浦、浦江以及
+# 嘉定 T/P 机房网络隔离」，而内网模型网关在哪一侧没人核实过。
+#
+# 不核实的代价是一种最难发现的失败：/healthz ok、/readyz ready、
+# 部署脚本退出码 0、平台判定成功，**而玩家看到的每一句都是兜底台词**，
+# 一直到赛期结束。这与 8-24 那次事故是同一种结局，只是根因换了一个。
+#
+# ADR-0007 的自动切换**接不住这一种**：它的判据是网关回的
+# 「该令牌状态不可用」那句原文，网络不可达连不到那个分支。
+#
+# 所以这里只做一件事：**探一次，探不通就把话说死**，包括下一步该改哪个变量。
+# 与 warn_if_not_ready 一样，不影响退出码——探测失败不等于部署失败，
+# 兜底台词库仍然能把一局走完（ADR-0005）。
+warn_if_gateway_unreachable() {
+  local body
+  body="$("${VENV_PY}" - "http://127.0.0.1:${PORT}/healthz?probe=1" <<'PY' 2>/dev/null
+import sys, urllib.request
+try:
+    with urllib.request.urlopen(sys.argv[1], timeout=15) as r:
+        print(r.read().decode())
+except Exception:
+    pass
+PY
+  )"
+  [ -n "${body}" ] || return 0
+  "${VENV_PY}" - "${body}" "${RUNTIME_DIR}" <<'PY'
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+if d.get("offline_demo"):
+    sys.exit(0)              # 离线演示模式本来就不该有网关，探不通是预期
+probe = d.get("llm_probe") or {}
+if probe.get("ok"):
+    sys.exit(0)
+provider = d.get("llm_provider", "?")
+reason = probe.get("reason") or probe.get("error") or probe.get("status_code") or "未知"
+runtime_dir = sys.argv[2]
+print("", file=sys.stderr)
+print("=" * 70, file=sys.stderr)
+print(f"[start][警告] 大模型网关探测失败（provider={provider}）：{reason}", file=sys.stderr)
+print("服务是活的，但玩家看到的每一句台词都会来自兜底台词库。", file=sys.stderr)
+print("", file=sys.stderr)
+print("最可能的原因：这台机器在独立网段，访问不到内网网关。", file=sys.stderr)
+print(f"处理：在 {runtime_dir}/env 里把 LLM_PROVIDER 改成 public", file=sys.stderr)
+print("      （PUBLIC_LLM_* 三个变量要先填好），然后 ./stop.sh && ./start.sh。", file=sys.stderr)
+print("      实在都不通，就用 OFFLINE_DEMO=true —— 罐头台词，但至少不装活。", file=sys.stderr)
+print("=" * 70, file=sys.stderr)
+print("", file=sys.stderr)
+PY
+}
+
 log "等待服务就绪 (最长 ${START_TIMEOUT}s)…"
 for i in $(seq 1 "${START_TIMEOUT}"); do
   if ! kill -0 "${APP_PID}" 2>/dev/null; then
@@ -182,6 +239,7 @@ for i in $(seq 1 "${START_TIMEOUT}"); do
     log "服务就绪，健康检查通过 (${i}s)"
     log "访问地址: http://<server-ip>:${PORT}/"
     warn_if_not_ready
+    warn_if_gateway_unreachable
     exit 0
   fi
   sleep 1

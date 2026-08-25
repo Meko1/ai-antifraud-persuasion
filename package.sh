@@ -9,6 +9,16 @@
 #
 # ── PACKAGE_INCLUDE_SECRETS：上面那条"不得包含密钥"的显式例外 ──────────────
 #
+# ⚠️ **这个开关打出来的包不能上传到大赛平台。** 2026-08-25 从平台截图里
+# 抄回来的《作品规范》多了一条本仓库此前没有的硬约束：
+#
+#   「涉及公司内部数据须脱敏处理，不得上传敏感凭证、密钥或未授权材料。」
+#
+# 而方式 B 的部署路径**就是把 ZIP 上传到平台**，平台随后还会联合安全部门
+# 对部署结果做漏洞扫描。所以这个开关只服务一种场景：**你自己 ssh 上去手动
+# 部署**（官方 FAQ Q3 明确允许）。为了让这两种包永远不会被拿混，开了开关
+# 的产物文件名会带上 `-WITH-SECRETS-DO-NOT-UPLOAD`，见下面 ZIP_PATH。
+#
 # 默认（不设这个变量）行为跟这条规范写的一样：`.env` 排除在外，
 # 部署机靠 start.sh 的 ${RUNTIME_DIR}/env 拿密钥（见 start.sh 那段注释）。
 #
@@ -31,7 +41,13 @@ APP_ID="ai-antifraud-persuasion"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="${APP_DIR}/dist"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-ZIP_PATH="${DIST_DIR}/${APP_ID}-${STAMP}.zip"
+# 文件名自己说清楚这个包能不能上传。**别把这段改成一个注释**——
+# 上传是在浏览器里选文件，那一刻能看见的只有文件名。
+if [ "${INCLUDE_SECRETS}" = "1" ]; then
+  ZIP_PATH="${DIST_DIR}/${APP_ID}-${STAMP}-WITH-SECRETS-DO-NOT-UPLOAD.zip"
+else
+  ZIP_PATH="${DIST_DIR}/${APP_ID}-${STAMP}.zip"
+fi
 
 log()  { echo "[package] $*"; }
 fail() { echo "[package][ERROR] $*" >&2; exit 1; }
@@ -103,6 +119,18 @@ fi
 log "自检通过：条目 ${ENTRIES} 个，${SIZE_MB}MB"
 log "产物: ${ZIP_PATH}"
 if [ "${INCLUDE_SECRETS}" = "1" ]; then
-  log "⚠️  这个包含真实密钥（.env）—— 只能部署到这台机器上，别提交、别外发"
+  echo "" >&2
+  echo "======================================================================" >&2
+  echo "[package][警告] 这个包里有真实密钥（.env）。" >&2
+  echo "  能做的：ssh 上目标服务器，自己解压部署（官方 FAQ Q3 允许）。" >&2
+  echo "  不能做的：上传到大赛平台的作品部署入口。《作品规范》写着" >&2
+  echo "            「不得上传敏感凭证、密钥或未授权材料」，平台还会联合" >&2
+  echo "            安全部门做漏洞扫描。" >&2
+  echo "  要上传的包：不设 PACKAGE_INCLUDE_SECRETS 再跑一次 ./package.sh，" >&2
+  echo "            密钥改走 start.sh 里那条 \${RUNTIME_DIR}/env 通路。" >&2
+  echo "======================================================================" >&2
+  echo "" >&2
+else
+  log "这个包不含密钥，可以上传到平台；部署机的密钥请放在 <state>/.${APP_ID}/env"
 fi
 exit 0

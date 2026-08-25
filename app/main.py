@@ -15,7 +15,7 @@ import logging
 import os
 import time
 import uuid
-from typing import Any, AsyncIterator, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -91,28 +91,63 @@ app = FastAPI(
 #
 # HSTS 没加：平台是 http://ip:21818 直连，没有 TLS，发 HSTS 只会让浏览器
 # 把这个 host 记进强制 HTTPS 列表，反而打不开。有域名和证书之后再加。
-CSP = "; ".join((
-    "default-src 'self'",
-    "script-src 'self'",
-    "style-src 'self'",
-    "img-src 'self' data: blob:",
-    "connect-src 'self'",
-    "font-src 'self'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-))
+#
+# ── frame-ancestors：2026-08-25 从 'none' 改成可配置，默认值一点没变 ────────
+#
+# 起因是大赛展示页的实拍截图：作品详情页有「图集 / 演示视频 / **作品展示**」
+# 三个页签，而《作品规范》写着「Mac 类或桌面端作品，需同时提供**可嵌入网页**
+# 的 Web 展示方案」。这两条放在一起，几乎可以确定「作品展示」那一栏是把在线
+# 链接嵌进 iframe。
+#
+# `frame-ancestors 'none'` + `X-Frame-Options: DENY` 会让那一栏变成一块空白，
+# **而作者自己点在线链接是好的，多半到最后都不知道**。
+#
+# 处理方式是白名单，不是删掉：
+#   · 不配 `FRAME_ANCESTORS` → 行为与改动前逐字节相同（'none' + DENY）
+#   · 配了（空格分隔的 origin 列表）→ CSP 换成这份白名单，
+#     并且**把 X-Frame-Options 整条撤掉**——它只认单一 origin，
+#     留着会和 CSP 打架，而 CSP 的 frame-ancestors 在现代浏览器里优先级更高
+#
+# 换句话说：点击劫持的防线仍然在，只是从「谁都不许」收窄成「只许这一个」。
+def build_security_headers(frame_ancestors: str = "") -> Dict[str, str]:
+    """按 `frame_ancestors` 组一份响应头。
 
-SECURITY_HEADERS = {
-    "Content-Security-Policy": CSP,
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
-    "Cross-Origin-Opener-Policy": "same-origin",
-    "Cross-Origin-Resource-Policy": "same-origin",
-}
+    做成纯函数是为了让两条分支都能被测到——读 `os.getenv` 的模块级常量
+    只能测到进程启动时那一种，而这次改动的全部风险恰恰在另一种。
+    """
+    allow = (frame_ancestors or "").strip()
+    csp = "; ".join((
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self'",
+        "img-src 'self' data: blob:",
+        "connect-src 'self'",
+        "font-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        f"frame-ancestors {allow}" if allow else "frame-ancestors 'none'",
+    ))
+    headers = {
+        "Content-Security-Policy": csp,
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+    }
+    if not allow:
+        headers["X-Frame-Options"] = "DENY"
+    else:
+        # CORP 也拦 iframe 导航。放开 frame-ancestors 却留着 `same-origin`
+        # 的 CORP，等于修了一半——那一栏照样是空白，而排查成本比一开始
+        # 就没改还高。
+        headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+    return headers
+
+
+SECURITY_HEADERS = build_security_headers(os.getenv("FRAME_ANCESTORS", ""))
+CSP = SECURITY_HEADERS["Content-Security-Policy"]
 
 
 @app.middleware("http")

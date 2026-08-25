@@ -75,6 +75,33 @@ _COMPLIANCE_RULES: Tuple[Tuple[str, re.Pattern], ...] = (
     ("guaranteed_return", re.compile(r"(保证|包管|一定).{0,6}(赚|不亏|收益|回本)|(稳赚|保本)")),
 )
 
+# ── 转述标记：合规红线的免责闸 ─────────────────────────────────────────────
+#
+# 2026-08-25 补。实测打出这一句：
+#
+#     「您刚才说他保证下午三点前不转就来不及了，可**保本**又说不承诺收益，
+#       这两句能同时成立吗？」
+#
+# 界面当场弹「合规红线 · 承诺收益」。这是纯粹的误判，而且误判的对象是
+# **「指出内部矛盾」这把钥匙的标准打法**——拆矛盾就是要把对方那句"保本"
+# 原样端出来。等于产品在惩罚它自己教的最佳动作，还是用作品自称最硬的
+# 那个功能惩罚的。
+#
+# 模型那一侧本来就判得对，`gateway.CLASSIFY_SYSTEM_PROMPT` 消歧规则第 0 条
+# 写着「复述或追问老陈自己提到的操作……那是提问，不是建议」。所以这不是
+# 新加一条策略，是**把离线这张粗表跟模型那条规则对齐**。
+#
+# 判据故意取得保守：**匹配点之前出现过转述标记就放过**。
+# 这个方向的误差是漏判（玩家真违规了没记上），另一个方向的误差是
+# 冤枉玩家——在一个教人怎么说话的产品里，后者贵得多。
+_QUOTE_MARKERS = re.compile(r"(他说|她说|您说|你说|他保证|老师说|群里|对方说|他讲|所谓|听他|据说)")
+
+
+def _is_quoted(utterance: str, match: "re.Match") -> bool:
+    """这次命中是不是在转述别人的话。"""
+    head = utterance[: match.start()]
+    return bool(_QUOTE_MARKERS.search(head))
+
 # 扎根：上一轮那句话里的具体成分有没有被拿来用。
 # 判据取"两句话共有的、长度 ≥2 的实词片段"，粗但方向是对的——
 # 真正的判据在 gateway.CLASSIFY_SYSTEM_PROMPT 里，那是模型的活。
@@ -136,8 +163,13 @@ def classify_offline(utterance: str) -> list:
         if pattern.search(utterance):
             hits.append(name)
             break
-    for name, pattern in (*_PENALTY_RULES, *_COMPLIANCE_RULES):
+    for name, pattern in _PENALTY_RULES:
         if pattern.search(utterance):
+            hits.append(name)
+    for name, pattern in _COMPLIANCE_RULES:
+        m = pattern.search(utterance)
+        # 转述别人的承诺不算自己承诺，见 _QUOTE_MARKERS 那段
+        if m and not _is_quoted(utterance, m):
             hits.append(name)
     return hits
 
