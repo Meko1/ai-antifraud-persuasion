@@ -108,6 +108,22 @@ PENALTY_VALUES: Mapping[str, int] = {
     "bare_assertion": -2,  # 空口断言
 }
 
+# 够不到拉黑线的那两项失误（2026-08-25 加）。
+#
+# **这不是调低难度，是把已有的那条分野贯彻到底。** 这张表下面那段注释
+# 早就写着：被拉黑是**关系破裂**，老陈拉黑你是因为你羞辱了他——**那是 scold
+# 干的**。说教和空口断言不是羞辱，它们是"这一轮没劝动他"，性质与合规红线
+# 那一类更近（后者早就有 BREACH_FLOOR 兜着，理由同构）。
+#
+# 病灶实测：蒙特卡洛 6000 局/人设，novice **被拉黑 41.8%、劝住 0.0%**——
+# 四成新手在打完之前就出局，而这个作品全部的教学价值都在复盘里。
+# novice 的 penalty_rate 是 0.63，十二轮里说教与空口断言合计能扣掉九点上下，
+# 单靠它们就把人推过拉黑线，而玩家并没有说过一句难听的话。
+#
+# 责骂**照旧不设地板**：骂人仍然能把这一局骂到出局，那条教学点一个字没动。
+SOFT_PENALTIES = frozenset({"preach", "bare_assertion"})
+PENALTY_FLOOR = 5
+
 # ── 合规红线 ──────────────────────────────────────────────────────────────
 #
 # **这一类 2026-08-17 才补进来，此前判分闭集里一条合规违规都没有。**
@@ -486,12 +502,25 @@ def evaluate_turn(
     # 复盘会理直气壮地显示一个错的倍率。少说一行好过说错一行。
     efficacy = efficacies[0] if len(efficacies) == 1 else None
 
-    # 失误不受任何调节：钝化是给钥匙的优待，不是给失误的赦免
+    # 失误不受任何调节：钝化是给钥匙的优待，不是给失误的赦免。
+    # **责骂留在 raw 里，说教与空口断言拎出去单独结算**——后两者带自己的
+    # 地板（PENALTY_FLOOR），够不到拉黑线。分野的理由写在那张表旁边。
+    soft_loss = 0
     for penalty in hit_keys:
-        raw += PENALTY_VALUES.get(penalty, 0)
+        if penalty in SOFT_PENALTIES:
+            soft_loss += PENALTY_VALUES.get(penalty, 0)
+        else:
+            raw += PENALTY_VALUES.get(penalty, 0)
 
     # 权重相乘会产生小数，在求和后一次性取整，避免逐项取整累积偏差
     delta = _round_half_up(max(-ROUND_CLAMP, min(ROUND_CLAMP, raw)))
+
+    # 说教／空口断言**在钳制之外单独结算**，形状与下面的合规红线完全一致：
+    # 该扣的照扣，但不许由它们把人推过拉黑线，也不倒扣。
+    if soft_loss:
+        base = state.trust + delta
+        soft_loss = max(soft_loss, -max(0, base - PENALTY_FLOOR))
+        delta += soft_loss
 
     # 合规违规**在钳制之外单独结算**，因为它带自己的地板（见 BREACH_FLOOR）。
     # 单轮最多 −11（两条都踩），进不进 ROUND_CLAMP 不影响结果。

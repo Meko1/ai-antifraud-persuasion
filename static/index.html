@@ -14,7 +14,53 @@
      landmark 会是乱的，而这一屏上唯一真正称得上"主内容"的是对话本身。
      其余几层改回 div，屏幕的语义由各自的 section + 标题层级承担。 -->
 <div class="app-shell">
-  <section class="screen on assignment" id="assignment" aria-live="polite">
+  <!-- ── 转账确认（2026-08-25 加）────────────────────────────────────────
+       在它之前，「角色对调」这个转向最强的想法是**被解释出来的**：工作台
+       顶上写着"这一屏本来会在你自己提交大额转出时弹出，现在请你坐到对面"。
+       那句话一边要求玩家入戏，一边亲口告诉他真实的触发并没有发生——
+       而且它更像写给评委看的说明，不像写给玩家的第一句话。
+
+       现在换成先**做一遍**：你自己签一笔三十万转给"安全账户"，按下确认，
+       这笔转账被拦下来，然后才把你放到对面那把椅子上。
+       解释挪到动作之后，角色对调就不用再讲了，它被演出来了。
+
+       「模拟界面」那一行不能省：这个仓库对演示态的规矩是
+       "一个看不出来是演示的演示，不是演示，是一场骗局"（app/offline.py）。 -->
+  <section class="screen on transfer-screen" id="transfer">
+    <div class="osbar"><span>14:46</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <header class="appbar appbar-centered">
+      <strong>转账确认</strong>
+    </header>
+
+    <div class="transfer-body" id="transferForm">
+      <p class="transfer-label">转出金额</p>
+      <p class="transfer-amount num">¥300,000.00</p>
+      <dl class="transfer-fields">
+        <div><dt>收款方</dt><dd>银联资金核查专户</dd></div>
+        <div><dt>转出账户</dt><dd class="num">我的资金账户 ****8823</dd></div>
+        <div><dt>到账时间</dt><dd>预计 2 小时内</dd></div>
+      </dl>
+      <p class="transfer-sim">模拟界面 · 不会产生任何真实交易</p>
+    </div>
+    <div class="primary-foot" id="transferFoot">
+      <button class="primary-action" id="transferGo" type="button">确认转出</button>
+      <p>请仔细核对收款方信息</p>
+    </div>
+
+    <div class="transfer-body handoff-body" id="transferHandoff" hidden>
+      <h1>这笔转账没有提交。</h1>
+      <p>每天都有人在按下确认的那一刻，把一辈子的积蓄转进一个并不存在的"安全账户"。
+         拦下他们的那句话，往往就差一个人肯说。</p>
+      <p class="handoff-turn">接下来三分钟，请你坐到对面——<br>
+        <b>有人正要做同样的事，而你是他的投资顾问。</b></p>
+    </div>
+    <div class="primary-foot" id="handoffFoot" hidden>
+      <button class="primary-action" id="handoffGo" type="button">坐到对面</button>
+      <p>约 3 分钟 · 最多 12 轮 · 随时可以退出</p>
+    </div>
+  </section>
+
+  <section class="screen assignment" id="assignment" aria-live="polite">
     <div class="osbar"><span>14:47</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
     <div class="assignment-main">
       <div class="assignment-visual" aria-hidden="true">
@@ -40,19 +86,10 @@
       <span class="quiet" id="todayCount">今日第 1 位客户</span>
     </header>
     <div class="opening-body">
-      <!-- **这一段是整个转向在界面上唯一的落点。**
-           在它之前，第一屏是一套 B 端投顾 CRM：「今日第 1 位客户」+ 别人的
-           账户异动。而定位说的是"用户自己正要转账时弹出，让他去劝一个和他
-           一样的人"——「角色对调」是这次转向最强的那个想法，却在必须承载
-           它的这一屏上一个字都没有。文档转了，产品没转。
-
-           措辞是"本来会"而不是"你刚刚"：演示环境里没有人真的提交过转出，
-           写成断言就是对用户撒谎。接进真实异动流水之后，把这一句换成
-           那笔真实的转出即可——**换的是这一句，不是这一屏**。 -->
-      <p class="bridge">
-        这一屏本来会在<b>你自己</b>提交大额转出时弹出。<br>
-        现在请你坐到对面：有人正要做同样的事，而你是他的投资顾问。
-      </p>
+      <!-- 原先这里有一段解释「角色对调」的话（"这一屏本来会在你自己提交
+           大额转出时弹出…"）。2026-08-25 删掉了：它现在由前面那一屏
+           **演**出来——你自己签过一笔、被拦下来、然后才坐到这一侧。
+           解释在动作之后就不必再说一遍，说了反而把刚建立的代入感拆掉。 -->
       <p class="live-label"><i></i><span id="openingAlert">资金异动 · 等待处理</span></p>
       <span class="opening-rule" aria-hidden="true"></span>
       <h1 id="openingTitle"></h1>
@@ -146,6 +183,11 @@
         <span class="legacy-trust-track" hidden><i id="trustFill"></i><i id="trustGoal"></i></span>
         <span id="remaining" hidden>12</span>
       </div>
+      <!-- 时机线索。**它说的是"他现在什么状态、这意味着什么"，不是"该用哪一把"**——
+           后者是答案，印在屏幕上任何会读字的玩家两轮就滑向 expert，
+           §9.1 那套人群分布当场作废（见 tools/balance_sim.py 顶部那条警告）。
+           文案与理由在 static/keys.js 的 MOOD_HINTS。 -->
+      <p class="mood-hint" id="moodHint" role="status" aria-live="polite"></p>
     </header>
     <main class="thread" id="thread" aria-live="polite" aria-label="对话">
       <!-- 三件事一句话说完，多一行都会把玩家挡在对话之外：

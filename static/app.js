@@ -55,13 +55,20 @@
 
 import { $, showScreen } from './dom.js';
 import { playTurn, syncSend } from './chat.js';
-import { boot, enterGame, markPrimerSeen, openClientSheet } from './opening.js';
+import {
+  ackTransfer, boot, confirmTransfer, enterGame, markPrimerSeen, openClientSheet,
+} from './opening.js';
 import { openExitSheet, openMethodsSheet } from './control.js';
 import { game, startNewClient } from './state.js';
 
 // 点火。放在挂监听之前，与拆分前的顺序一致：开局请求要尽早发出去，
 // 玩家读工作台那一屏的时间同样在给它买单（「首屏 ≤3 秒」）。
 boot();
+
+// 转账确认那一屏的两步：签字 → 被拦下来 → 坐到对面。
+// 两步都在同一屏上完成，理由见 index.html 那一段注释。
+$('transferGo')?.addEventListener('click', confirmTransfer);
+$('handoffGo')?.addEventListener('click', ackTransfer);
 
 // 它现在是个真 <button>，回车与空格由浏览器自己管，不用再补 keydown
 $('openChen').addEventListener('click', enterGame);

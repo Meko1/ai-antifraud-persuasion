@@ -15,6 +15,27 @@ let savedGame = null;
 let assignmentStartedAt = 0;
 let startError = null;
 
+/* ── 转账确认屏 ──────────────────────────────────────────────
+ *
+ * 开局请求在这一屏后面照常跑，玩家读转账单的时间同样在给「首屏 ≤3 秒」买单
+ * ——和工作台那一屏是同一笔账。
+ *
+ * `bootOutcome` 与 `transferAcked` 两个状态凑在一起决定"什么时候切到工作台"：
+ * 请求可能比玩家先到（那就等他签完字），玩家也可能比请求先到
+ * （那就先给他接入动画）。少任何一个，都会出现"他还在看转账单，
+ * 工作台自己蹦出来了"。 */
+const TRANSFER_KEY = 'aap.transfer.seen';
+let bootOutcome = 'pending';   // pending | ready | error
+let transferAcked = true;
+
+function transferSeen() {
+  try {
+    return sessionStorage.getItem(TRANSFER_KEY) === '1';
+  } catch {
+    return false;  // 隐私模式：那就再演一遍，不致命
+  }
+}
+
 /** 开局那一路要等的东西。`boot()` 之前它是"还没开始"，不是 undefined——
  *  `enterGame` 无条件 await 它，给个空壳省得那里再判一次。 */
 let ready = Promise.resolve(false);
@@ -34,10 +55,36 @@ export function boot() {
   // 有存档就直接进对话，不闪那一下"正在接入高风险客户"——
   // 续局的人不是在开新局，给他看接入动画是在撒谎
   savedGame = loadSaved();
-  showScreen(savedGame ? 'chat' : 'assignment');
+  // 转账确认屏**只在这次会话的第一局出现**。「换一位客户」走的是
+  // location.reload()，每换一位就重演一遍签字，它就从"一次经历"退化成
+  // "一段过场动画"——而过场动画是会被跳过的东西。
+  transferAcked = Boolean(savedGame) || transferSeen();
+  showScreen(savedGame ? 'chat' : (transferAcked ? 'assignment' : 'transfer'));
   assignmentStartedAt = Date.now();
   ready = startSession();
   return ready;
+}
+
+/** 按下「确认转出」：不切屏，只把这一屏换成拦截那一面。
+ *  切屏留给下一步——**这笔转账被拦下来这件事，要发生在同一屏上**，
+ *  换个屏幕就变成了两件不相干的事。 */
+export function confirmTransfer() {
+  $('transferForm').hidden = true;
+  $('transferFoot').hidden = true;
+  $('transferHandoff').hidden = false;
+  $('handoffFoot').hidden = false;
+  // 焦点跟着走，否则键盘用户按完确认之后焦点掉回 body
+  $('handoffGo').focus({ preventScroll: true });
+}
+
+/** 按下「坐到对面」：真正离开转账屏。
+ *  开局请求已经回来就直接进工作台，没回来就去接入动画那一屏等着。 */
+export function ackTransfer() {
+  try {
+    sessionStorage.setItem(TRANSFER_KEY, '1');
+  } catch { /* 隐私模式：下次刷新再演一遍，不影响任何别的东西 */ }
+  transferAcked = true;
+  showScreen(bootOutcome === 'ready' ? 'opening' : 'assignment');
 }
 
 export async function loadGame() {
@@ -107,10 +154,13 @@ async function startSession() {
     await loadGame();
     const elapsed = Date.now() - assignmentStartedAt;
     if (!REDUCED && elapsed < 850) await sleep(850 - elapsed);
-    showScreen('opening');
+    bootOutcome = 'ready';
+    // 玩家还在转账确认屏上就别切走——他签完字自己会过来（ackTransfer）
+    if (transferAcked) showScreen('opening');
     return true;
   } catch (error) {
     startError = error;
+    bootOutcome = 'error';
     $('assignmentTitle').textContent = '暂时无法接入客户。';
     $('assignmentCopy').textContent = '请检查网络或服务状态后重新连接，本局尚未开始。';
     $('assignmentProgress').hidden = true;

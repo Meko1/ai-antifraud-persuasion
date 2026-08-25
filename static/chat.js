@@ -1,5 +1,5 @@
 import { $, showScreen, sleep, thread } from './dom.js';
-import { BREACHES, MOODS } from './keys.js';
+import { BREACHES, MOODS, MOOD_HINTS } from './keys.js';
 import { postTurn, readEvents } from './api.js';
 import { openReview } from './review.js';
 import {
@@ -121,6 +121,15 @@ export function paintMood(mood) {
     el.classList.remove('turn');
     void el.offsetWidth;  // 强制重排，让同名动画能第二次播
     el.classList.add('turn');
+  }
+
+  // 时机线索。**只说他现在的状态意味着什么，不报该用哪一把钥匙**——
+  // 理由写在 keys.js 的 MOOD_HINTS 上面。节点缺失时静默跳过：
+  // 它是辅助信息，不该因为少一个 id 就把这一轮的渲染整个掀掉。
+  const hintEl = $('moodHint');
+  if (hintEl) {
+    const hint = MOOD_HINTS[mood] || MOOD_HINTS.guarded;
+    if (hintEl.textContent !== hint) hintEl.textContent = hint;
   }
 
   // 细条不带数字也不闪：它只是个余光里的东西，用来兜住"完全没有反馈"的茫然
@@ -267,7 +276,13 @@ export async function playTurn(utterance) {
       degraded: !!score.degraded,
     });
     game.trust = score.trust;
-    paintMood(score.mood);
+    // **game.mood 必须跟着走。** 在这一行之前它只在开局被赋值过一次，
+    // 之后十二轮一直是第 1 轮那个值——两处因此都是错的：
+    // 续局时 `resumeGame` 的 `paintMood(game.mood)` 画的是开局档位
+    // （打到第 8 轮刷新一下，抬头会退回"烦躁"），
+    // 复盘也拿不到"他最后停在哪一档"。
+    game.mood = score.mood;
+    paintMood(game.mood);
     // 判分卡不在对局中出现：标签与分数一律留到复盘。
     // 边打边给答案等于把攻略印在屏幕上——玩家两轮就学会照着清单刷分，
     // 从此不再读人。要读的东西只有一样：他说的话。

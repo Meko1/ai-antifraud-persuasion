@@ -13,6 +13,7 @@ from app.scoring import (
     DRIFT,
     EFFICACY,
     MAX_ROUNDS,
+    PENALTY_FLOOR,
     PRESSURE_DRIFT,
     WINDOW_MISSED_TRUST,
     Ending,
@@ -144,6 +145,37 @@ def test_责骂之后他有两轮听不进话() -> None:
 
     assert outcome.delta == -4
     assert outcome.state.guard == 2
+
+
+def test_说教与空口断言够不到拉黑线() -> None:
+    """被拉黑是**关系破裂**，而这两项不是羞辱，是"这一轮没劝动他"。
+
+    与 `BREACH_FLOOR` 同构：合规红线早就够不到拉黑线，理由是那一类的后果
+    不由这一局的输赢承载。说教与空口断言同理——玩家没说过一句难听的话，
+    不该被这两项一路扣到出局。
+
+    病灶是量出来的：蒙特卡洛 6000 局/人设，novice **被拉黑 41.8%**，
+    而它的 penalty_rate 是 0.63，十二轮里光这两项就能扣掉九点上下。
+    加地板之后 19.3%，expert 与 speedrun 的胜率一格没动（§9.4 门槛全过）。
+    """
+    outcome = evaluate_turn(
+        对局中(trust=12), hit_keys=["preach", "bare_assertion"], grounded=False
+    )
+
+    assert outcome.state.trust >= PENALTY_FLOOR
+    assert decide_ending(outcome.state.trust, outcome.state.round) is not Ending.BLACKLISTED
+
+
+def test_责骂照旧能把这一局骂到出局() -> None:
+    """地板只给那两项，**责骂一点没动**。
+
+    上面那条注释里写着老陈拉黑你是因为你羞辱了他——那是 scold 干的。
+    给责骂也加地板，等于把这个作品最想教的那件事一起抹掉。
+    """
+    outcome = evaluate_turn(对局中(trust=3), hit_keys=["scold"], grounded=False)
+
+    assert outcome.state.trust == 0
+    assert decide_ending(outcome.state.trust, outcome.state.round) is Ending.BLACKLISTED
 
 
 def test_防御姿态削弱钥匙效力() -> None:

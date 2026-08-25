@@ -74,7 +74,20 @@ export function verdictCopy() {
   else if (kind === 'intercepted') parts.push(`${meta.savedCopy}。`);
   else if (kind === 'stalled') parts.push(`${TA}把这事推后了——你争到的是时间，不是${TA}的决定。`);
   else if (kind === 'blacklisted') parts.push(`第 ${game.turns.length} 轮，${TA}把你拉黑了——这条线断了，你再也看不到${TA}的动静。`);
-  else parts.push(`${meta.savedCopy}。`);
+  else {
+    parts.push(`${meta.savedCopy}。`);
+    // **同样落进「转账」，戒备与烦躁是两件不同的事。**
+    // 阶梯自己声称量的是"他最后有多信你"（CONTEXT.md「结局」），
+    // 却把这两档压成了同一句话——这里只把那条信息说回来。
+    //
+    // **不改分档、不改金额、不改任何门槛**：钱照样是全转走的，
+    // 这一档仍然是最低一档。2026-08-25 评估过把烦躁档划进「拖住」
+    // （average 27.5%→54.9%），被否掉了：他还烦躁着就说"你争到了时间"，
+    // 那是拿一句不成立的话去换一个好看的分布。
+    parts.push(game.mood === 'guarded'
+      ? `${TA}从头到尾防着你，${game.turns.length} 轮没让你真正靠近。`
+      : `${TA}一直在跟你说话，只是始终没有松口。`);
+  }
 
   if (best && best.delta > 0) {
     // **"最有力的一句"这句不在这儿说了。** 上面「本局关键转折」整块讲的

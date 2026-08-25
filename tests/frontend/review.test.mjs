@@ -194,3 +194,36 @@ describe('复盘第一屏：五块是硬上限', () => {
     }
   });
 });
+
+describe('转账这一档：戒备与烦躁不是同一件事', () => {
+  // 阶梯自己声称量的是"他最后有多信你"，却把这两档压成了同一句话。
+  // 复盘把这条信息说回来——**但不改分档、不改金额**：
+  // 2026-08-25 评估过把烦躁档划进「拖住」，被否掉了（他还烦躁着就说
+  // "你争到了时间"，是拿一句不成立的话去换一个好看的分布）。
+  function transferred(mood) {
+    const app = fresh([turn({ round: 12, trust: mood === 'guarded' ? 18 : 36 })], SCENE_CHEN);
+    app.game.ending = { kind: 'transferred' };
+    app.game.mood = mood;
+    return app;
+  }
+
+  test('他从头到尾防着你', () => {
+    const copy = transferred('guarded').verdictCopy();
+    assert.match(copy, /防着你/);
+    assert.doesNotMatch(copy, /没有松口/);
+  });
+
+  test('他一直在说话，只是没松口', () => {
+    const copy = transferred('irritated').verdictCopy();
+    assert.match(copy, /没有松口/);
+    assert.doesNotMatch(copy, /防着你/);
+  });
+
+  test('两种说法都仍然是最低一档，钱照样全转走', () => {
+    for (const mood of ['guarded', 'irritated']) {
+      const app = transferred(mood);
+      assert.equal(app.reviewKind(), 'transferred');
+      assert.match(app.resultAmount('transferred').value, /¥0/);
+    }
+  });
+});
