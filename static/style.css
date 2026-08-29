@@ -1250,14 +1250,16 @@ body {
   --line: #d9ddd8;
   --navy: #243d4f;
   --navy-soft: #365b71;
-  /* 东方财富品牌橙，取自 eastmoney.com 首页实测最高频色值（29 次命中，
-     远超其他任何颜色），不是配的。只用在入场引导的主按钮上（查看异常记录 /
-     联系客户 / 知道了开始）——对局中段与结束态那些按钮继续用 --navy，
-     橙色只在"这是东方财富自己的东西"的第一印象那一刻出现，不铺开。 */
-  --em-orange: #ea5404;
+  /* 承办方品牌橙，取自其官网首页实测最高频色值（29 次命中，远超其他任何
+     颜色），不是配的。只用在入场引导的主按钮上（查看异常记录 / 联系客户 /
+     知道了开始）——对局中段与结束态那些按钮继续用 --navy，
+     橙色只在"这是承办方自己的东西"的第一印象那一刻出现，不铺开。
+
+     变量名与注释都不写公司名：色值本身不构成公司信息，但"取自谁家"会。 */
+  --brand-orange: #ea5404;
   /* 页面画布底色：body 一直引用 --canvas，但这张变量表里从未定义过它——
      实际渲染因此落到 transparent，桌面端手机框外露出的是浏览器默认白。
-     现在补上，顺带把这块交给 --em-orange 呼应一点暖度，不进任何一屏内部。 */
+     现在补上，顺带把这块交给 --brand-orange 呼应一点暖度，不进任何一屏内部。 */
   --canvas: #efe9e1;
   --signal: #bd4f40;
   --signal-soft: #f8e9e5;
@@ -1539,7 +1541,7 @@ button:disabled { cursor: not-allowed; }
   margin-top: 4px;
   font-weight: 780;
   /* 品牌橙只落在这一句上——它是整个作品的那一句话 */
-  color: var(--em-orange);
+  color: var(--brand-orange);
 }
 
 /* 异常事件 */
@@ -1575,7 +1577,7 @@ button:disabled { cursor: not-allowed; }
   padding: 13px 16px;
   border: 0;
   border-radius: 13px;
-  background: var(--em-orange);
+  background: var(--brand-orange);
   color: #fff;
   font-size: 16px;
   font-weight: 760;
@@ -1723,12 +1725,12 @@ button:disabled { cursor: not-allowed; }
 .composer input { width: 100%; height: 47px; padding: 0 14px; border: 1px solid #d2d7d3; border-radius: 12px; outline: 0; background: #fff; color: var(--ink); font-size: 15px; }
 .composer input::placeholder { color: #858d88; }
 .composer input:focus { border-color: var(--navy-soft); box-shadow: 0 0 0 3px rgba(54,91,113,.1); }
-.composer button { width: 46px; border: 0; border-radius: 12px; background: var(--em-orange); color: #fff; font-size: 22px; line-height: 1; font-weight: 500; }
+.composer button { width: 46px; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 22px; line-height: 1; font-weight: 500; }
 .composer button:disabled { opacity: .45; }
 /* 12px，不是 10px。这一行写的是「不要提供密码、验证码或要求客户提供敏感信息」——
    它是这个作品的安全约束，不是版权声明。小到看不见的安全提示等于没有。 */
 .composer > p { margin: 7px 1px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.endcta { align-self: stretch; min-height: 48px; margin: 8px 16px 0; border: 0; border-radius: 12px; background: var(--em-orange); color: #fff; font-size: 15px; font-weight: 720; }
+.endcta { align-self: stretch; min-height: 48px; margin: 8px 16px 0; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 15px; font-weight: 720; }
 
 /* 转账凭证 */
 .bubble.photo { padding: 0; background: transparent !important; box-shadow: none; }
@@ -1873,7 +1875,7 @@ button:disabled { cursor: not-allowed; }
 .actions { display: flex; gap: 9px; padding: 18px 19px 0; }
 /* 复盘上的主操作（生成分享卡）走品牌橙；「详细复盘」那个折叠头留在墨蓝。
    两块都上橙的话，最后一屏会出现两条同色大色块上下叠着，层级就没了。 */
-.actions button { flex: 1; min-height: 46px; border: 0; border-radius: 11px; background: var(--em-orange); color: #fff; font-size: 14px; font-weight: 700; }
+.actions button { flex: 1; min-height: 46px; border: 0; border-radius: 11px; background: var(--brand-orange); color: #fff; font-size: 14px; font-weight: 700; }
 .actions button.plain { border: 1px solid var(--line); background: var(--paper-strong); color: var(--ink); }
 #cardWrap { padding: 14px 19px; }
 #card { display: block; width: 100%; max-width: 300px; margin: auto; border-radius: 8px; box-shadow: 0 8px 24px rgba(25,35,31,.12); }
