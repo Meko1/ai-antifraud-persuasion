@@ -1,5 +1,6 @@
-import { KEYS } from './keys.js';
+import { KEYS, MOODS } from './keys.js';
 import { fitCanvas, paintKline, palette, roundRect } from './chart.js';
+import { contrastFacts } from './contrast.js';
 import { drawQR } from './qr.js';
 import { percentileHeadline, percentileTier } from './stats.js';
 import {
@@ -181,6 +182,79 @@ export function tierColor(kind, c) {
   return c.red;
 }
 
+/** 卡面主角那三行：眉、原话、那个倍数。
+ *
+ *  **2026-08-29 换掉了卡面主角，理由是一条外部结论。** 在此之前主角是
+ *  `¥0` 与「钱一分没动，也一分没保住」——而预测一条内容会不会被转发的是
+ *  **唤醒度**而不是正负（Berger & Milkman, *JMR* 2012，近 7000 篇 NYT
+ *  文章）：敬畏、愤怒、焦虑会被转发，**悲伤与满足不会**。
+ *  「一分没保住」正好落在低唤醒的沮丧那一格，是最不会被转发的一种。
+ *
+ *  而这一局手上恰好有一句高唤醒的：**同一句话，换个时候说，差 N 倍**。
+ *  它既是意外，又**恰好是全作品唯一竞品没有的判据**——传播价值与技术主张
+ *  第一次指向同一句话。
+ *
+ *  **结局没有被藏起来**：徽章还在卡头，金额退到下面那一栏统计里。
+ *  换的是主角，不是事实（[POSITIONING「为拿票做设计」](../docs/POSITIONING.md)
+ *  那条边界：允许为"让人看懂/愿意转发"设计，不允许越过主张边界）。
+ *
+ *  拿不到效力矩阵（老令牌、结局事件没下发）时返回 null，调用方退回旧版式。
+ */
+export function cardHero() {
+  const f = contrastFacts();
+  if (!f) return null;
+  const named = (m) => MOODS[m] || m;
+
+  // 倍数是这张卡的主角。`mistimed` 那一支没有"当时值多少"可比（它算的是
+  // 空口断言，不走效力矩阵），所以那一支印最高档位的绝对值，不硬凑一个倍数
+  const hero = f.times ? `差 ${f.times} 倍` : `最高 ${f.bestVal}×`;
+
+  let note;
+  if (f.kind === 'mistimed') {
+    note = `他当时${named(f.mood)}，这句算空口断言；等他${named(f.bestMood)}再说，`
+      + `是这一局分值最高的一把`;
+  } else if (f.kind === 'gap') {
+    note = `他当时${named(f.mood)}，这一招值 ${f.val}×；`
+      + `同一句话，等他${named(f.bestMood)}再说，值 ${f.bestVal}×`;
+  } else {
+    note = `同一把${f.name}，在他${named(f.bestMood)}时值 ${f.bestVal}×，`
+      + `在他${named(f.worstMood)}时只值 ${f.worstVal}×`;
+  }
+
+  return {
+    eyebrow: f.round ? `第 ${f.round} 轮 · ${f.name}` : `同一句话，换个时候说 · ${f.name}`,
+    quote: f.quote,
+    hero,
+    note,
+  };
+}
+
+/** 按给定宽度断行。canvas 没有自动换行，玩家那句原话最长 120 字，得自己折。
+ *
+ *  **按字符逐个量，不按标点或空格断**：这一句大概率是中文，中文没有词边界，
+ *  按空格断会得到一整行不折。返回的行数由调用方截断——卡上只留得下两行。
+ */
+export function wrapText(ctx, text, maxWidth, maxLines) {
+  const lines = [];
+  let line = '';
+  for (const ch of String(text)) {
+    if (line && ctx.measureText(line + ch).width > maxWidth) {
+      lines.push(line);
+      line = ch;
+      if (lines.length === maxLines) {
+        // 装满了还有字没放完：末行让出一个字的位置给省略号，让"被截断了"
+        // 这件事看得出来。不省略地硬切，读的人会以为原话就是那么短
+        lines[maxLines - 1] = `${lines[maxLines - 1].slice(0, -1)}…`;
+        return lines;
+      }
+    } else {
+      line += ch;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 /** 分享卡 = 复盘正文里"结算卡 + 三栏统计 + K 线 + 百分比"这一整块，重画一遍。
  *
  * 上一版分享卡是他说过的一句话（聊天气泡截图），现在这一块换成了复盘正文
@@ -204,10 +278,23 @@ export function makeCard(view) {
   wrap.innerHTML = '<canvas id="card"></canvas>';
   const canvas = view.querySelector('#card');
 
-  // 版式是固定的：除了要不要那行百分比，每一块的高度都是常数，
-  // 不用像上一版那样先量一句变长变短的引言才能定卡片多高。
+  // 卡面主角（2026-08-29 换）：`cardHero()` 给的那三行。理由在 `cardHero`
+  // 的注释里——低唤醒的沮丧是最不会被转发的一种，而这一局手上恰好有一句
+  // 高唤醒的。拿不到效力矩阵时 `hero` 是 null，整张卡退回旧版式（金额当主角）。
+  const hero = cardHero();
+
+  // 版式仍然是固定的：唯一要先量的是玩家那句原话占一行还是两行，
+  // 那一句最长 120 字，不量就定不了卡片多高。
+  const probe = fitCanvas(document.createElement('canvas'), 1, 1);
+  probe.font = `400 17px ${c.sans}`;
+  const quoteLines = hero && hero.quote
+    ? wrapText(probe, `「${hero.quote}」`, contentW - 14, 2) : [];
+
   const TIER_TOP = pad + 34;
-  const AMT_TOP = TIER_TOP + 58;
+  const EYEBROW_TOP = TIER_TOP + 50;
+  const QUOTE_TOP = EYEBROW_TOP + 26;
+  const QUOTE_H = quoteLines.length * 26 + (quoteLines.length ? 12 : 0);
+  const AMT_TOP = hero ? QUOTE_TOP + QUOTE_H : TIER_TOP + 58;
   const CAP_TOP = AMT_TOP + 54;
   const SAVED_TOP = CAP_TOP + 22;
   const DIV1 = SAVED_TOP + 34;
@@ -257,17 +344,46 @@ export function makeCard(view) {
   ctx.fillText(pill, pad + 12, TIER_TOP + 16);
   ctx.textBaseline = 'top';
 
-  ctx.fillStyle = c.text;
-  ctx.font = `600 46px ${c.sans}`;
-  ctx.fillText(wholeMoney(savedAmount(kind)), pad, AMT_TOP);
+  if (hero) {
+    ctx.fillStyle = c.note;
+    ctx.font = `500 13px ${c.sans}`;
+    ctx.fillText(hero.eyebrow, pad, EYEBROW_TOP);
 
-  ctx.fillStyle = c.note;
-  ctx.font = `400 13px ${c.sans}`;
-  ctx.fillText('守住的钱', pad, CAP_TOP);
+    // 玩家自己那句原话。**它是这张卡最像"截图"的一处**——人转发的是
+    // 一句话，不是一份成绩（HANDOFF「分享卡是一张聊天截图」那条原则还在）
+    if (quoteLines.length) {
+      ctx.fillStyle = tierColor('stalled', c);
+      ctx.fillRect(pad, QUOTE_TOP + 2, 3, quoteLines.length * 26 - 6);
+      ctx.fillStyle = c.text;
+      ctx.font = `400 17px ${c.sans}`;
+      quoteLines.forEach((line, i) => ctx.fillText(line, pad + 14, QUOTE_TOP + i * 26));
+    }
 
-  ctx.fillStyle = c.gray;
-  ctx.font = `400 16px ${c.sans}`;
-  ctx.fillText(meta.savedCopy, pad, SAVED_TOP);
+    ctx.fillStyle = c.goalText;
+    ctx.font = `600 46px ${c.sans}`;
+    ctx.fillText(hero.hero, pad, AMT_TOP);
+
+    ctx.fillStyle = c.gray;
+    ctx.font = `400 15px ${c.sans}`;
+    ctx.fillText(hero.note, pad, CAP_TOP + 2);
+
+    ctx.fillStyle = c.note;
+    ctx.font = `400 13px ${c.sans}`;
+    ctx.fillText('这一局判的不是你说得标不标准，是你用得是不是时候', pad, SAVED_TOP + 4);
+  } else {
+    // 旧版式：拿不到效力矩阵时金额仍然当主角，总比一块空白强
+    ctx.fillStyle = c.text;
+    ctx.font = `600 46px ${c.sans}`;
+    ctx.fillText(wholeMoney(savedAmount(kind)), pad, AMT_TOP);
+
+    ctx.fillStyle = c.note;
+    ctx.font = `400 13px ${c.sans}`;
+    ctx.fillText('守住的钱', pad, CAP_TOP);
+
+    ctx.fillStyle = c.gray;
+    ctx.font = `400 16px ${c.sans}`;
+    ctx.fillText(meta.savedCopy, pad, SAVED_TOP);
+  }
 
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
   ctx.lineWidth = 1;
@@ -277,12 +393,20 @@ export function makeCard(view) {
   ctx.stroke();
 
   // 三栏统计，排法照抄正文的 statstrip
-  const stats = [
-    [String(game.trust), '最终信任度'],
-    [String(game.turns.length), '用了几轮'],
-    [best && best.delta > 0 ? `+${best.delta}` : '—',
-      best && best.delta > 0 ? `第 ${best.round} 轮最有力` : '没有一句推动他'],
-  ];
+  // 主角换人之后，金额退到这一栏。**它没有被藏起来**——徽章在卡头写着
+  // 这一局的结局，金额在这里写着数目。换的是主角，不是事实
+  const stats = hero
+    ? [
+      [wholeMoney(savedAmount(kind)), '守住的钱'],
+      [String(game.trust), '最终信任度'],
+      [String(game.turns.length), '用了几轮'],
+    ]
+    : [
+      [String(game.trust), '最终信任度'],
+      [String(game.turns.length), '用了几轮'],
+      [best && best.delta > 0 ? `+${best.delta}` : '—',
+        best && best.delta > 0 ? `第 ${best.round} 轮最有力` : '没有一句推动他'],
+    ];
   const colW = contentW / 3;
   ctx.textAlign = 'center';
   stats.forEach(([num, label], i) => {

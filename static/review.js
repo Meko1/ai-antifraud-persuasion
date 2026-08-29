@@ -1,5 +1,6 @@
 import { BREACHES, KEYS, MOODS, PENALTIES } from './keys.js';
 import { fetchStats } from './api.js';
+import { contrastFacts } from './contrast.js';
 import { fitCanvas, paintKline, palette } from './chart.js';
 import { percentileCopy, trustPercentile } from './stats.js';
 import { makeCard, paintHistory } from './history.js';
@@ -713,83 +714,45 @@ export function paintPhone(view) {
  *  空壳仍然不留：`eff` 拿不到（老令牌、结局事件没下发）时照旧整块不出现。 */
 export function paintContrast(view) {
   const box = view.querySelector('#contrastBox');
-  const eff = game.ending && game.ending.efficacy;
-  if (!eff || !box) return;
+  // **取数搬到 contrast.js 了**（2026-08-29）：分享卡的卡面主角现在也是
+  // 这一块，两边必须算出同一个倍数。同一局在两处给出不同的数字，
+  // 直接打在"判分是可复现的"这条主张上。这里只负责把它讲成人话。
+  const f = contrastFacts();
+  if (!f || !box) return;
 
   const named = (m) => MOODS[m] || m;
-  const rowOf = (k) => eff[k] || null;
-  // 一把钥匙在四档里的最高与最低。用来说"同一句话差多少倍"
-  const peak = (row) => Object.entries(row).sort((a, b) => b[1] - a[1])[0];
-  const floor = (row) => Object.entries(row).sort((a, b) => a[1] - b[1])[0];
-
+  const times = f.times ? `，<b>差 ${f.times} 倍</b>` : '';
   let head = '';
   let body = '';
-  let quote = '';
+  const quote = f.quote;
 
-  const mistimed = scoredTurns().find((t) => t.mistimedWarning);
-  if (mistimed && rowOf('informed_warning')) {
-    const row = rowOf('informed_warning');
-    const [bestMood, bestVal] = peak(row);
-    quote = mistimed.utterance;
-    head = `第 ${mistimed.round} 轮 · 你给了依据，也下了判断`;
+  if (f.kind === 'mistimed') {
+    head = `第 ${f.round} 轮 · 你给了依据，也下了判断`;
     body =
-      `他当时${named(mistimed.judgedMood)}，这句话算的是<b>空口断言</b>——`
+      `他当时${named(f.mood)}，这句话算的是<b>空口断言</b>——`
       + `跟他女儿昨天说的那四个字落在同一个地方。`
-      + `<br>同一句话，等他${named(bestMood)}再说，它是这一局分值最高的一把（${bestVal}×）。`
+      + `<br>同一句话，等他${named(f.bestMood)}再说，它是这一局分值最高的一把（${f.bestVal}×）。`
       + `<br><b>不是这句话错了，是时候错了。</b>`;
+  } else if (f.kind === 'gap') {
+    head = `第 ${f.round} 轮 · ${f.name}`;
+    body =
+      `他当时${named(f.mood)}，这一招值 ${f.val}×。`
+      + `<br>同一句话，等他${named(f.bestMood)}再说，值 ${f.bestVal}×。`
+      + `<br><b>动作是对的，差的是时候。</b>`;
+  } else if (f.kind === 'flat') {
+    head = `你用得最多的那一把 · ${f.name}`;
+    body =
+      `时机你挑得不错——这一局没出现"动作对、时候错"那种明显的错位。`
+      + `<br>但同一把${f.name}，在他${named(f.bestMood)}时值 ${f.bestVal}×，`
+      + `在他${named(f.worstMood)}时只值 ${f.worstVal}×${times}。`
+      + `<br><b>这一局判的就是这个差值。</b>`;
   } else {
-    // 找"动作对、时候不对"差得最远的那一轮
-    let worst = null;
-    scoredTurns().forEach((t) => {
-      if (t.efficacy == null) return;
-      const k = (t.hits || []).find((h) => rowOf(h));
-      if (!k) return;
-      const [bestMood, bestVal] = peak(rowOf(k));
-      const gap = bestVal - t.efficacy;
-      if (!worst || gap > worst.gap) worst = { t, k, bestMood, bestVal, gap };
-    });
-    if (worst && worst.gap > 0.15) {
-      const { t, k, bestMood, bestVal } = worst;
-      quote = t.utterance;
-      head = `第 ${t.round} 轮 · ${KEYS[k] ? KEYS[k].name : k}`;
-      body =
-        `他当时${named(t.judgedMood)}，这一招值 ${t.efficacy}×。`
-        + `<br>同一句话，等他${named(bestMood)}再说，值 ${bestVal}×。`
-        + `<br><b>动作是对的，差的是时候。</b>`;
-    } else {
-      // 兜底：不讲某一轮，讲这张表本身。数字全部来自服务端下发的矩阵，
-      // 一个字都不是编的——这一块宁可少说，也不能说得比证据多。
-      const used = {};
-      scoredTurns().forEach((t) => {
-        (t.hits || []).forEach((h) => { if (rowOf(h)) used[h] = (used[h] || 0) + 1; });
-      });
-      const favourite = Object.entries(used).sort((a, b) => b[1] - a[1])[0];
-      // 没命中过就挑这个场景里落差最大的那一把，那是这张表最能说明问题的一格
-      const pick = favourite ? favourite[0] : Object.keys(eff).sort((a, b) => {
-        const spread = (k) => peak(eff[k])[1] - floor(eff[k])[1];
-        return spread(b) - spread(a);
-      })[0];
-      const row = pick && rowOf(pick);
-      if (!row) return;
-      const [bestMood, bestVal] = peak(row);
-      const [worstMood, worstVal] = floor(row);
-      const times = worstVal > 0 ? (bestVal / worstVal).toFixed(1) : null;
-      const name = KEYS[pick] ? KEYS[pick].name : pick;
-      head = favourite
-        ? `你用得最多的那一把 · ${name}`
-        : `这一局你一把钥匙都没打中 · 拿 ${name} 举个例`;
-      body = favourite
-        ? `时机你挑得不错——这一局没出现"动作对、时候错"那种明显的错位。`
-          + `<br>但同一把${name}，在他${named(bestMood)}时值 ${bestVal}×，`
-          + `在他${named(worstMood)}时只值 ${worstVal}×`
-          + (times ? `，<b>差 ${times} 倍</b>` : '') + `。`
-          + `<br><b>这一局判的就是这个差值。</b>`
-        : `同一句${name}，在他${named(bestMood)}时值 ${bestVal}×，`
-          + `在他${named(worstMood)}时只值 ${worstVal}×`
-          + (times ? `，<b>差 ${times} 倍</b>` : '') + `。`
-          + (MOODS[game.mood] ? `<br>这一局结束时，他停在${named(game.mood)}。` : '')
-          + `<br><b>不是话说得不够好，是时候没等到。</b>`;
-    }
+    head = `这一局你一把钥匙都没打中 · 拿 ${f.name} 举个例`;
+    body =
+      `同一句${f.name}，在他${named(f.bestMood)}时值 ${f.bestVal}×，`
+      + `在他${named(f.worstMood)}时只值 ${f.worstVal}×${times}。`
+      + (f.mood ? `<br>这一局结束时，他停在${named(f.mood)}。` : '')
+      + `<br><b>不是话说得不够好，是时候没等到。</b>`;
   }
 
   if (!head) return;
