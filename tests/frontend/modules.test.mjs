@@ -2,7 +2,7 @@
  *
  * ## 它堵的是哪个洞
  *
- * 单测那一层（harness.mjs）把十三个模块**拼成一份脚本**再跑，于是所有名字
+ * 单测那一层（harness.mjs）把全部模块**拼成一份脚本**再跑，于是所有名字
  * 落在同一个作用域里——**漏写一句 `import` 在那儿照样跑得通，到浏览器里
  * 才炸**。这正是"拼接"这个取巧做法的代价，写在 harness.mjs 顶部。
  *
@@ -253,7 +253,7 @@ describe('写法是约定好的那几种（harness 的拼接靠它）', () => {
   });
 
   test('没有 export default', () => {
-    // 十三个模块全是具名导出。default 会让上面那套静态检查失明
+    // 全部模块都是具名导出。default 会让上面那套静态检查失明
     for (const name of MODULES) {
       assert.doesNotMatch(SRC[name], /^export\s+default\b/m, `${name} 用了 export default`);
     }

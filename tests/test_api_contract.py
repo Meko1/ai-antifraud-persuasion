@@ -271,11 +271,23 @@ class Test存活与就绪分开:
 
     def test_healthz报出是否已自动切到公网(self, client: TestClient) -> None:
         """ADR-0007。反对自动切换的原始理由是"无人知情"——自动切换本身
-        没错，悄悄切才是问题，所以这一位必须在 healthz 上，不能只在日志里。"""
+        没错，悄悄切才是问题，所以这一位必须在 healthz 上，不能只在日志里。
+
+        `fallback` 是 2026-08-29 加的第五栏，回答的是另一个问题：
+        **不是"切没切过"，是"要切的时候有没有地方切"**。没有退路时它是
+        None，而那种部署在内网 token 用尽当天会安静地全程走兜底台词。
+        """
         body = client.get("/healthz").json()
         failover = body["llm_failover"]
-        assert set(failover) == {"active_provider", "switched", "switched_at", "reason"}
+        assert set(failover) == {
+            "active_provider", "switched", "switched_at", "reason", "fallback",
+        }
         assert isinstance(failover["switched"], bool)
+        # 有没有退路取决于运维填没填 PUBLIC_LLM_*，两种都是合法部署；
+        # 契约钉的是"这一位必须有明确答案"，不是"必须有退路"
+        assert failover["fallback"] is None or set(failover["fallback"]) == {
+            "provider", "model", "protocol",
+        }
 
 
 class Test探测不对公网开放:

@@ -566,6 +566,13 @@ async def healthz(request: Request, probe: int = 0) -> JSONResponse:
             body["llm_probe"] = {"ok": False, "reason": "probe 仅限本机或持令牌调用"}
         else:
             body["llm_probe"] = await llm_client.probe()
+            # ADR-0007 的退路也探一次。**探退路要趁还没用上它的时候**——
+            # 真等到内网 token 用尽那天才发现公网凭证是错的，会切换"成功"
+            # 之后立刻再失败，最后落回兜底台词，比根本没配还难查。
+            # 没有 fallback 的部署这里是 None，那一栏就不出现
+            fallback = await llm_client.probe_fallback()
+            if fallback is not None:
+                body["llm_probe_fallback"] = fallback
     return JSONResponse(body)
 
 

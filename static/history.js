@@ -1,5 +1,6 @@
 import { KEYS } from './keys.js';
 import { fitCanvas, paintKline, palette, roundRect } from './chart.js';
+import { drawQR } from './qr.js';
 import { percentileHeadline, percentileTier } from './stats.js';
 import {
   SCENE, endingMeta, game, reviewKind, savedAmount, scoredTurns, wholeMoney,
@@ -149,6 +150,30 @@ export function paintHistory(view, kind) {
 
 // ── 分享卡 ──────────────────────────────────────────────────
 
+/** 分享卡上那个二维码指向哪里。
+ *
+ *  **默认是当前访问地址**，所以本地、内网、目标服务器上都不用配置。
+ *  `<meta name="af-share-url">` 只在一种情况下要填：作品被别人的页面
+ *  代理或嵌套之后，浏览器看到的地址不是用户该扫到的那一个。
+ *
+ *  末尾的 `index.html` 要去掉——扫出来是个目录地址比扫出来一个文件名体面，
+ *  而两者打开的是同一页。
+ */
+export function shareUrl() {
+  const meta = typeof document !== 'undefined'
+    ? document.querySelector('meta[name="af-share-url"]') : null;
+  const configured = meta && meta.content ? meta.content.trim() : '';
+  if (configured) return configured;
+  if (typeof location === 'undefined' || !location.origin) return '';
+  return `${location.origin}${location.pathname}`.replace(/index\.html$/, '');
+}
+
+/** 二维码底下那行给人读的地址。协议头对读的人没有信息量，去掉；
+ *  真正编进码里的仍然是完整地址（带协议，不然扫出来不是个链接）。 */
+export function shareLabel(url) {
+  const short = String(url).replace(/^https?:\/\//, '').replace(/\/$/, '');
+  return short.length > 42 ? `${short.slice(0, 41)}…` : short;
+}
 
 export function tierColor(kind, c) {
   if (kind === 'persuaded' || kind === 'intercepted') return c.brand;
@@ -194,8 +219,16 @@ export function makeCard(view) {
   const LEGEND_TOP = CHART_TOP + CHART_H + 14;
   const PCT_TOP = LEGEND_TOP + 30;
   const PCT_H = pct != null ? 68 : 0;
-  const FOOT_TOP = PCT_TOP + PCT_H + (pct != null ? 16 : -8);
-  const H = FOOT_TOP + 16;
+  // 卡尾那一块（2026-08-29 加）：**一张传出去的图片如果不能把人带回作品，
+  // 它就只是一张图片**（就绪度审计 P1-9）。这一块就是那条路：作品名 +
+  // 一句让人想扫的话 + 二维码 + 给人读的地址。
+  //
+  // 它属于「让人看懂」，不属于「让人多打几局」——POSITIONING「不做什么」
+  // 那条线画在这里：加二维码是前者，加连胜奖励是后者。
+  const DIV3 = PCT_TOP + PCT_H + (pct != null ? 20 : -4);
+  const FOOT_TOP = DIV3 + 20;
+  const QR_BOX = 116;
+  const H = FOOT_TOP + QR_BOX + 10;
 
   const ctx = fitCanvas(canvas, W, H);
 
@@ -306,6 +339,39 @@ export function makeCard(view) {
     ctx.textBaseline = 'middle';
     ctx.fillText(`信任度${percentileHeadline(pct)}`, pad + 18, PCT_TOP + PCT_H / 2);
     ctx.textBaseline = 'top';
+  }
+
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, DIV3);
+  ctx.lineTo(W - pad, DIV3);
+  ctx.stroke();
+
+  // 二维码先画：它画不出来（地址太长，实际上碰不到）时左边那几行要改写法，
+  // 所以得先知道结果
+  const url = shareUrl();
+  const qrX = W - pad - QR_BOX;
+  const hasQR = !!url && drawQR(ctx, url, {
+    x: qrX, y: FOOT_TOP, size: QR_BOX, dark: c.text, light: '#ffffff',
+  });
+
+  // 左栏与二维码垂直居中对齐。三行：一句话、作品名、地址
+  const lineTop = FOOT_TOP + (QR_BOX - 74) / 2;
+  ctx.fillStyle = c.text;
+  ctx.font = `600 18px ${c.sans}`;
+  ctx.fillText(hasQR ? '扫码，换你去劝一次' : '换你去劝一次', pad, lineTop);
+
+  ctx.fillStyle = c.gray;
+  ctx.font = `400 14px ${c.sans}`;
+  ctx.fillText('AI 反诈劝阻 · 三分钟角色对调', pad, lineTop + 30);
+
+  if (url) {
+    ctx.fillStyle = c.note;
+    ctx.font = `400 12px ${c.mono}`;
+    // 地址一律印出来：二维码画得出来时它是给不方便扫码的人看的，
+    // 画不出来时它就是唯一那条路。`shareLabel` 已经按左栏宽度截过
+    ctx.fillText(shareLabel(url), pad, lineTop + 56);
   }
 
   canvas.toBlob((blob) => {

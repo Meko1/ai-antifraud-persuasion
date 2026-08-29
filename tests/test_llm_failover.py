@@ -125,12 +125,15 @@ def _patch_async_client(monkeypatch, handler) -> None:
 class FakeProviderClient:
     """FailoverLLMClient 的下位替身。只实现它需要的三个方法。"""
 
-    def __init__(self, provider: str, model: str = "m") -> None:
+    def __init__(self, provider: str, model: str = "m", protocol: str = "openai") -> None:
         class _Cfg:
             pass
         self.cfg = _Cfg()
         self.cfg.provider = provider
         self.cfg.model = model
+        # status() 要把退路是谁报出来，protocol 是那三栏之一
+        self.cfg.protocol = protocol
+        self.probe_calls = 0
         self.chat_calls: List[List[Dict[str, str]]] = []
         self.stream_calls = 0
         self._chat_result: Any = "ok"
@@ -156,7 +159,61 @@ class FakeProviderClient:
             yield chunk
 
     async def probe(self) -> Dict[str, Any]:
+        self.probe_calls += 1
         return {"ok": True, "provider": self.cfg.provider}
+
+
+class Test退路本身要能被看见:
+    """ADR-0007 的降级链路，在**用上它之前**就该能被验证。
+
+    这几条守的是同一件事：内网 token 用尽那天（本仓库撞过三次，每次持续
+    一整个工作日）这台机器接不接得住。接不住的样子是安静的——/healthz
+    一路 ok，只是每一句台词都变成兜底台词。
+    """
+
+    def test_status要报出退路是谁(self) -> None:
+        router = FailoverLLMClient(
+            FakeProviderClient("internal"),
+            FakeProviderClient("public", model="deepseek-v4-pro"),
+        )
+
+        fallback = router.status()["fallback"]
+
+        assert fallback == {
+            "provider": "public", "model": "deepseek-v4-pro", "protocol": "openai",
+        }
+
+    def test_没套failover时fallback是None_那是没有退路(self) -> None:
+        # 这一位不能省：它是"这个进程没有退路"唯一的对外说法
+        from app.config import LLMSettings
+
+        client = LLMClient(LLMSettings(
+            provider="internal", base_url="http://x/v1", api_key="k",
+            model="m", timeout_seconds=1, protocol="openai",
+        ))
+
+        assert client.status()["fallback"] is None
+
+    def test_probe_fallback探的是退路那一个_不是当前生效那一个(self) -> None:
+        primary = FakeProviderClient("internal")
+        fallback = FakeProviderClient("public")
+        router = FailoverLLMClient(primary, fallback)
+
+        result = asyncio.run(router.probe_fallback())
+
+        assert result["provider"] == "public"
+        assert fallback.probe_calls == 1
+        assert primary.probe_calls == 0  # 探退路不该顺手打一次主网关
+
+    def test_没有退路时probe_fallback返回None(self) -> None:
+        from app.config import LLMSettings
+
+        client = LLMClient(LLMSettings(
+            provider="internal", base_url="http://x/v1", api_key="k",
+            model="m", timeout_seconds=1, protocol="openai",
+        ))
+
+        assert asyncio.run(client.probe_fallback()) is None
 
 
 class Test自动切换_chat:

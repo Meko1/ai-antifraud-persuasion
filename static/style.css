@@ -1285,6 +1285,12 @@ body {
   --rise-text: #a93732;
   --fall-text: #246b52;
   --gold-text: #745719;
+  /* 品牌橙的小字版，4.51:1 —— 与上面三条同一套约定（"小字用"）。
+     `--brand-orange` 本身落在纸底上只有 3.36:1，而它要印的那句
+     「有人正要做同样的事，而你是他的投资顾问。」是整个作品的那一句话，
+     15px 正文里达不到 AA。**底色仍然只用 `--brand-orange`**，
+     这一条只给纸底上的小字，两者不许互换。 */
+  --brand-orange-text: #c64703;
   --sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", system-ui, sans-serif;
   --ease: cubic-bezier(.22, .8, .28, 1);
 }
@@ -1520,8 +1526,29 @@ button:disabled { cursor: not-allowed; }
 }
 .transfer-fields dt { color: var(--muted); font-size: 13px; }
 .transfer-fields dd { margin: 0; text-align: right; font-size: 15px; font-weight: 700; }
-/* 「模拟界面」那一行：明确、但不喧宾夺主。**不许删。** */
-.transfer-sim { margin: 20px 0 0; color: var(--quiet); font-size: 11.5px; text-align: center; }
+/* 「仅支持转入本人同名银行卡」：右对齐挂在转入账户那一列下面，
+   它是券商 App 与银行 App 在这一屏上唯一的区别，也是整个作品的论据
+   （EVIDENCE §二）。**不许删**——删了这一屏又变回一张银行转账单。 */
+.transfer-rule { margin: 10px 0 0; color: var(--muted); font-size: 12px; text-align: right; }
+/* 触发信号那一行：清仓 + 大额转出，POSITIONING 三条里的两条。
+   做成一块浅色底，把它和上面的核对表分开——它不是要核对的字段，
+   是这笔转账为什么会被盯上。 */
+.transfer-moves {
+  margin: 18px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--signal-soft);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+}
+/* 「模拟界面」那一行：明确、但不喧宾夺主。**不许删。**
+   作品名也挂在这里（就绪度审计 P1-5），理由见 index.html 那段注。
+
+   **`--quiet` → `--muted`，2026-08-29。** `#7d8580` 对纸底只有 3.50:1，
+   而它 11.5px、是全屏唯一一句"这是模拟"——一条为了不喧宾夺主而看不清的
+   免责声明，等于没有。`--muted` 是 5.03:1，层级仍在正文之下。 */
+.transfer-sim { margin: 20px 0 0; color: var(--muted); font-size: 11.5px; text-align: center; }
 
 /* 拦截那一面。同一屏，换一副面孔——转账被拦下来这件事要发生在
    刚才那张单子上，切个屏就变成两件不相干的事了。 */
@@ -1534,14 +1561,25 @@ button:disabled { cursor: not-allowed; }
   letter-spacing: -.02em;
 }
 .handoff-body p { margin: 0 0 16px; color: var(--muted); font-size: 15px; line-height: 1.85; }
+/* 「这也是券商能看见的最后一帧」用正文色顶上来：这一句是把"只能转给自己"
+   从一处业务限制翻成整个作品论据的那一句，不能和周围的说明文字同色。
+   **不给品牌橙**——橙只落在最后那一句上（下面 .handoff-turn b），
+   一屏两处橙，落点就没了。
+
+   `:not(.handoff-turn)` 不是装饰：`.handoff-body p b` 的特指度（0,1,2）
+   比 `.handoff-turn b`（0,1,1）高，不排除掉的话它会把那一句橙的盖成墨色。 */
+.handoff-body p:not(.handoff-turn) b { color: var(--ink); font-weight: 700; }
 /* 交接那句用正文色顶上来：整屏的落点在这儿 */
 .handoff-turn { color: var(--ink) !important; }
 .handoff-turn b {
   display: inline-block;
   margin-top: 4px;
   font-weight: 780;
-  /* 品牌橙只落在这一句上——它是整个作品的那一句话 */
-  color: var(--brand-orange);
+  /* 品牌橙只落在这一句上——它是整个作品的那一句话。
+     用小字版 `--brand-orange-text`（4.51:1）而不是 `--brand-orange`（3.36:1）：
+     15px 正文按 AA 要 4.5:1，整个作品的那一句话不该是全屏最看不清的一句。
+     色相未变，并排看不出差别。 */
+  color: var(--brand-orange-text);
 }
 
 /* 异常事件 */
@@ -1571,6 +1609,12 @@ button:disabled { cursor: not-allowed; }
 .opening-record > .num { font-size: 24px; line-height: 1.25; font-weight: 780; letter-spacing: -.025em; }
 .opening-record .opening-hint { grid-column: 1 / -1; color: var(--signal); font-size: 12px; }
 .primary-foot, .deskfoot { flex: none; padding: 17px 19px 18px; border-top: 1px solid rgba(217,221,216,.75); background: var(--paper); }
+/* **字号 16 → 19px，2026-08-29，这是一处无障碍修复不是版式偏好。**
+ * 白字落在品牌橙 `#ea5404` 上实测 3.64:1，达不到 AA 的 4.5:1。两条路：
+ * 压深品牌橙，或者把字推过 WCAG 的大字号线。压深会动到
+ * 「工作台入场按钮换承办方品牌橙」那次定的颜色——品牌色不该为对比度让路，
+ * 所以走第二条：19px + 760 字重越过 18.66px bold 这条线，阈值降到 3:1，
+ * 3.64 过关，而 `--brand-orange` 一个字节没动。 */
 .primary-action, .deskcta {
   width: 100%;
   min-height: 52px;
@@ -1579,7 +1623,7 @@ button:disabled { cursor: not-allowed; }
   border-radius: 13px;
   background: var(--brand-orange);
   color: #fff;
-  font-size: 16px;
+  font-size: 19px;
   font-weight: 760;
   box-shadow: 0 8px 20px rgba(25,35,31,.12);
 }
@@ -2015,12 +2059,23 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
   cursor: pointer;
 }
 
-/* 焦点环。**面板里必须看得见**——键盘用户在这一层里没有别的定位手段。 */
+/* 焦点环。**面板里必须看得见**——键盘用户在这一层里没有别的定位手段。
+ *
+ * **2026-08-29 把 `.primary-action` / `.deskcta` 加进来。** 全局那条
+ * （本文件 1313 行）是 `rgba(36,61,79,.28)`，合成后 `#bcc2c4`：对纸底 1.66:1、
+ * 对品牌橙 2.02:1，都低于 WCAG 2.2 SC 1.4.11 的 3:1。也就是说全产品最重要的
+ * 那几个按钮，拿的是全产品最弱的焦点环。这一条 2px 实心 navy 对纸底 8.4:1。 */
 .sheet :is(button, [tabindex]):focus-visible,
-.chat-exit:focus-visible, .composer-help:focus-visible, .ghost-action:focus-visible {
+.chat-exit:focus-visible, .composer-help:focus-visible, .ghost-action:focus-visible,
+.primary-action:focus-visible, .deskcta:focus-visible {
   outline: 2px solid var(--navy);
   outline-offset: 2px;
 }
+
+/* 换面之后焦点落在这个 `h1` 上（opening.js `confirmTransfer`）。
+ * 它带 `tabindex="-1"`、Tab 到不了，环画出来只会像一处渲染错误——
+ * 而键盘用户下一次 Tab 就落到按钮上，那里的环是上面那条，看得见。 */
+.handoff-body h1:focus { outline: none; }
 
 /* 结算卡下面那句"这是模拟反应，不是真实交易结果"。
  * 13px + 正文级对比度：它是这一屏上最容易被误读的地方的更正，
@@ -2047,6 +2102,6 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
   .savedamt { font-size: 36px; }
   .bubble { max-width: calc(100% - 48px); }
 }
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
-}
+/* 全局 reduced-motion 兜底**在本文件 1229 行**，与这里原有的一条逐字相同。
+   重复的那一份 2026-08-29 删了：两条同名规则并存时，下一个人改其中一条
+   会以为改完了。 */

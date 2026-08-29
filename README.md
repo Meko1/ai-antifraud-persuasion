@@ -35,7 +35,7 @@
 
 那三条触发信号**不是新写的需求，产品里已经有了**：`Scenario.facts` 里那几行
 `warn=True` 就是照它们写的（「今日转出 ¥100,000 / 占 78%」「五年零主动交易，
-今天一次清仓」）。在旧定位下它们是布景，转向之后它们是**触发条件**。
+昨天一次清仓」）。在旧定位下它们是布景，转向之后它们是**触发条件**。
 
 > **必须能和对照组比。** 触发异动的人本来就有一部分会自己放弃——没有对照组，
 > 干预组的放弃率是一个无法解释的数字：既证明不了有效，也拦不住有人拿它去
@@ -134,6 +134,7 @@ node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 np
 │   ├── PIVOT-C-END.md  转向 C 端异动干预 · 执行清单与逐项结果
 │   ├── POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md  一致性审计 · 旧逻辑残留清单，含转向本身站不站得住
 │   ├── CONTEST-POSITIONING.md  参赛定位 · 内部创新赛专用叙事，不是产品定位本身
+│   ├── SUBMISSION-CHECKLIST.md  提交清单 · 逐栏文案 / 素材 / 部署当天 / 被问到时怎么答
 │   ├── TECH-DESIGN.md  技术方案 · 施工图
 │   ├── HANDOFF.md      交接说明 · 踩过的坑
 │   └── adr/            七条不可轻易反转的决策及其理由
@@ -148,6 +149,9 @@ node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 np
 │   ├── offline.py      离线演示模式
 │   └── main.py         FastAPI 入口
 ├── static/             首页工作台 / 聊天页 / 复盘（原生三件，零构建）
+│   └── qr.js           二维码编码器（分享卡上那个码；自带，不引 CDN）
+├── tools/
+│   └── capture_materials.mjs  一条命令重出全套提交素材 → dist/materials/
 └── tests/frontend/     前端测试（node:vm 沙箱，零 npm 依赖）
 ```
 

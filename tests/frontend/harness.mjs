@@ -1,9 +1,11 @@
-/* 把 static/ 那十三个模块装进一个沙箱里，好让它们的函数能被单测调用。
+/* 把 static/ 那一批模块（`MODULES`）装进一个沙箱里，好让它们的函数能被单测调用。
  *
  * ## 为什么是这个做法
  *
- * 前端从 2026-08-24 起是十三个 ES module（复核清单 P2-1，拆分前是一个
- * 3087 行的单文件）。浏览器那边靠 `<script type="module">` 自己解析，
+ * 前端从 2026-08-24 起拆成了一组 ES module（复核清单 P2-1，拆分前是一个
+ * 3087 行的单文件），**当前清单以下面的 `MODULES` 为准**——这里不写个数，
+ * 写了就得每次加模块时记得改，而实测这类数字从来没被改对过（README 同理）。
+ * 浏览器那边靠 `<script type="module">` 自己解析，
  * **没有打包步骤**。这一层要在 Node 里把同一份代码跑起来。
  *
  * 三条约束决定了做法：
@@ -18,7 +20,7 @@
  *    的 promise：`boot()` 那条路会一直挂着，既不会打网关，也不会冒出
  *    一条 unhandled rejection 把测试染红。
  *
- * 于是这里做的事是：**按依赖顺序把十三个模块拼成一份脚本，把 import /
+ * 于是这里做的事是：**按依赖顺序把这些模块拼成一份脚本，把 import /
  * export 那几行剥掉，再喂给 `node:vm`。** 拼接顺序 `MODULES` 与浏览器的
  * 求值顺序一致，所以顶层 `const` 的初始化先后关系跟真实加载是同一套。
  *
@@ -53,7 +55,7 @@ export const STATIC = path.join(HERE, '..', '..', 'static');
  *  被读到——那正是 `RESUME_KEY` 当初出事的方式（见 resume.test.mjs 里
  *  「声明顺序」那一组，它现在钉的就是这份拼接结果）。 */
 export const MODULES = [
-  'dom.js', 'keys.js', 'state.js', 'api.js', 'stats.js', 'chart.js',
+  'dom.js', 'keys.js', 'state.js', 'api.js', 'stats.js', 'chart.js', 'qr.js',
   'sheet.js', 'chat.js', 'review.js', 'history.js', 'opening.js',
   'control.js', 'app.js',
 ];
@@ -68,7 +70,7 @@ export function sourceOf(name) {
   return fs.readFileSync(path.join(STATIC, name), 'utf8');
 }
 
-/** 十三个模块拼起来的那一份，顺序同 MODULES。
+/** 全部模块拼起来的那一份，顺序同 MODULES。
  *
  *  只有**跨模块**的断言该用它（比如"全前端不许再有第二处 location.reload"）。 */
 export const SOURCE = MODULES.map(sourceOf).join('\n');

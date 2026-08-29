@@ -65,6 +65,20 @@ export function boot() {
   return ready;
 }
 
+/** 拦截面就位之后，「坐到对面」被锁住的时长。
+ *
+ *  **这不是动效参数，是一条防线。** 两个按钮共用页脚同一个像素矩形
+ *  （实测都是 `[19,716,337,52]`），而换面是 0ms 硬切——间隔 130ms 在同一坐标
+ *  点两下，第一下命中「确认转出」，第二下命中已经就位的「坐到对面」，
+ *  **拦截面一帧都没渲染就落到工作台了**；而 `ackTransfer()` 已经写下
+ *  `aap.transfer.seen`，刷新也回不来（键在 sessionStorage，清 localStorage 无效）。
+ *  这个作品唯一的核心时刻，可以被一次手滑永久删掉。
+ *
+ *  450ms 顺便还是这一屏缺的那一拍呼吸：转向需要一拍，它原先一拍都没有。
+ *  低动态偏好下不制造人为等待，但**锁仍然要上**——只是立刻解开，
+ *  它挡的是同一串连击，不是慢手。 */
+const HANDOFF_ARM_MS = 450;
+
 /** 按下「确认转出」：不切屏，只把这一屏换成拦截那一面。
  *  切屏留给下一步——**这笔转账被拦下来这件事，要发生在同一屏上**，
  *  换个屏幕就变成了两件不相干的事。 */
@@ -73,8 +87,15 @@ export function confirmTransfer() {
   $('transferFoot').hidden = true;
   $('transferHandoff').hidden = false;
   $('handoffFoot').hidden = false;
-  // 焦点跟着走，否则键盘用户按完确认之后焦点掉回 body
-  $('handoffGo').focus({ preventScroll: true });
+
+  const go = $('handoffGo');
+  go.disabled = true;
+  setTimeout(() => { go.disabled = false; }, REDUCED ? 0 : HANDOFF_ARM_MS);
+
+  // 焦点送**标题**，不送按钮。送按钮的话，屏幕阅读器用户按完「确认转出」
+  // 听到的唯一一句是「坐到对面，按钮」——他有充分理由认为转账成功了，
+  // 而这一屏想说的每一个字都被跳过去了。理由与取舍见 index.html 那段注。
+  $('handoffTitle').focus({ preventScroll: true });
 }
 
 /** 按下「坐到对面」：真正离开转账屏。
@@ -122,8 +143,40 @@ export async function loadGame() {
   game.notice = data.notice || '';
   paintDesk();
   paintOpening();
+  paintTransfer();
   paintClientPicker();
   saveGame();
+}
+
+/** 把转账确认屏那两处可变内容改写成**本局这位客户**的数字。
+ *
+ *  为什么必须做这件事：拦截面承诺「有人正要做同样的事」，而这一屏原先照老陈
+ *  写死（30 万 / 今早清仓）。客户是 `scenario_for_trigger` 按异动分配的——
+ *  抽到刘卫东（35 万理财赎回、近三月转 6 次、**没有清仓**）时，金额、品种、
+ *  信号三项全不一致，那句承诺被自己的第一屏当场推翻。
+ *
+ *  取 `incident.money` 而不是 `total`：这一屏是**银证转账**，它显示的应该是
+ *  券商这一侧看得见的那笔划转，不是客户最终要交出去的总数（老陈那一局两者
+ *  差着二十万，见 scenario.py 的 `incident_money`）。
+ *
+ *  取 `incident.hint` 而不是拼 `facts`：那一行本来就是"这笔为什么反常"的
+ *  一句话摘要，五个场景各写一份，现成且真。顺带它也终结了原先硬编码的
+ *  「持仓已于 09:32 全部卖出」——那一行同时还踩着 T+1（今早卖、今天转，
+ *  在券商这边走不通，见 scenario.py 那一批改动）。
+ *
+ *  **玩家已经签过字就不动。** 开局请求可能比玩家慢，而在拦截面底下改写
+ *  face 1 的数字既没人看得见，也可能在他返回时露出破绽。 */
+export function paintTransfer() {
+  if (!SCENE || !SCENE.incident) return;
+  const form = $('transferForm');
+  if (!form || form.hidden) return;
+  // **局部变量不叫 `money`**：`state.js` 导出了一个同名的 `money`，
+  // 而 modules.test.mjs 那道"用了别的模块的名字就得 import"的静态检查
+  // 只认顶层声明，函数里的同名 const 会被它当成"用了没导入"，整条变红。
+  // 浏览器与沙箱里都不会出问题，但那条检查是白名单式的，改名比放宽它便宜。
+  const amount = SCENE.incident.money;
+  if (amount) $('transferAmount').textContent = `¥${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (SCENE.incident.hint) $('transferMoves').textContent = SCENE.incident.hint;
 }
 
 /** 「换一位客户」只在演示态出现。
@@ -174,7 +227,11 @@ export function paintOpening() {
   if (!SCENE) return;
   $('openingTitle').textContent = SCENE.incident.title;
   $('openingLead').textContent = SCENE.incident.lead;
-  $('openingMoney').textContent = wholeMoney(TOTAL());
+  // **印的是 `incident.money`，不是 `TOTAL()`。** 两者在四个场景里相等，
+  // 老陈那一局不等：他的 total 是三十万，而券商侧只看得见十万——另外二十万
+  // 在他自己的银行卡上，投顾看不见，而三十万这个数是这一局要问出来的东西。
+  // 取不到就退回 TOTAL()，老场景存档不会因此显示成空白。
+  $('openingMoney').textContent = wholeMoney(SCENE.incident.money || TOTAL());
   $('openingHint').textContent = SCENE.incident.hint;
   $('openingAlert').textContent = '资金异动 · 等待处理';
   paintTodayCount();

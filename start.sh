@@ -207,23 +207,71 @@ except Exception:
     sys.exit(0)
 if d.get("offline_demo"):
     sys.exit(0)              # 离线演示模式本来就不该有网关，探不通是预期
-probe = d.get("llm_probe") or {}
-if probe.get("ok"):
-    sys.exit(0)
+
 provider = d.get("llm_provider", "?")
-reason = probe.get("reason") or probe.get("error") or probe.get("status_code") or "未知"
 runtime_dir = sys.argv[2]
-print("", file=sys.stderr)
-print("=" * 70, file=sys.stderr)
-print(f"[start][警告] 大模型网关探测失败（provider={provider}）：{reason}", file=sys.stderr)
-print("服务是活的，但玩家看到的每一句台词都会来自兜底台词库。", file=sys.stderr)
-print("", file=sys.stderr)
-print("最可能的原因：这台机器在独立网段，访问不到内网网关。", file=sys.stderr)
-print(f"处理：在 {runtime_dir}/env 里把 LLM_PROVIDER 改成 public", file=sys.stderr)
-print("      （PUBLIC_LLM_* 三个变量要先填好），然后 ./stop.sh && ./start.sh。", file=sys.stderr)
-print("      实在都不通，就用 OFFLINE_DEMO=true —— 罐头台词，但至少不装活。", file=sys.stderr)
-print("=" * 70, file=sys.stderr)
-print("", file=sys.stderr)
+probe = d.get("llm_probe") or {}
+
+
+def why(p):
+    return p.get("reason") or p.get("error") or p.get("status_code") or "未知"
+
+
+def banner(lines):
+    print("", file=sys.stderr)
+    print("=" * 70, file=sys.stderr)
+    for line in lines:
+        print(line, file=sys.stderr)
+    print("=" * 70, file=sys.stderr)
+    print("", file=sys.stderr)
+
+
+if not probe.get("ok"):
+    banner([
+        f"[start][警告] 大模型网关探测失败（provider={provider}）：{why(probe)}",
+        "服务是活的，但玩家看到的每一句台词都会来自兜底台词库。",
+        "",
+        "最可能的原因：这台机器在独立网段，访问不到内网网关。",
+        f"处理：在 {runtime_dir}/env 里把 LLM_PROVIDER 改成 public",
+        "      （PUBLIC_LLM_* 三个变量要先填好），然后 ./stop.sh && ./start.sh。",
+        "      实在都不通，就用 OFFLINE_DEMO=true —— 罐头台词，但至少不装活。",
+    ])
+    sys.exit(0)
+
+# ── 网关通了，但 ADR-0007 那条退路还没人验过 ────────────────────────────
+#
+# 这一段回答的是另一个问题：**内网 token 明天用尽的话，这台机器接得住吗。**
+# 那是本仓库自己撞过三次的事（2026-08-15 / 08-22 / 08-23，每次持续 8 小时
+# 以上），而它的失败样子是安静的——/healthz 一路 ok，只是每一句都变成
+# 兜底台词。两种接不住，分开报：
+failover = d.get("llm_failover") or {}
+fallback = failover.get("fallback")
+
+if provider == "internal" and not fallback:
+    banner([
+        "[start][警告] 内网网关通了，但没有配退路（ADR-0007）。",
+        "内网 token 一旦用尽（本仓库撞过三次，每次持续一整个工作日），",
+        "往后每一句台词都会来自兜底台词库，而 /healthz 仍然一路 ok。",
+        "",
+        f"处理：在 {runtime_dir}/env 里填好 PUBLIC_LLM_BASE_URL /",
+        "      PUBLIC_LLM_API_KEY / PUBLIC_LLM_MODEL 三个变量，重启即生效。",
+    ])
+    sys.exit(0)
+
+fb_probe = d.get("llm_probe_fallback")
+if fallback and fb_probe is not None and not fb_probe.get("ok"):
+    banner([
+        "[start][警告] 退路本身探不通（ADR-0007）："
+        f"{fallback.get('provider')} / {fallback.get('model')}",
+        f"原因：{why(fb_probe)}",
+        "",
+        "现在是好的：内网网关通着，对局一切正常。",
+        "但内网 token 用尽那天，自动切换会'成功'然后立刻再失败，",
+        "最终仍然落回兜底台词——那时候查这个问题要贵得多。",
+        "",
+        f"处理：核对 {runtime_dir}/env 里的 PUBLIC_LLM_* 三个变量"
+        "（地址、密钥、模型名、账号余额）。",
+    ])
 PY
 }
 

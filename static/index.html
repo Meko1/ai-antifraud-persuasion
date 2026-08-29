@@ -4,6 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="系统随机接入一位高风险客户。十二轮对话，你能不能让客户停下来。">
+  <!-- 分享卡上那个二维码指向哪里。**留空就是当前访问地址**（`location.origin`），
+       本地跑、内网跑、部署到哪台机器都不用改一个字。
+       只有一种情况要填：作品被别人的页面代理或嵌套之后，浏览器看到的地址
+       不是用户该扫到的地址——那时在这里写死对外的那一个。
+       写在 meta 上而不是环境变量里，是因为**静态文件是实时读盘的**
+       （见 README「本地运行」），改完刷新页面就生效，不用重启服务。 -->
+  <meta name="af-share-url" content="">
   <title>AI 反诈劝阻</title>
   <link rel="stylesheet" href="static/style.css">
 </head>
@@ -14,43 +21,83 @@
      landmark 会是乱的，而这一屏上唯一真正称得上"主内容"的是对话本身。
      其余几层改回 div，屏幕的语义由各自的 section + 标题层级承担。 -->
 <div class="app-shell">
-  <!-- ── 转账确认（2026-08-25 加）────────────────────────────────────────
+  <!-- ── 银证转账确认（2026-08-25 加，2026-08-29 换血）──────────────────
        在它之前，「角色对调」这个转向最强的想法是**被解释出来的**：工作台
        顶上写着"这一屏本来会在你自己提交大额转出时弹出，现在请你坐到对面"。
        那句话一边要求玩家入戏，一边亲口告诉他真实的触发并没有发生——
        而且它更像写给评委看的说明，不像写给玩家的第一句话。
+       现在换成先**做一遍**：你自己签一笔三十万，按下确认，被拦下来，
+       然后才把你放到对面那把椅子上。角色对调不用再讲，它被演出来了。
 
-       现在换成先**做一遍**：你自己签一笔三十万转给"安全账户"，按下确认，
-       这笔转账被拦下来，然后才把你放到对面那把椅子上。
-       解释挪到动作之后，角色对调就不用再讲了，它被演出来了。
+       **2026-08-29：这一屏原先演的是银行转账，不是券商业务，整块重写。**
+       原版写着「收款方 银联资金核查专户 / 到账时间 预计 2 小时内」，
+       而 [EVIDENCE §二] 的标题就是"证券资金只能在本人同名账户之间实时划转"：
+
+         · 券商 App 转不出去给第三方，「收款方」这一栏根本不存在；
+         · 银证转账是实时划转，"预计 2 小时内"错第二次；
+         · 银联是真实机构，8-21 那次「剧本里的真实银行名换成虚构行」漏了它。
+
+       它还和本作品自己的剧情打架：老陈今早从证券账户划走 10 万到**自己的卡**，
+       那 30 万"放在他自己的银行卡上，投顾看不见"（PROJECT-INTRODUCTION §3）。
+       剧本一直是对的，只有这一屏把两步并成了一步。
+
+       换成同名卡之后，"只能转给自己"从一处限制变成了整个作品的论据：
+       **这一帧是券商能看见的最后一帧，下一秒钱去哪儿账户上再也看不到**，
+       所以干预只能发生在按下之前。金额下面那一行异动是 POSITIONING 里那三条
+       触发信号的场景版——顺手把"为什么会弹出来"也演了。
+
+       **2026-08-29 二改：金额与异动那一行改成跟着真实场景走。**
+       原先它们照老陈写死（30 万 / 已转 10 万 / 今早清仓），而客户是由
+       `scenario_for_trigger` 按异动分配的——抽到刘卫东（35 万理财赎回、
+       没有清仓）时，face 2 那句「有人正要做同样的事」当场被自己的第一屏推翻，
+       五分之四的访客拿到的是一句对不上的承诺。现在两处都由
+       `paintTransfer()` 用本局 scenario 的 `incident.money` 与 `incident.hint`
+       渲染，见 opening.js。
 
        「模拟界面」那一行不能省：这个仓库对演示态的规矩是
-       "一个看不出来是演示的演示，不是演示，是一场骗局"（app/offline.py）。 -->
-  <section class="screen on transfer-screen" id="transfer">
+       "一个看不出来是演示的演示，不是演示，是一场骗局"（app/offline.py）。
+       作品名现在挂在这一行上，不挂在标题栏：标题栏一旦写成作品名，
+       "我刚签了字"那一下就没了；而清空 storage 进来的评委需要在第一屏
+       知道自己在看什么，否则一个反诈作品的首屏是个「确认转出」大按钮
+       （就绪度审计 P1-5）。这一行同时解决两件事。 -->
+  <!-- `aria-labelledby` 指着标题栏那个 `strong`：face 1 上一个 heading 都没有
+       （标题栏刻意不是 `h1`，理由见上），不给这一层名字的话，屏幕阅读器按标题
+       列表导航时整屏是空的。face 2 的 `h1` 自己承担那一面的标题。 -->
+  <section class="screen on transfer-screen" id="transfer" aria-labelledby="transferBar">
     <div class="osbar"><span>14:46</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
     <header class="appbar appbar-centered">
-      <strong>转账确认</strong>
+      <strong id="transferBar">银证转账</strong>
     </header>
 
     <div class="transfer-body" id="transferForm">
       <p class="transfer-label">转出金额</p>
-      <p class="transfer-amount num">¥300,000.00</p>
+      <!-- 金额与异动那一行由 `paintTransfer()` 按真实场景改写（opening.js）。
+           这里的值是**兜底**：开局请求没回来、或者根本回不来时看到的那一份。
+           兜底取老陈那一局，因为请求失败时不会有任何一局开始，对不上无从谈起。 -->
+      <p class="transfer-amount num" id="transferAmount">¥100,000.00</p>
       <dl class="transfer-fields">
-        <div><dt>收款方</dt><dd>银联资金核查专户</dd></div>
-        <div><dt>转出账户</dt><dd class="num">我的资金账户 ****8823</dd></div>
-        <div><dt>到账时间</dt><dd>预计 2 小时内</dd></div>
+        <div><dt>转出账户</dt><dd class="num">我的资金账户 ****5106</dd></div>
+        <div><dt>转入账户</dt><dd class="num">本人银行卡 · 瑞通银行 ****4407</dd></div>
+        <div><dt>到账时间</dt><dd>实时到账</dd></div>
       </dl>
-      <p class="transfer-sim">模拟界面 · 不会产生任何真实交易</p>
+      <p class="transfer-rule">仅支持转入本人同名银行卡</p>
+      <p class="transfer-moves" id="transferMoves">近三个月 47 笔交易，此前年均只有 3 笔</p>
+      <p class="transfer-sim">AI 反诈劝阻 · 模拟界面，不会产生任何真实交易</p>
     </div>
     <div class="primary-foot" id="transferFoot">
       <button class="primary-action" id="transferGo" type="button">确认转出</button>
-      <p>请仔细核对收款方信息</p>
+      <p>请核对转入账户信息</p>
     </div>
 
+    <!-- `h1` 带 `tabindex="-1"`：换面之后焦点送到它，而不是送到按钮。
+         送按钮的话，屏幕阅读器用户按完「确认转出」听到的唯一一句是
+         「坐到对面，按钮」——他有充分理由认为转账成功了，整个转向对他不存在。
+         **不另加 `role="status"`**：live region 会把整面念一遍，和焦点落在 `h1`
+         上的朗读重复一次标题，反而更吵。焦点即宣告，这是换视图的标准做法。 -->
     <div class="transfer-body handoff-body" id="transferHandoff" hidden>
-      <h1>这笔转账没有提交。</h1>
-      <p>每天都有人在按下确认的那一刻，把一辈子的积蓄转进一个并不存在的"安全账户"。
-         拦下他们的那句话，往往就差一个人肯说。</p>
+      <h1 id="handoffTitle" tabindex="-1">这笔转账没有提交。</h1>
+      <p>钱转到你自己的卡上，合规、正常、不需要理由——<b>这也是券商能看见的最后一帧</b>。它下一秒去哪儿，账户上再也看不到。</p>
+      <p>每天都有人在这一帧之后，把一辈子的积蓄转进一个并不存在的「安全账户」。拦下他们的那句话，往往就差一个人肯说。</p>
       <p class="handoff-turn">接下来三分钟，请你坐到对面——<br>
         <b>有人正要做同样的事，而你是他的投资顾问。</b></p>
     </div>

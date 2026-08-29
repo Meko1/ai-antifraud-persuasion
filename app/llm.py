@@ -62,11 +62,20 @@ class LLMClient:
     def status(self) -> Dict[str, Any]:
         """没套 FailoverLLMClient 时 `/healthz` 仍然想要这个字段——给一个
         "从来没切换过"的答案，省得那边为了"这个 provider 支不支持 status()"
-        再分叉判断一次。"""
+        再分叉判断一次。
+
+        `fallback` 为 None 的含义是**这个进程没有退路**：内网网关的 token
+        一用尽，往后每一句都是兜底台词。这一位不能只在切换发生时才有——
+        那时候再看见已经晚了八小时。
+        """
         return {
             "active_provider": self.cfg.provider, "switched": False,
-            "switched_at": None, "reason": "",
+            "switched_at": None, "reason": "", "fallback": None,
         }
+
+    async def probe_fallback(self) -> Optional[Dict[str, Any]]:
+        """没有 fallback 就没有可探的。返回 None，调用方据此不报这一栏。"""
+        return None
 
     def _headers(self) -> Dict[str, str]:
         return {
@@ -233,6 +242,15 @@ class FailoverLLMClient:
             "switched": self._active is self._fallback,
             "switched_at": self._switched_at,
             "reason": self._switch_reason,
+            # **退路本身也要能被看见，而且要在用上它之前**。只报"切没切过"
+            # 回答不了运维在部署当天真正要问的那个问题：token 明天用尽的话，
+            # 这台机器接得住吗。接不住的样子是安静的——每一句都变成兜底台词，
+            # /healthz 照样 ok
+            "fallback": {
+                "provider": self._fallback.cfg.provider,
+                "model": self._fallback.cfg.model,
+                "protocol": self._fallback.cfg.protocol,
+            },
         }
 
     def _record_switch(self, exc: LLMError) -> None:
@@ -264,6 +282,16 @@ class FailoverLLMClient:
         """探的是**当前生效**的那一个，不是永远探主 provider——
         已经切换之后再报"内网探测失败"对运维没有信息量，他们已经知道了。"""
         return await self._active.probe()
+
+    async def probe_fallback(self) -> Dict[str, Any]:
+        """单独探一次退路。
+
+        **这是这条降级链路唯一能在需要它之前被验证的时刻。** ADR-0007 的
+        触发条件是内网网关回那句"该令牌状态不可用"，而那一刻通常是某天
+        下午——如果公网凭证填错或者账号欠费，切换会"成功"然后立刻再失败，
+        最终落回兜底台词，比不切还难查。部署当天探一次，这个失败面就没了。
+        """
+        return await self._fallback.probe()
 
     async def chat(self, messages: List[Message], **kwargs: Any) -> str:
         called_primary = self._active is self._primary
