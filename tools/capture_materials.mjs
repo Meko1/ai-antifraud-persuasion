@@ -228,6 +228,11 @@ async function main() {
     await waitFor(call, `!document.getElementById('transferHandoff').hidden`, '拦截那一面');
     await 存图(call, 'phone-02-被拦下.png');
 
+    // **先等按钮解锁再点。** 「坐到对面」在换面之后被锁 450ms
+    // （opening.js 的 `HANDOFF_ARM_MS`，防的是同一坐标连点两下把拦截面
+    // 一帧不渲染地跳过去）。直接点会落在禁用态上，什么都不发生，
+    // 然后卡在下一个 waitFor 上超时——**症状看着像页面坏了，其实是脚本手快**。
+    await waitFor(call, `!document.getElementById('handoffGo').disabled`, '「坐到对面」解锁');
     await evaluate(call, `document.getElementById('handoffGo').click()`);
     await waitFor(call, `document.querySelector('.screen.on')?.id !== 'transfer'`, '离开转账屏', 25000);
     await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,

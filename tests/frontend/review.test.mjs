@@ -16,7 +16,10 @@
 import assert from 'node:assert/strict';
 import test, { describe } from 'node:test';
 
-import { bodyOf, loadApp, sourceOf, turn } from './harness.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { STATIC, bodyOf, loadApp, sourceOf, turn } from './harness.mjs';
 
 /** 每个用例一份干净的作用域：app.js 的状态挂在顶层，用例之间会互相污染。 */
 function fresh(turns = [], scene = null) {
@@ -318,5 +321,37 @@ describe('回到你自己那一笔', () => {
     const 折叠 = 源.slice(源.indexOf('evidence-content'));
     assert.match(折叠, /在系统里留痕并上报/, '投顾侧清单被删了');
     assert.match(折叠, /如果你是他的投顾/, '搬过去之后标题要把人称说清楚');
+  });
+});
+
+describe('拦截那一屏：重音落在 Helper，身份是约束不是头衔', () => {
+  /* ROLESafe（CHI 2026，n=144，EVIDENCE §五）里得分最高的那一组叫 Helper——
+   * "去劝一个受害者"，F1 0.85，三种角色第一。**它测的是"你去劝人"，
+   * 不是"你是专业人士"。** 2026-08-30 之前这一屏的重音落在职称上，
+   * 而且和它上一句（"往往就差一个人肯说"）在同一屏上互相削弱。 */
+
+  const HTML = fs.readFileSync(path.join(STATIC, 'index.html'), 'utf8');
+  const 那一面 = HTML.slice(HTML.indexOf('id="transferHandoff"'), HTML.indexOf('id="handoffFoot"'));
+
+  test('落点那一句的主语是"你去劝人"，不是职称', () => {
+    const 落点 = 那一面.match(/<p class="handoff-turn">[\s\S]*?<\/p>/)[0];
+    assert.match(落点, /肯开口的是你/, '重音要落在 Helper 上');
+    assert.doesNotMatch(落点, /投资顾问/,
+      '职称不该占住整屏的落点——它是约束，写在下面那一行');
+  });
+
+  test('身份没有被删，只是降成了下一行的约束', () => {
+    // 它是三处的地基：合规红线是**执业**禁区、七把钥匙"没有一把是给建议"
+    // 来自"只能问不能荐"、剧本里老陈的人设就写着这层关系。删不得
+    assert.match(那一面, /class="handoff-role"/, '身份那一行不见了');
+    assert.match(那一面, /你是他的投资顾问/, '身份本身不许弱化');
+  });
+
+  test('开局就把合规红线讲清楚，不留到中途才弹', () => {
+    // 此前玩家从没被告知不能荐，直到第 N 轮突然弹一条红色「合规红线·荐股」
+    const 约束 = 那一面.match(/<p class="handoff-role">[\s\S]*?<\/p>/)[0];
+    assert.match(约束, /不能替他做决定/, '核心矛盾二：不能替客户做决定');
+    assert.match(约束, /不能向他推荐任何产品/, '核心矛盾一：只能问，不能荐');
+    assert.match(约束, /看得见他的账户，看不见他的生活/, '核心矛盾三');
   });
 });

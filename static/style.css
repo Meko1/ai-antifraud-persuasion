@@ -1290,7 +1290,7 @@ body {
   --gold-text: #745719;
   /* 品牌橙的小字版，4.51:1 —— 与上面三条同一套约定（"小字用"）。
      `--brand-orange` 本身落在纸底上只有 3.36:1，而它要印的那句
-     「有人正要做同样的事，而你是他的投资顾问。」是整个作品的那一句话，
+     「有人正要做同样的事，而这一次，肯开口的是你。」是整个作品的那一句话，
      15px 正文里达不到 AA。**底色仍然只用 `--brand-orange`**，
      这一条只给纸底上的小字，两者不许互换。 */
   --brand-orange-text: #c64703;
@@ -1510,6 +1510,10 @@ button:disabled { cursor: not-allowed; }
 .disposal li { padding: 0 0 12px; font-size: 13.5px; line-height: 1.65; }
 .disposal li::marker { color: var(--wx-sub); font-size: 12px; }
 .disposal b { display: block; font-weight: 700; }
+/* 说明里的行内强调**不能**跟着上面那条变成 block：`display:block` 是给
+   条目标题那个 <b> 用的，套到说明里就会把半句话顶成独立一行
+   （实测「催你现在就按」自己占了一行，后半句掉到下一行）。 */
+.disposal span b { display: inline; }
 .disposal span { color: var(--wx-note); }
 
 /* ── 转账确认屏 ────────────────────────────────────────────────────────
@@ -1591,6 +1595,17 @@ button:disabled { cursor: not-allowed; }
    `:not(.handoff-turn)` 不是装饰：`.handoff-body p b` 的特指度（0,1,2）
    比 `.handoff-turn b`（0,1,1）高，不排除掉的话它会把那一句橙的盖成墨色。 */
 .handoff-body p:not(.handoff-turn) b { color: var(--ink); font-weight: 700; }
+/* 身份那一行（2026-08-30 加）。**它必须比上面那句轻**：
+   上面是这一屏的落点（Helper：肯开口的是你），这一行是接下来三分钟的
+   游戏规则（看得见什么、不能做什么）。做成同样重量，重音就散了。
+   理由与取舍写在 index.html 那段注里。 */
+.handoff-role {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.85;
+}
+.handoff-role b { color: var(--ink); font-weight: 700; }
 /* 交接那句用正文色顶上来：整屏的落点在这儿 */
 .handoff-turn { color: var(--ink) !important; }
 .handoff-turn b {
