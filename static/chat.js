@@ -4,7 +4,7 @@ import { postTurn, readEvents } from './api.js';
 import { openReview } from './review.js';
 import {
   ERRORS, PAYEE, PING, SCENE, endingMeta, game, money, peerInitial,
-  pressureNote, saveGame, setScene, startNewClient,
+  peerPronoun, pressureNote, saveGame, setScene, startNewClient,
 } from './state.js';
 import { paintClientPicker, paintDesk, paintOpening } from './opening.js';
 
@@ -128,7 +128,9 @@ export function paintMood(mood) {
   // 它是辅助信息，不该因为少一个 id 就把这一轮的渲染整个掀掉。
   const hintEl = $('moodHint');
   if (hintEl) {
-    const hint = MOOD_HINTS[mood] || MOOD_HINTS.guarded;
+    // `{ta}` 换成本局客户的代词。五个场景里三位是「她」，写死「他」的话
+    // 这一行会和两行之下的输入框（「输入你想对她说的话」）当场打架。
+    const hint = (MOOD_HINTS[mood] || MOOD_HINTS.guarded).replaceAll('{ta}', peerPronoun());
     if (hintEl.textContent !== hint) hintEl.textContent = hint;
   }
 

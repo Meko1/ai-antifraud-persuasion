@@ -81,9 +81,10 @@ node tools/capture_materials.mjs
       → `llm_probe.ok` 与 `llm_probe_fallback.ok` **都要是 true**
 - [ ] 平台若用 iframe 嵌展示页：`env` 里填 `FRAME_ANCESTORS=<平台域名>`，
       否则「作品展示」页签是一块空白（默认仍是 `'none'`）
-- [ ] 分享卡二维码扫一次，看落在哪个地址。地址不对就改
-      `static/index.html` 的 `<meta name="af-share-url">`——**静态文件实时读盘，
-      改完刷新即可，不用重启**
+- [ ] **把展示页 URL 填进 `static/index.html` 的 `<meta name="af-share-url">`**
+      （CONTEST-POSITIONING §六 S2 拍板：二维码指向展示页，那是唯一同时能
+      "看懂"和"投票"的页面）。**静态文件实时读盘，改完刷新即可，不用重启**
+- [ ] 填完扫一次那个码，确认真的落在展示页上
 
 ---
 

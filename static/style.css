@@ -1261,7 +1261,10 @@ body {
      实际渲染因此落到 transparent，桌面端手机框外露出的是浏览器默认白。
      现在补上，顺带把这块交给 --brand-orange 呼应一点暖度，不进任何一屏内部。 */
   --canvas: #efe9e1;
-  --signal: #bd4f40;
+  /* #bd4f40 → #bb4e3f，2026-08-29：原值落在纸底上是 4.46:1，差 AA 的 4.5 一点点。
+     它印着「资金异动 · 等待处理」和工作台那行异动摘要，两处都是正文级小字。
+     保色相压到刚过线，肉眼并排看不出差别。 */
+  --signal: #bb4e3f;
   --signal-soft: #f8e9e5;
   --success: #245f4c;
   --success-soft: #e7f0eb;
@@ -1719,9 +1722,12 @@ button:disabled { cursor: not-allowed; }
    更不该看着像"系统给你的提示卡"。不上色、不加边框、不加底色——
    一旦做成一块高亮的提示条，玩家就会开始等着它发话，
    而这一局要练的恰恰是自己读人。 */
+/* 档位提示。**`--muted` 不是 `--quiet`**（2026-08-29）：`--quiet` 落在聊天顶栏上
+   只有 3.50:1，而这一行是 HANDOFF 8-25 为了救 novice 0.0% 胜率才加的时机线索——
+   为了让人看见而加的东西，做成全屏最看不清的一行是自相矛盾的。 */
 .mood-hint {
   margin: 7px 0 0;
-  color: var(--quiet);
+  color: var(--muted);
   font-size: 11.5px;
   line-height: 1.6;
 }
@@ -1767,9 +1773,13 @@ button:disabled { cursor: not-allowed; }
    grid 不会因为多了一个子项就自己变宽。 */
 .inputrow { display: grid; grid-template-columns: 46px 1fr 46px; gap: 8px; }
 .composer input { width: 100%; height: 47px; padding: 0 14px; border: 1px solid #d2d7d3; border-radius: 12px; outline: 0; background: #fff; color: var(--ink); font-size: 15px; }
-.composer input::placeholder { color: #858d88; }
+/* #858d88 对输入框白底只有 3.41:1。占位符是正文级文字，同样要过 4.5。 */
+.composer input::placeholder { color: #6b736e; }
 .composer input:focus { border-color: var(--navy-soft); box-shadow: 0 0 0 3px rgba(54,91,113,.1); }
-.composer button { width: 46px; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 22px; line-height: 1; font-weight: 500; }
+/* 字号 22 → 24px：白字落在品牌橙上是 3.64:1，够不到 4.5。非粗体要 24px 才算
+   WCAG 大字号（阈值降到 3:1），推过去即可，品牌橙一个字节没动——
+   与 `.primary-action` 那次是同一条思路。 */
+.composer button { width: 46px; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 24px; line-height: 1; font-weight: 500; }
 .composer button:disabled { opacity: .45; }
 /* 12px，不是 10px。这一行写的是「不要提供密码、验证码或要求客户提供敏感信息」——
    它是这个作品的安全约束，不是版权声明。小到看不见的安全提示等于没有。 */
@@ -2024,6 +2034,9 @@ button.composer-help:hover { color: var(--ink); border-color: var(--quiet); }
  * 它是正文，不是脚注 */
 .sheet-head p { margin: 0 0 12px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 
+/* 列表接管打开时的焦点（sheet.js 有解释），但它 tabindex=-1、进不了 Tab 序，
+   画环只会像一处渲染错误。 */
+.sheet-list:focus { outline: none; }
 .sheet-list { display: flex; flex-direction: column; gap: 7px; }
 .sheet-item {
   display: block;

@@ -124,12 +124,26 @@ async function 钉住老陈(call) {
 function 封面HTML({ 图, 眉, 标题, 说明, 标签 }) {
   return `<!doctype html><meta charset="utf-8"><style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* ── 弹幕带（就绪度审计 §1.3 · S4）─────────────────────────────────
+     大赛展示页的**评论以弹幕形式飘在截图之上**。弹幕走的是画面上半部，
+     所以这里把整块内容下压，让标题与副文落在下三分之二，
+     顶部那一条留给弹幕当跑道——被盖住的是空背景，不是字。
+     --danmu 就是那条跑道的高度，改版式时别把它吃掉。
+     （这一段里不许出现反引号：整块 HTML 是模板串，反引号会把它截断。） */
   body {
+    --danmu: 210px;
     width: ${COVER.width}px; height: ${COVER.height}px; overflow: hidden;
-    display: flex; align-items: center; gap: 96px; padding: 0 110px;
+    display: flex; align-items: center; gap: 96px;
+    padding: var(--danmu) 110px 0;
     background: radial-gradient(120% 120% at 12% 0%, #22252c 0%, #131417 58%, #0d0e11 100%);
     color: #fff;
     font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+  }
+  /* 跑道自己压深一点：浅色弹幕飘过深底才读得清，而这一条同时把
+     "上面这一带是留白"变成一个看得出来的设计，不像截歪了 */
+  body::before {
+    content: ''; position: fixed; inset: 0 0 auto 0; height: var(--danmu);
+    background: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 100%);
   }
   .left { flex: 1 1 auto; min-width: 0; }
   .eyebrow {
@@ -154,7 +168,7 @@ function 封面HTML({ 图, 眉, 标题, 说明, 标签 }) {
   }
   .right { flex: 0 0 auto; position: relative; }
   .right img {
-    width: 470px; display: block; border-radius: 42px;
+    width: 430px; display: block; border-radius: 38px;
     border: 1px solid rgba(255,255,255,.13);
     box-shadow: 0 60px 130px rgba(0,0,0,.62), 0 0 0 12px rgba(255,255,255,.03);
   }

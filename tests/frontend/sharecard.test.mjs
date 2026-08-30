@@ -69,3 +69,103 @@ describe('分享卡 · 地址从哪来', () => {
     assert.doesNotMatch(body, /https?:\/\/[\w.]+\.\w+/, '不许写死任何具体域名');
   });
 });
+
+describe('分享卡 · 卡面主角与复盘算的是同一件事', () => {
+  /* 2026-08-29 换主角之后，「同一句话，换个时候说」这一块有了**两个消费方**：
+   * 复盘正文与分享卡。取数因此被抽到 `contrast.js`。
+   *
+   * 这一组守的就是那个抽取的理由：**同一局，两处不许给出不同的倍数。**
+   * 那种错直接打在"判分是可复现的"这条主张上——一个人截图发出去的数字，
+   * 和他翻回正文看到的数字对不上，比两处都错更糟。 */
+
+  const EFF = {
+    // 「拆矛盾」四档落差大，「支持自主」四档几乎平——刚好够试两条分支
+    expose_contradiction: { guarded: 0.6, annoyed: 0.7, shaken: 1.4, softened: 1.2 },
+    support_autonomy: { guarded: 1.0, annoyed: 1.0, shaken: 1.1, softened: 1.0 },
+  };
+
+  function 一局(turns, ending = {}) {
+    const app = loadApp();
+    app.game.turns = turns;
+    app.game.ending = { kind: 'transferred', efficacy: EFF, ...ending };
+    return app;
+  }
+
+  test('拿不到效力矩阵就返回 null，两边各自退，不留空壳', () => {
+    const app = 一局([], { efficacy: null });
+    assert.equal(app.contrastFacts(), null);
+    assert.equal(app.cardHero(), null, '卡面主角也要跟着退回旧版式');
+  });
+
+  test('挑的是"动作对、时候差得最远"的那一轮', () => {
+    const app = 一局([
+      // 第 2 轮：戒备时用拆矛盾，值 0.6×，而最高档 1.4× —— 落差 0.8
+      { round: 2, hits: ['expose_contradiction'], efficacy: 0.6, judgedMood: 'guarded',
+        utterance: '您刚才说他保本，可他又说不承诺收益，这两句能同时成立吗？',
+        delta: 1, trust: 30, before: 30, pool: 0, grounded: true, lines: [], reply: '' },
+      // 第 5 轮：松动时用同一把，值 1.2× —— 落差只有 0.2，不该被选中
+      { round: 5, hits: ['expose_contradiction'], efficacy: 1.2, judgedMood: 'softened',
+        utterance: '这笔钱转过去之后，您打算怎么把它取回来？',
+        delta: 3, trust: 40, before: 37, pool: 0, grounded: true, lines: [], reply: '' },
+    ]);
+
+    const f = app.contrastFacts();
+    assert.equal(f.kind, 'gap');
+    assert.equal(f.round, 2, '该讲落差最大的那一轮，不是最后一轮');
+    assert.equal(f.val, 0.6);
+    assert.equal(f.bestVal, 1.4);
+    assert.equal(f.bestMood, 'shaken');
+    assert.equal(f.times, '2.3', '1.4 / 0.6 = 2.3');
+  });
+
+  test('卡上那个倍数，就是复盘那个倍数', () => {
+    const app = 一局([
+      { round: 3, hits: ['expose_contradiction'], efficacy: 0.7, judgedMood: 'annoyed',
+        utterance: '他为什么一定要今天三点前？',
+        delta: 1, trust: 30, before: 30, pool: 0, grounded: true, lines: [], reply: '' },
+    ]);
+
+    const f = app.contrastFacts();
+    const hero = app.cardHero();
+    assert.equal(hero.hero, `差 ${f.times} 倍`, '卡面主角必须直接取自同一份取数');
+    assert.match(hero.eyebrow, /第 3 轮/);
+    assert.equal(hero.quote, '他为什么一定要今天三点前？', '卡上印的是玩家自己那句原话');
+  });
+
+  test('一把钥匙都没命中也有得讲（P0-4 那条：最需要解释的那一半人）', () => {
+    // 最低一档仍占 53.4%、novice 胜率 0.0%，"一把没中"正是评委最可能打出的那局
+    const app = 一局([
+      { round: 1, hits: [], efficacy: null, judgedMood: 'guarded', utterance: '你别转了',
+        delta: -2, trust: 28, before: 30, pool: 0, grounded: false, lines: [], reply: '' },
+    ]);
+
+    const f = app.contrastFacts();
+    assert.equal(f.kind, 'nokey');
+    assert.equal(f.key, 'expose_contradiction', '该挑四档落差最大的那一把举例');
+    assert.equal(f.times, '2.3');
+    assert.ok(app.cardHero(), '这一档卡面照样有主角，不退回金额');
+  });
+});
+
+describe('分享卡 · 原话断行', () => {
+  const app = loadApp();
+  /** 一个够用的量文字替身：一个字算 10 宽。canvas 在沙箱里是替身，量不了真宽度。 */
+  const ctx = { measureText: (s) => ({ width: [...s].length * 10 }) };
+  /** 沙箱里造出来的数组来自**另一个 realm**，原型不是本地那个 Array，
+   *  `deepStrictEqual` 会报"结构相同但不是同一个引用"。搬回本地再比。 */
+  const 折 = (...args) => Array.from(app.wrapText(ctx, ...args));
+
+  test('放得下就一行不折', () => {
+    assert.deepEqual(折('短句', 100, 2), ['短句']);
+  });
+
+  test('放不下就折，按字断——中文没有词边界，按空格断等于不折', () => {
+    assert.deepEqual(折('一二三四五六', 30, 2), ['一二三', '四五六']);
+  });
+
+  test('超出行数上限要看得出来被截断了', () => {
+    const lines = app.wrapText(ctx, '一二三四五六七八九十', 30, 2);
+    assert.equal(lines.length, 2);
+    assert.ok(lines[1].endsWith('…'), `末行该带省略号，实际是 ${lines[1]}`);
+  });
+});

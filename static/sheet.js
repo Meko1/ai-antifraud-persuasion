@@ -102,7 +102,24 @@ export function openSheet({ title, note, items, onClose }) {
   };
   document.addEventListener('keydown', onKey, true);
 
-  (panel.querySelector(FOCUSABLE) || panel).focus({ preventScroll: true });
+  // **焦点落在内容上，不落在「取消」上。**
+  //
+  // 2026-08-29 修。原先是 `panel.querySelector(FOCUSABLE)`，而七种问法那一层
+  // 的选项是 `div`（上面那段注释解释了为什么不做成按钮，那个理由仍然成立）
+  // ——于是整个面板里唯一的可聚焦元素就是「取消」。键盘用户按下「问法」，
+  // 得到的是一个只能关掉的面板，而那七个词是这一局的全部课程。
+  //
+  // 改法不是把选项变成按钮（那会退回被否掉的方案），是让列表本身可聚焦：
+  // `tabindex="-1"` 不进 Tab 序，但接得住程序化焦点，屏幕阅读器从这里开始
+  // 往下读就能读到全部七条，Tab 再走到「取消」收尾。
+  // 有真按钮的面板（退出、换客户）行为不变，仍然落在第一个按钮上。
+  const firstAction = list.querySelector('button');
+  if (firstAction) {
+    firstAction.focus({ preventScroll: true });
+  } else {
+    list.setAttribute('tabindex', '-1');
+    list.focus({ preventScroll: true });
+  }
 
   sheetCloser = () => {
     document.removeEventListener('keydown', onKey, true);
