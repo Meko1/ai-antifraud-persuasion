@@ -83,15 +83,18 @@ export function leaveIntervention() {
   showScreen('opening');
 }
 
-/** 七种问法：对局中随时翻回来看。**识别优于回忆。**
+/** 七把钥匙：对局中随时翻回来看。**识别优于回忆。**
  *
  *  只给名字和 `brief`，**不给 `tip`**——那两句话的分界写在 KEYS 顶部：
  *  词汇是课程，时机是答案。开打前讲时机就是泄题，对局中讲更是。
  */
 export function openMethodsSheet() {
   openSheet({
-    title: '你手里有这七种问法',
-    note: '什么时候用哪一种，这里不会告诉你——那正是这一局要练的。',
+    // 标题与这一句 2026-08-30 跟 index.html 那一屏一起改，理由写在那边：
+    // 七把里有四把不是"问法"，而"要练的"是训练器定位的残留。**两处必须同步**，
+    // 它们是同一份内容的两个入口，玩家会先后看到。
+    title: '你手里有这七把钥匙',
+    note: '难的从来不是说什么，是什么时候说。',
     items: Object.keys(KEYS).map((k) => ({
       label: KEYS[k].name,
       note: KEYS[k].brief,

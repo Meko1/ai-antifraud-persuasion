@@ -28,7 +28,13 @@ const TRANSFER_KEY = 'aap.transfer.seen';
 let bootOutcome = 'pending';   // pending | ready | error
 let transferAcked = true;
 
-function transferSeen() {
+/** 这一次会话里，他有没有自己按过那个「确认转出」。
+ *
+ *  复盘那块「回到你自己那一笔」拿它决定开场怎么说：**没演过就不能说
+ *  "三分钟前你也按了确认"**——那一屏一个会话只演一次（换客户、再开一局
+ *  都不会重演），隐私模式下也可能从来没写进去过。
+ *  这个仓库不许对玩家断言一件没发生的事，哪怕它多半发生了。 */
+export function transferSeen() {
   try {
     return sessionStorage.getItem(TRANSFER_KEY) === '1';
   } catch {

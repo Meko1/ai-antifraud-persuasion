@@ -16,7 +16,7 @@
 import assert from 'node:assert/strict';
 import test, { describe } from 'node:test';
 
-import { loadApp, sourceOf, turn } from './harness.mjs';
+import { bodyOf, loadApp, sourceOf, turn } from './harness.mjs';
 
 /** 每个用例一份干净的作用域：app.js 的状态挂在顶层，用例之间会互相污染。 */
 function fresh(turns = [], scene = null) {
@@ -187,7 +187,10 @@ describe('复盘第一屏：五块是硬上限', () => {
       ['结算卡', 'class="summary'],
       ['同一句话换个时候说', 'id="contrastWrap"'],
       ['手机揭晓', 'id="phoneTitle"'],
-      ['处置清单', 'class="disposal"'],
+      // 2026-08-30：第 4 块从「投顾侧处置清单」换成「回到你自己那一笔」。
+      // 投顾那五条没删，搬进了折叠——`class="disposal"` 两处都有，
+      // 拿它当标记已经分不清是哪一块了，改认 id
+      ['回到你自己那一笔', 'id="mirrorLead"'],
       ['分享卡', 'id="makeCard"'],
     ]) {
       assert.ok(template.includes(marker), `第一屏少了「${what}」`);
@@ -225,5 +228,95 @@ describe('转账这一档：戒备与烦躁不是同一件事', () => {
       assert.equal(app.reviewKind(), 'transferred');
       assert.match(app.resultAmount('transferred').value, /¥0/);
     }
+  });
+});
+
+describe('复盘只对这一局说话，不许诺下一局', () => {
+  /* POSITIONING「成功标准·对产品」：**训练可以打第二局，干预只有一次机会。**
+   *
+   * 2026-08-30 之前复盘有三处对玩家说「下一局试着…」，那是训练器定位的语气
+   * 残留——转向 C 端之后坐在这儿的是正要转账被拦下来的人，他不会有下一局。
+   * 许诺一个不会发生的下一次，比不给建议更糟：它把"这一局你差在哪"
+   * 换成了"你以后注意点"。
+   *
+   * **本机记录那一块（history.js）不在此列**：它整块的前提就是跨局比较，
+   * 只在真的打过第二局时才有内容，那里说「下一局」是准确的。 */
+
+  /** 去掉注释行之后的源码。断言的是**给玩家看的字符串**，
+   *  不是解释这条规矩的注释本身（那条注释里就带着这三个字）。 */
+  function 只留代码(src) {
+    return src.split('\n')
+      .filter((line) => !/^\s*(\/\/|\/?\*)/.test(line))
+      .join('\n');
+  }
+
+  test('review.js 面向玩家的文案里没有「下一局」', () => {
+    const 代码 = 只留代码(sourceOf('review.js'));
+    const 命中 = 代码.split('\n').filter((l) => l.includes('下一局'));
+    assert.deepEqual(命中, [],
+      `复盘又许诺了下一局：\n${命中.join('\n')}\n`
+      + '——干预只有一次机会，改成讲这一局差在哪');
+  });
+
+  test('本机记录那一块仍然可以说「下一局」', () => {
+    // 反向钉一下，免得哪天有人拿上面那条规矩去把这一句也删了
+    assert.match(sourceOf('history.js'), /下一局打完这里会有对比/);
+  });
+});
+
+describe('回到你自己那一笔', () => {
+  /* 冷开场让玩家自己签一笔、被拦下、然后「坐到对面」。
+   * 2026-08-30 之前，复盘从头到尾没有一处回到那一笔——**环开了没合上**，
+   * "角色对调"只完成了一半：他替别人想了三分钟，没有一秒被请回自己身上。
+   * 这一块就是那个缺口，它是全作品唯一把心理反思落回本人的地方。 */
+
+  const 源 = sourceOf('review.js');
+
+  test('引用的是玩家自己挣到分的那几句，不是产品替他写的金句', () => {
+    const body = bodyOf(源, 'paintMirror');
+    assert.match(body, /scoredTurns\(\)/, '要从这一局真实说过的话里取');
+    assert.match(body, /t\.delta > 0/, '只取真正推动过他的那几句');
+    assert.match(body, /slice\(0, 3\)/, '最多三句');
+    // 换成一句漂亮话，这一块立刻退化成又一段鸡汤
+    assert.doesNotMatch(body, /['"`][^'"`]{12,}吗？['"`]\s*\]/, '不许在这里写死一串金句');
+  });
+
+  test('一句都没挣到分也有得说——那是最常见的一局', () => {
+    // balance_sim：最低一档仍占 53.4%、novice 胜率 0.0%。
+    // 这一档留白，等于把最需要被说到的那一半人跳过去（P0-4 同款错误）
+    const body = bodyOf(源, 'paintMirror');
+    assert.match(body, /fallback/, '没命中时要有退路');
+    assert.match(body, /anchor_real_purpose/, '退路取的是钥匙自己的原话');
+    assert.doesNotMatch(body, /你什么都没做对/, '不许对他说这种话');
+  });
+
+  test('没演过冷开场就不许说"三分钟前你也按了确认"', () => {
+    // 那一屏一个会话只演一次（换客户、再开一局都不重演），隐私模式下
+    // 还可能从来没写进 sessionStorage。**不许对玩家断言一件没发生的事。**
+    const body = bodyOf(源, 'paintMirror');
+    assert.match(body, /transferSeen\(\)/, '要先问一句他到底演没演过');
+    const 断言句 = body.match(/三分钟前[^`']*/);
+    assert.ok(断言句, '找不到那句开场白');
+    assert.match(body, /transferSeen\(\)\s*\?/, '那句话必须挂在条件后面，不能无条件拼上去');
+  });
+
+  test('四条动作全是他一个人就能做的', () => {
+    // 从 `mirrorLead` 切起，**不从块标题切**：标题上面那段注释里正好把
+    // 「让客户」「陪着他」当反例引了一遍，从那儿切会把注释算进来
+    const 第一屏 = 源.slice(源.indexOf('id="mirrorLead"'), 源.indexOf('result-actions'));
+    for (const 词 of ['让客户', '本机构', '陪着他', '约下一次回访', '你所在机构']) {
+      assert.ok(!第一屏.includes(词),
+        `「${词}」是投顾侧的动作，不该出现在这一块——它属于折叠里那份清单`);
+    }
+    for (const 动作 of ['先不按那个确认', '96110', '人工客服']) {
+      assert.ok(第一屏.includes(动作), `少了「${动作}」`);
+    }
+  });
+
+  test('投顾那五条没被删，只是搬进了折叠', () => {
+    // 对局中玩家确实在扮投顾，那五条对他仍然成立。搬家不是删除
+    const 折叠 = 源.slice(源.indexOf('evidence-content'));
+    assert.match(折叠, /在系统里留痕并上报/, '投顾侧清单被删了');
+    assert.match(折叠, /如果你是他的投顾/, '搬过去之后标题要把人称说清楚');
   });
 });

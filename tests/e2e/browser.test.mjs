@@ -148,7 +148,7 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
       '课程表那一屏');
     const 条目 = await evaluate(call,
       `[...document.querySelectorAll('#primerList li')].map(li => li.textContent)`);
-    assert.equal(条目.length, 7, '七种问法一把都不能少');
+    assert.equal(条目.length, 7, '七把钥匙一把都不能少');
     for (const t of 条目) {
       assert.doesNotMatch(t, /戒备|烦躁|松动|倍|\d+\s*分/,
         `课程表上泄了时机或分值：${t}`);

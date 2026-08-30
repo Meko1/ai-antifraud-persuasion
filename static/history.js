@@ -27,6 +27,13 @@ export const HISTORY_CAP = 50; // 只是个防止无限增长的上限，不是�
 export const TIER_LABEL = {
   persuaded: '劝住', intercepted: '拦下', stalled: '拖住',
   transferred: '转账', blacklisted: '被拉黑',
+  // **2026-08-29 补。** 没有这一条，下面 `TIER_LABEL[e.kind] || e.kind` 会把
+  // 原始的英文键印到历史列表里——同一个状态，复盘首屏的 chip 写「未完成」，
+  // 往下滚三屏变成 `unfinished`。用词与首屏保持一致。
+  //
+  // **只补 LABEL，不补 TIER_RANK。** 主动结束不参与「最好成绩」的比较，
+  // 理由与被拉黑同一条，见上面那段注。
+  unfinished: '未完成',
 };
 export const TIER_RANK = { persuaded: 4, intercepted: 3, stalled: 2, transferred: 1 };
 
@@ -480,8 +487,17 @@ export function makeCard(view) {
     x: qrX, y: FOOT_TOP, size: QR_BOX, dark: c.text, light: '#ffffff',
   });
 
-  // 左栏与二维码垂直居中对齐。三行：一句话、作品名、地址
-  const lineTop = FOOT_TOP + (QR_BOX - 74) / 2;
+  // 左栏与二维码垂直居中对齐。
+  //
+  // **2026-08-30：二维码画得出来时不再印地址。** 原先一律印，理由是
+  // "画得出来时它是给不方便扫码的人看的"——而作品上线到大赛平台之后，
+  // 那条地址去掉协议头有 61 个字符，`shareLabel` 的 42 字上限正好**截在
+  // 唯一标识之前**（`…/ai-creator-…`），照着敲也敲不出来。一条打不开的地址
+  // 不是备用路径，是噪音。
+  //
+  // **但二维码画不出来时它仍然是唯一那条路**，那一支照旧印，不许一起删掉。
+  const lines = hasQR ? 2 : 3;
+  const lineTop = FOOT_TOP + (QR_BOX - (lines === 2 ? 48 : 74)) / 2;
   ctx.fillStyle = c.text;
   ctx.font = `600 18px ${c.sans}`;
   ctx.fillText(hasQR ? '扫码，换你去劝一次' : '换你去劝一次', pad, lineTop);
@@ -490,11 +506,9 @@ export function makeCard(view) {
   ctx.font = `400 14px ${c.sans}`;
   ctx.fillText('AI 反诈劝阻 · 三分钟角色对调', pad, lineTop + 30);
 
-  if (url) {
+  if (url && !hasQR) {
     ctx.fillStyle = c.note;
     ctx.font = `400 12px ${c.mono}`;
-    // 地址一律印出来：二维码画得出来时它是给不方便扫码的人看的，
-    // 画不出来时它就是唯一那条路。`shareLabel` 已经按左栏宽度截过
     ctx.fillText(shareLabel(url), pad, lineTop + 56);
   }
 

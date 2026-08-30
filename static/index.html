@@ -10,7 +10,12 @@
        不是用户该扫到的地址——那时在这里写死对外的那一个。
        写在 meta 上而不是环境变量里，是因为**静态文件是实时读盘的**
        （见 README「本地运行」），改完刷新页面就生效，不用重启服务。 -->
-  <meta name="af-share-url" content="">
+  <!-- 2026-08-30 填上了：作品部署在大赛平台的服务路径下，浏览器看到的
+       地址不是用户该扫到的那一个，正是上面说的那一种情况。
+       **这一行带承办方域名**，与全仓「脱去公司信息」那条规矩冲突，
+       是所有者明确给的值、明确要求填的。要保持仓库干净，就把这一行
+       退回空串、改成部署那台机器上的一步（静态文件实时读盘，改完刷新即生效）。 -->
+  <meta name="af-share-url" content="https://ai-creator-show.eastmoney.com/ai-creator-service/3RsDuZwJFuFo/">
   <title>AI 反诈劝阻</title>
   <link rel="stylesheet" href="static/style.css">
 </head>
@@ -195,17 +200,28 @@
          把跳过放在那儿，玩家会以为自己退回了客户档案。
          两个控件都是绝对定位，标题不需要占位元素就自己居中。 -->
     <header class="appbar appbar-centered">
-      <strong>你手里有这七种问法</strong>
+      <strong>你手里有这七把钥匙</strong>
       <button class="skip-button" id="primerSkip" type="button">跳过</button>
     </header>
     <div class="primer-body">
-      <p class="primer-lead">这不是攻略——<b>什么时候用哪一种，它不会告诉你</b>，那正是这一局要练的。</p>
+      <!-- 2026-08-30 重写，原文两处都错：
+           一、**七把里有四把不是"问法"**——指出内部矛盾是指出、反映式倾听是复述、
+           支持自主是声明、有据告知是告知。全仓统一叫「钥匙」（CONTEXT.md 里的词），
+           而且复盘本来就是这么跟玩家说的（"一把钥匙都没打中"）——两处此前不一致。
+           二、**"那正是这一局要练的"是训练器定位的残留**。转向 C 端之后坐在这儿的
+           不是受训投顾，是正要转账被拦下来的人，他只打这一局（POSITIONING
+           「成功标准·对用户」：一次犹豫，不是一份成绩）。"练"这个字要求他先承认
+           自己是来上课的，而这一屏前一步刚把他从"我要转账"那个心情里接过来。
+           改成陈述这一局难在哪，不要求他接受任何身份。 -->
+      <p class="primer-lead">这不是攻略——<b>难的从来不是说什么，是什么时候说</b>。同一把钥匙，早一轮晚一轮，效果差很远。</p>
       <ol class="primer-list" id="primerList"></ol>
       <p class="primer-foot">对面是活人写的回应，没有选项可选。你说什么，他就接什么。</p>
     </div>
     <div class="primary-foot">
       <button class="primary-action" id="primerGo" type="button">知道了，开始</button>
-      <p>七种问法在复盘里会逐条给你打分</p>
+      <!-- 不许诺"打分"：复盘自己写着"它是画像，不是成绩单"（review.js 那句
+           howscored）。这里先许一个分数，等于把复盘拉回成绩单。 -->
+      <p>复盘里会逐条告诉你，每一把用得是不是时候</p>
     </div>
   </section>
 
@@ -245,14 +261,14 @@
     </main>
     <form class="composer" id="composer" autocomplete="off">
       <div class="inputrow">
-        <!-- 「七种问法」在对局中要能随时翻回来看。
+        <!-- 「七把钥匙」在对局中要能随时翻回来看。
              **这是识别优于回忆**：开打前那一屏（primer）只出现一次，
              之后玩家要么记住七个名字，要么就是在凭空回忆——而这个作品
              判的从来不是"你背没背下来"，是"你此刻选得对不对"。
              翻开的那一层只给名字和一句话（brief），**不给时机、不给分值**，
              那些是答案，留在复盘里（见 app.js 顶部 KEYS 那段注）。 -->
         <button class="composer-help" id="openMethods" type="button"
-                aria-haspopup="dialog" aria-label="查看七种问法">问法</button>
+                aria-haspopup="dialog" aria-label="查看七把钥匙">钥匙</button>
         <input id="say" maxlength="120" enterkeyhint="send" aria-label="跟客户说">
         <button id="send" type="submit" aria-label="发送消息">↑</button>
       </div>
@@ -261,7 +277,7 @@
   </section>
 </div>
 
-<!-- 底部动作面板。退出、七种问法、换客户三处共用这一个容器——
+<!-- 底部动作面板。退出、七把钥匙、换客户三处共用这一个容器——
      一套焦点捕获、一套 Esc、一套返回焦点，写三遍必然有一遍会漏掉其中一样。 -->
 <div class="sheet-host" id="sheetHost" hidden></div>
 <!-- **type="module" 不是可选的。** app.js 从 2026-08-24 起是入口模块，

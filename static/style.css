@@ -1487,6 +1487,25 @@ button:disabled { cursor: not-allowed; }
 
 /* 「话说通了，现实里还差这几步」。刻意做得像清单而不是成绩：
    没有分数、没有勾选态、没有颜色语义——它是待办，不是评价。 */
+/* ── 回到你自己那一笔（2026-08-30）────────────────────────────────────
+ *
+ * 引用的是玩家自己说过的话，所以版式照 `.contrast-quote` 那一套：
+ * 左侧一道竖线 + 稍大的字号。**它不该看着像系统给的建议**——
+ * 那几句本来就是他自己讲出来的，做成提示卡就把作者身份换掉了。 */
+.mirror-lead { margin: 13px 16px 0; font-size: 13.5px; line-height: 1.85; color: var(--wx-note); }
+.mirror-lead b { color: var(--wx-text); font-weight: 700; }
+.mirror-lines { margin: 12px 16px 0; padding: 0; list-style: none; }
+.mirror-lines li {
+  margin: 0 0 9px;
+  padding: 2px 0 2px 13px;
+  border-left: 3px solid var(--gold);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--wx-text);
+}
+.mirror-turn { margin: 15px 16px 0; font-size: 13px; line-height: 1.7; color: var(--wx-note); }
+.mirror-turn b { color: var(--wx-text); font-weight: 700; }
+
 .disposal { margin: 0; padding: 13px 16px 4px 34px; }
 .disposal li { padding: 0 0 12px; font-size: 13.5px; line-height: 1.65; }
 .disposal li::marker { color: var(--wx-sub); font-size: 12px; }
@@ -1821,6 +1840,16 @@ button:disabled { cursor: not-allowed; }
  *
  * 也不给红：主动退出不是失败，它是这个产品明确允许的动作。 */
 .summary.unfinished .result-kicker, .summary.unfinished .savedamt { color: var(--muted); }
+/* **字号也要跟着降**（2026-08-29）。`.savedamt` 是 40px，而 `.result-title`
+   是 29px —— 走到结局的局里这是对的，那里它印的是「¥300,000」，钱是主角。
+   但 `unfinished` 这一档它印的是「未产生结果」：一句否定句，用全屏最大的字号，
+   把一次**被产品明确允许的退出**放大成了整屏最响的指责。
+   上面那条注释自己写着"主动退出不是失败……用红色标它，等于一边给退出按钮、
+   一边惩罚按下去的人"——字号原先在做和颜色相反的事。 */
+.summary.unfinished .savedamt { font-size: 25px; letter-spacing: -.03em; }
+/* 复盘出现时焦点落在标题上（review.js 有解释）。它 tabindex=-1、进不了 Tab 序，
+   画环只会像一处渲染错误。 */
+.result-title:focus { outline: none; }
 .scoreline { margin: 0 19px; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .metric { padding: 14px 0; }
 .metric + .metric { padding-left: 18px; border-left: 1px solid var(--line); }

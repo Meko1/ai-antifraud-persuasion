@@ -289,6 +289,13 @@ async function main() {
     await sleep(400);
     await 存图(call, 'phone-09-同一句话换个时候说.png');
 
+    // 「回到你自己那一笔」：冷开场那个环在这里合上，是全作品唯一
+    // 把心理反思落回本人的一块，素材里不能少
+    await evaluate(call, `document.getElementById('mirrorLead')?.closest('.group')
+      ?.scrollIntoView({ block: 'center', behavior: 'instant' })`);
+    await sleep(400);
+    await 存图(call, 'phone-10-回到你自己那一笔.png');
+
     await evaluate(call, `(() => {
       const d = document.getElementById('reviewDetails');
       d.open = true; d.dispatchEvent(new Event('toggle'));

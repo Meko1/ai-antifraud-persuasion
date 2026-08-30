@@ -4,7 +4,7 @@ import { contrastFacts } from './contrast.js';
 import { fitCanvas, paintKline, palette } from './chart.js';
 import { percentileCopy, trustPercentile } from './stats.js';
 import { makeCard, paintHistory } from './history.js';
-import { openClientSheet } from './opening.js';
+import { openClientSheet, transferSeen } from './opening.js';
 import {
   RESULT_BASIS, SCENE, TONES, breachTurns, endingMeta, game, peerPronoun,
   pressureNote, resultAmount, reviewKind, scoredTurns, startNewClient,
@@ -115,7 +115,9 @@ export function verdictCopy() {
         `差的是最后一公里——越接近松口，同一句话推动${TA}的幅度越小。`);
     }
   } else {
-    parts.push(`全场没有一句真正推动过${TA}。下一局试着先听懂${TA}在怕什么、在图什么，再往下问。`);
+    // **不说"下一局"**（2026-08-30）：他只打这一局（POSITIONING「干预只有
+    // 一次机会」）。许诺一个不会发生的下一次，是训练器定位的语气残留。
+    parts.push(`全场没有一句真正推动过${TA}。缺的是最前面那一步——先听懂${TA}在怕什么、在图什么，再往下问。`);
   }
   return parts.join('');
 }
@@ -151,7 +153,7 @@ export function openReview() {
              1 结算卡（summary + scoreline 是同一块）—— 他最后按没按下确认
              2 同一句话，换个时候说 —— 全作品唯一竞品没有的判据，不能砍
              3 他没说出口的那些 —— "原来我也一样"的转折点
-             4 现实里还差这几步 —— C 端干预的落点
+             4 回到你自己那一笔 —— **冷开场那个环在这里合上**，C 端干预的落点
              5 分享卡
 
            **砍掉的一块都没删，全部收进下面那个折叠。** 逐轮三段账、
@@ -166,12 +168,12 @@ export function openReview() {
              上面那个大数来自模拟信任度跨没跨过一条线，而不是任何一个
              交易系统的回传。不写清楚，玩家和评委都会读成"这个产品
              挽回了三十万"——那是这个作品最容易被误读、也最不该被误读的一处。
-             判分闭集里七把钥匙全是问法，没有任何一把是"拦住这笔转账"。 -->
+             判分闭集里七把钥匙全是"怎么开口"，没有任何一把是"拦住这笔转账"。 -->
         <p class="result-basis" id="resultBasis"></p>
       </section>
 
       <div class="scoreline">
-        <div class="metric"><b class="num" id="sTrust"></b><span>最终信任</span></div>
+        <div class="metric"><b class="num" id="sTrust"></b><span id="sTrustCap">最终信任</span></div>
         <div class="metric"><b class="num" id="sRounds"></b><span>使用轮次</span></div>
       </div>
 
@@ -185,22 +187,39 @@ export function openReview() {
         <div class="panel" id="phoneList"></div>
       </div>
 
-      <!-- 这一局练的只是"怎么开口"。现实里把话说通之后还有一串动作，
-           而这套判分闭集里一个都没有（七把钥匙全是问法）。
-           不列出来，玩家会以为劝住了就完事了——那是这个作品最容易
-           教错的一件事，而它只要一张清单就能说清。
-           **不计分、不参与任何统计**：它是"接下来还要做什么"，不是成绩。 -->
+      <!-- ── 回到你自己那一笔（2026-08-30 新增，第一屏第 4 块）─────────────
+           **这一块合的是冷开场开的那个环。**
+           冷开场让玩家自己签一笔、被拦下、然后「坐到对面」——而在此之前，
+           复盘从头到尾没有一处回到那一笔（全仓 grep 零命中）。
+           环开了没合上，"角色对调"就只完成了一半：他替别人想了三分钟，
+           没有一秒被请回自己身上。POSITIONING「成功标准·对用户」要的那几秒
+           犹豫，正是在这里发生，不在结算卡上。
+
+           **它顶掉的是原来那块「话说通了，现实里还差这几步」**，不是删掉——
+           那五条整块搬进了下面的折叠。搬家的理由不是它不重要，是它**人称错了**：
+           「让客户当场取消」「陪着他打」「按本机构流程报备」「约下一次回访」，
+           五条没有一条是一个 C 端用户能对自己做的。它是投顾侧的教学，
+           在这个作品里仍然成立（对局中玩家确实在扮投顾），
+           所以留在折叠里给认真的人看，不占那个只有五块的第一屏。
+
+           **两条不许改回去**：
+           · 引用的是**玩家自己说过的话**，不是产品替他写的金句。
+             他劝别人时说得出口的话，回到自己身上才有分量。
+           · 下面四条动作**全部是他一个人就能做的**。凡是需要"客户""系统"
+             "本机构"的，都属于上面那块，不属于这里。 -->
       <div class="group">
-        <div class="group-title">话说通了，现实里还差这几步</div>
+        <div class="group-title">回到你自己那一笔</div>
         <div class="panel">
+          <p class="mirror-lead" id="mirrorLead"></p>
+          <ol class="mirror-lines" id="mirrorLines"></ol>
+          <p class="mirror-turn">这几件事，<b>不用等任何人来劝，你自己就能做</b>：</p>
           <ol class="disposal">
-            <li><b>先把这一笔停下</b><span>让客户当场取消转账或撤回；已提交的联系银行尝试拦截。</span></li>
-            <li><b>核验收款方</b><span>对公户还是个人卡、户名对不对得上他说的那家机构。</span></li>
-            <li><b>拨 96110 / 110</b><span>陪着他打，别让他挂了电话自己再想。</span></li>
-            <li><b>在系统里留痕并上报</b><span>疑似诈骗按本机构流程报备，别只留在聊天记录里。</span></li>
-            <li><b>约下一次回访</b><span>骗子还会再找他。这一通电话不是终点。</span></li>
+            <li><b>先不按那个确认</b><span>真的机会不会因为你多等一天就没了。<b>催你现在就按</b>的，本身就是最该起疑的那句话。</span></li>
+            <li><b>找一个人，把这件事从头讲一遍</b><span>家人、朋友、同事都行。你刚才做的就是这件事——只不过坐在另一边。</span></li>
+            <li><b>拨 96110</b><span>国家反诈专线。不确定算不算被骗，也可以打过去问。</span></li>
+            <li><b>打你券商 App 里的人工客服</b><span>账户异常、资金去向，他们查得到你查不到的那一半。</span></li>
           </ol>
-          <p class="empty">这几步本局不计分，也不该由一次对话代替。真实处置流程以你所在机构的规定为准。</p>
+          <p class="empty">这几步不计分，也不该由一次对话代替。</p>
         </div>
       </div>
 
@@ -234,6 +253,25 @@ export function openReview() {
               <p class="copy"></p>
               <div class="review-rows" id="reviewRows"></div>
             </section>
+
+            <!-- 投顾侧的处置清单。2026-08-30 从第一屏搬到这里，理由写在上面
+                 那块「回到你自己那一笔」的注释里：**人称是投顾的，不是用户的**。
+                 内容一个字没改——对局中玩家确实在扮投顾，这五条对他仍然成立，
+                 只是不该占住那个只有五块的第一屏。
+                 **不计分、不参与任何统计**：它是"接下来还要做什么"，不是成绩。 -->
+            <div class="group">
+              <div class="group-title">如果你是他的投顾，话说通之后还差这几步</div>
+              <div class="panel">
+                <ol class="disposal">
+                  <li><b>先把这一笔停下</b><span>让客户当场取消转账或撤回；已提交的联系银行尝试拦截。</span></li>
+                  <li><b>核验收款方</b><span>对公户还是个人卡、户名对不对得上他说的那家机构。</span></li>
+                  <li><b>拨 96110 / 110</b><span>陪着他打，别让他挂了电话自己再想。</span></li>
+                  <li><b>在系统里留痕并上报</b><span>疑似诈骗按本机构流程报备，别只留在聊天记录里。</span></li>
+                  <li><b>约下一次回访</b><span>骗子还会再找他。这一通电话不是终点。</span></li>
+                </ol>
+                <p class="empty">这几步本局不计分，也不该由一次对话代替。真实处置流程以你所在机构的规定为准。</p>
+              </div>
+            </div>
 
             <div class="group">
               <div class="group-title">逐轮信任曲线</div>
@@ -291,6 +329,15 @@ export function openReview() {
     </div>`;
 
   document.querySelector('.app-shell').appendChild(view);
+  // **焦点送进这一层。** 它是 `role="dialog"` 盖在对话页上的一屏，而 `#review`
+  // 里一个 live region 都没有——不移焦点的话，对屏幕阅读器来说对话页只是
+  // "突然不动了"，整个复盘不存在。送标题不送按钮，理由与转账屏那次一样：
+  // 焦点即宣告，用户从标题往下读得到全部内容。
+  const reviewTitle = view.querySelector('.summary .result-title');
+  if (reviewTitle) {
+    reviewTitle.setAttribute('tabindex', '-1');
+    reviewTitle.focus({ preventScroll: true });
+  }
   // 四色语义（设计稿的 data-tone）：绿只给明确劝住，金＝争取到时间或减少了
   // 损失，锈红＝资金损失或联系中断，拖住给中性灰——钱没动但风险一点没解除，
   // 用绿会把"还没输"说成"赢了"。**绿不做装饰色**：它在这一屏只有一个意思，
@@ -318,7 +365,7 @@ export function openReview() {
     turning.querySelector('#turningTitle').textContent = '本局尚未出现关键转折';
     turning.querySelector('#turningQuote').textContent = '这一局没有一句真正推动客户。';
     turning.querySelector('#turningNote').textContent =
-      '下一局先确认客户在怕什么、相信什么，再尝试给出判断。';
+      '顺序反了：先确认客户在怕什么、相信什么，再给判断。';
   }
 
   if (kind === 'blacklisted') {
@@ -329,6 +376,13 @@ export function openReview() {
   }
 
   view.querySelector('#sTrust').textContent = String(game.trust);
+  // **给这个数一把尺子。** 就绪度审计 P1-8：「最终信任 42」没有量纲、没有参照
+  // ——满分多少、劝住线在哪，屏幕上一个字都没说，而刻度其实就在同一屏的
+  // 分享卡里（K 线上那条「劝住 80」虚线）。信息在旁边，指标格里却不给。
+  // 阈值下发不到时就退回原来那句，不编一个数。
+  if (game.threshold) {
+    view.querySelector('#sTrustCap').textContent = `最终信任 · 劝住线 ${game.threshold}`;
+  }
   view.querySelector('#sRounds').textContent = String(game.turns.length);
 
   paintBreaches(view);
@@ -387,6 +441,7 @@ export function openReview() {
   });
 
   paintContrast(view);
+  paintMirror(view);
   paintKeyBars(view);
 
   if (usedPenalties.length) {
@@ -449,7 +504,7 @@ export function reviewRows() {
     ? `${penalties.map((p) => PENALTIES[p].name).join('、')}顶高了${peerPronoun()}的防备`
     : unused.length
       ? `这一局没用过${unused.slice(0, 2).map((k) => KEYS[k].name).join('、')}`
-      : `七把钥匙都用到了，下一局试着更早读准${peerPronoun()}的档位`;
+      : `七把钥匙都用到了，差的是更早读准${peerPronoun()}的档位`;
 
   const breaches = breachTurns();
   const compliance = breaches.length
@@ -495,8 +550,8 @@ export function paintBreaches(view) {
   // 换成一句关于**真实展业**的陈述——教学分量一分没少，断言没了。
   lead.innerHTML =
     `这一局你有 <b>${turns.length}</b> 轮踩到了执业红线。` +
-    `<br>这一节和你劝没劝住他无关 —— <b>这样的对话记录，合规那边看到是要问话的</b>。` +
-    `真实展业中，投顾与客户的沟通是要留痕的。`;
+    `<br>这一节和你劝没劝住他无关 —— <b>同样几句话出自持牌投顾之口，合规是要问话的</b>。` +
+    `真实展业中，投顾与客户的沟通全程留痕。`;
   box.appendChild(lead);
 
   turns.forEach((t) => {
@@ -677,7 +732,7 @@ export function paintPhone(view) {
  *   · 这把钥匙一共挣了多少分
  *   · 时机对不对（效力倍率的均值——**这是全作品唯一一处竞品没有的判据**）
  *
- * 没用过的那几把不留白，给出它的一句话说明——那正是下一局该试的东西。
+ * 没用过的那几把不留白，给出它的一句话说明——那是这一局没动用过的余地。
  */
 /** 「同一句话，换个时候说」。
  *
@@ -712,6 +767,50 @@ export function paintPhone(view) {
  *    4. 命中了但时机挑得准（gap ≤ 0.15）→ 说他挑对了，再用他自己用得最多的
  *       那一把把落差摊开
  *  空壳仍然不留：`eff` 拿不到（老令牌、结局事件没下发）时照旧整块不出现。 */
+/** 「回到你自己那一笔」：把他自己说过的话，掉头问他自己。
+ *
+ *  **这是这个作品唯一一处把心理反思落回本人的地方。** 冷开场让他签了一笔、
+ *  被拦下、坐到对面；在此之前复盘从没回到过那一笔——他替别人想了三分钟，
+ *  没有一秒被请回自己身上。
+ *
+ *  引用的必须是**他自己挣到过分的那几句**，不是产品替他写的金句：
+ *  劝别人时他说得出口，回到自己身上才有分量；而换成一句漂亮话，
+ *  这一块立刻退化成又一段鸡汤。
+ *
+ *  **一句都没挣到分是最常见的一局**（`balance_sim`：最低一档仍占 53.4%，
+ *  novice 胜率 0.0%）——那一档不能留白，也不能说"你什么都没做对"。
+ *  退回三把钥匙自己的原话：**问题本身照样成立**，只是这一局他没问出口。
+ *  这和 P0-4 那条是同一个道理：最需要被说到的那一半人，不能恰好被跳过。
+ */
+export function paintMirror(view) {
+  const lead = view.querySelector('#mirrorLead');
+  const list = view.querySelector('#mirrorLines');
+  if (!lead || !list) return;
+
+  const own = scoredTurns()
+    .filter((t) => t.delta > 0 && t.utterance)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 3);
+  const fallback = ['anchor_real_purpose', 'expose_contradiction', 'check_understanding']
+    .map((k) => (KEYS[k] ? KEYS[k].brief : '')).filter(Boolean);
+
+  list.innerHTML = '';
+  (own.length ? own.map((t) => t.utterance) : fallback).forEach((text) => {
+    const li = document.createElement('li');
+    li.textContent = text;
+    list.appendChild(li);
+  });
+
+  // **没演过冷开场就不提它**，见 opening.js `transferSeen` 那段注
+  const opener = transferSeen()
+    ? '三分钟前，你自己也在一笔转出上按了确认。那一笔是模拟的。' : '';
+  const TA = peerPronoun();
+  const q = own.length
+    ? `你刚才对${TA}说的这几句，换到你自己身上还成立吗？`
+    : `这三个问题你这一局没问出口——但它们同样该有人问你。`;
+  lead.innerHTML = `${opener}<b>${q}</b>`;
+}
+
 export function paintContrast(view) {
   const box = view.querySelector('#contrastBox');
   // **取数搬到 contrast.js 了**（2026-08-29）：分享卡的卡面主角现在也是
@@ -801,7 +900,7 @@ export function paintKeyBars(view) {
       rounds: turns.map((t) => t.round),
     };
   });
-  // 挣得多的排前面。没用过的沉底——它们是"下一局试试这个"，不是成绩
+  // 挣得多的排前面。没用过的沉底——它们是"这一局没动过的那几把"，不是成绩
   rows.sort((a, b) => b.gained - a.gained || b.used - a.used);
 
   const top = Math.max(1, ...rows.map((r) => r.gained));
