@@ -58,6 +58,22 @@ export const peerInitial = () => (SCENE ? SCENE.initial : '陈');
 // 状态条上那个「他/她」。周淑琴那一局写「他现在」，玩家一眼看出界面是照别人做的
 export const peerPronoun = () => (SCENE ? SCENE.pronoun : '他');
 
+/** 把一段界面文案里的 `{ta}` 换成本局客户的代词。
+ *
+ *  **这是 `keys.js:130` 那条规矩的执行件。** 那条规矩 8-29 写下来的时候只落地了
+ *  `MOOD_HINTS` 一处，其余成篇的文案仍写死着「他」——2026-08-30 的实测：
+ *  周淑琴那一局（`pronoun='她'`）复盘展开后**整屏 18 个「他」对 4 个「她」**，
+ *  而且在同一张逐轮表里逐行交替（「真正改变**她**的是第 3 轮」紧挨着
+ *  「**他**当时烦躁 · 这一招值 0.6×」）。开打前那一屏更直白：七把钥匙七个「他」，
+ *  正下方的输入框写着「输入你想对**她**说的话」。
+ *
+ *  之所以做成一个函数而不是让每处自己 `replaceAll`：**静态测试要认得出它**。
+ *  `tests/frontend/pronoun.test.mjs` 扫的就是"界面文案里出现裸的「他」"，
+ *  有了统一出口，那条测试才能把整片钉住，而不是列一张永远漏项的白名单。
+ *
+ *  没有 SCENE 时 `peerPronoun()` 退回「他」，与改动前的行为一致。 */
+export const withTa = (s) => String(s ?? '').replaceAll('{ta}', peerPronoun());
+
 /** 施压那一轮的旁白。**由服务端按场景下发**（`Scenario.pressure_note`）。
  *
  *  原先三处都写死成「王老师又在群里催了一遍」——而顾之然没有王老师，
@@ -140,10 +156,10 @@ export function resultAmount(kind) {
     return { value: '未产生结果', label: '这次对话由你主动结束，没有走到结局' };
   }
   if (kind === 'persuaded') {
-    return { value: wholeMoney(TOTAL()), label: '他最后没按下确认' };
+    return { value: wholeMoney(TOTAL()), label: withTa('{ta}最后没按下确认') };
   }
   if (kind === 'intercepted') {
-    return { value: wholeMoney(TOTAL() - TEST_TRANSFER()), label: '其余的他暂时按住了' };
+    return { value: wholeMoney(TOTAL() - TEST_TRANSFER()), label: withTa('其余的{ta}暂时按住了') };
   }
   if (kind === 'stalled') {
     return { value: wholeMoney(TOTAL()), label: '暂未转出，风险尚未解除' };
@@ -230,7 +246,7 @@ export function endingMeta(kind) {
   const copy = (SCENE && SCENE.endings[kind]) || {};
   return {
     tier: copy.tier || '转账',
-    title: copy.title || '他还是转走了',
+    title: copy.title || withTa('{ta}还是转走了'),
     savedCopy: copy.saved || '',
     receipt: RECEIPT[kind] !== undefined ? RECEIPT[kind] : 'sent',
     amount: kind === 'intercepted' ? TEST_TRANSFER() : TOTAL(),
@@ -245,7 +261,10 @@ export const ERRORS = {
   network: '网络断了，这句没发出去',
   // 服务端挡下了一张已经打完的令牌。正常玩不会碰到——碰到多半是这一轮的
   // 结果没能回到手上（网络在中途断了），而服务端那边已经算完了。
-  replayed: '这一轮已经算过了，页面和他那边对不上，得重开一局',
+  //
+  // **这句里的「他」指的是服务端，不是客户**，所以不走 `{ta}`——改成不用代词的
+  // 说法，省得下一个人按"指代客户的文案一律走 {ta}"这条规矩把它改错。
+  replayed: '这一轮已经算过了，页面记录和实际对不上，得重开一局',
 };
 
 // ── 断线续局 ──────────────────────────────────────────────────────

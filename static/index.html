@@ -124,10 +124,15 @@
            下面那一行同时补掉一个老问题：**合规红线此前是中途惊喜**——
            玩家从没被告知不能荐，直到第 N 轮突然弹出一条红色「合规红线·荐股」。
            规则该在开局讲，讲的时候顺手把核心矛盾一与三都交代了
-           （看得见账户 / 看不见生活；只能问，不能荐）。 -->
+           （看得见账户 / 看不见生活；只能问，不能荐）。
+
+           **`{ta}` 由 `confirmTransfer()` 换成本局客户的代词**（2026-08-30）：
+           这一面翻开时开局请求早就回来了（同一屏的金额与异动摘要就是
+           `paintTransfer()` 按场景改写的），而五个客户里三位是「她」——
+           写死「他」的话，玩家两屏之后见到的是周阿姨。规矩见 keys.js 末尾。 -->
       <p class="handoff-turn">接下来三分钟，请你坐到对面——<br>
         <b>有人正要做同样的事，而这一次，肯开口的是你。</b></p>
-      <p class="handoff-role">你是他的投资顾问：看得见他的账户，看不见他的生活。你可以问，<b>但不能替他做决定，也不能向他推荐任何产品</b>——那是执业红线。</p>
+      <p class="handoff-role" id="handoffRole">你是{ta}的投资顾问：看得见{ta}的账户，看不见{ta}的生活。你可以问，<b>但不能替{ta}做决定，也不能向{ta}推荐任何产品</b>——那是执业红线。</p>
     </div>
     <div class="primary-foot" id="handoffFoot" hidden>
       <button class="primary-action" id="handoffGo" type="button">坐到对面</button>
@@ -238,7 +243,10 @@
            改成陈述这一局难在哪，不要求他接受任何身份。 -->
       <p class="primer-lead">这不是攻略——<b>难的从来不是说什么，是什么时候说</b>。同一把钥匙，早一轮晚一轮，效果差很远。</p>
       <ol class="primer-list" id="primerList"></ol>
-      <p class="primer-foot">对面是活人写的回应，没有选项可选。你说什么，他就接什么。</p>
+      <!-- `{ta}` 由 `paintPrimer()` 换掉。这一屏在客户档案**之后**，
+           下一屏输入框就写着「输入你想对{ta}说的话」——写死代词，
+           两行之内自相矛盾（keys.js 末尾那条规矩说的就是这个）。 -->
+      <p class="primer-foot" id="primerFoot">对面是活人写的回应，没有选项可选。你说什么，{ta}就接什么。</p>
     </div>
     <div class="primary-foot">
       <button class="primary-action" id="primerGo" type="button">知道了，开始</button>

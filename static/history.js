@@ -4,7 +4,8 @@ import { contrastFacts } from './contrast.js';
 import { drawQR } from './qr.js';
 import { percentileHeadline, percentileTier } from './stats.js';
 import {
-  SCENE, endingMeta, game, reviewKind, savedAmount, scoredTurns, wholeMoney,
+  SCENE, endingMeta, game, peerPronoun, reviewKind, savedAmount, scoredTurns,
+  wholeMoney,
 } from './state.js';
 
 // ── 本机对局记录（跨局） ─────────────────────────────────────
@@ -216,16 +217,19 @@ export function cardHero() {
   // 空口断言，不走效力矩阵），所以那一支印最高档位的绝对值，不硬凑一个倍数
   const hero = f.times ? `差 ${f.times} 倍` : `最高 ${f.bestVal}×`;
 
+  // **这张卡只在别人手机上出现**，是全作品最不容易被复核的一块——
+  // 写死代词的话，六成的对局分享出去都在指错人，而分享者自己也未必回头看。
+  const TA = peerPronoun();
   let note;
   if (f.kind === 'mistimed') {
-    note = `他当时${named(f.mood)}，这句算空口断言；等他${named(f.bestMood)}再说，`
+    note = `${TA}当时${named(f.mood)}，这句算空口断言；等${TA}${named(f.bestMood)}再说，`
       + `是这一局分值最高的一把`;
   } else if (f.kind === 'gap') {
-    note = `他当时${named(f.mood)}，这一招值 ${f.val}×；`
-      + `同一句话，等他${named(f.bestMood)}再说，值 ${f.bestVal}×`;
+    note = `${TA}当时${named(f.mood)}，这一招值 ${f.val}×；`
+      + `同一句话，等${TA}${named(f.bestMood)}再说，值 ${f.bestVal}×`;
   } else {
-    note = `同一把${f.name}，在他${named(f.bestMood)}时值 ${f.bestVal}×，`
-      + `在他${named(f.worstMood)}时只值 ${f.worstVal}×`;
+    note = `同一把${f.name}，在${TA}${named(f.bestMood)}时值 ${f.bestVal}×，`
+      + `在${TA}${named(f.worstMood)}时只值 ${f.worstVal}×`;
   }
 
   return {
@@ -412,7 +416,7 @@ export function makeCard(view) {
       [String(game.trust), '最终信任度'],
       [String(game.turns.length), '用了几轮'],
       [best && best.delta > 0 ? `+${best.delta}` : '—',
-        best && best.delta > 0 ? `第 ${best.round} 轮最有力` : '没有一句推动他'],
+        best && best.delta > 0 ? `第 ${best.round} 轮最有力` : `没有一句推动${peerPronoun()}`],
     ];
   const colW = contentW / 3;
   ctx.textAlign = 'center';

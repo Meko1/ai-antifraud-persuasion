@@ -249,7 +249,9 @@ async function main() {
     await evaluate(call, `document.getElementById('openChen').click()`);
     await waitFor(call, `document.getElementById('primer')?.classList.contains('on')`, '课程表');
     await sleep(300);
-    await 存图(call, 'phone-05-七种问法.png');
+    // 文件名跟着屏上那句走（2026-08-30 从「七种问法」改成「七把钥匙」：
+    // 七把里有四把不是问法，复盘本来就管它们叫钥匙）
+    await 存图(call, 'phone-05-七把钥匙.png');
 
     await evaluate(call, `document.getElementById('primerGo').click()`);
     await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`, '聊天屏');

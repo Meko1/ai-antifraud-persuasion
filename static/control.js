@@ -3,7 +3,7 @@ import { KEYS } from './keys.js';
 import { reportExit } from './api.js';
 import { openSheet } from './sheet.js';
 import { openReview } from './review.js';
-import { game, saveGame } from './state.js';
+import { game, saveGame, withTa } from './state.js';
 
 // ── 用户控制：退出、暂停、提前结束 ────────────────────────────────────────
 //
@@ -97,7 +97,9 @@ export function openMethodsSheet() {
     note: '难的从来不是说什么，是什么时候说。',
     items: Object.keys(KEYS).map((k) => ({
       label: KEYS[k].name,
-      note: KEYS[k].brief,
+      // 抽屉打开时客户已经在标题栏上了，代词必须跟着本局走：这一层就贴在
+      // 「{ta}开始犯嘀咕了」和「输入你想对{ta}说的话」中间，写死了当场穿帮
+      note: withTa(KEYS[k].brief),
     })),
   });
 }

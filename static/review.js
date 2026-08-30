@@ -7,7 +7,7 @@ import { makeCard, paintHistory } from './history.js';
 import { openClientSheet, transferSeen } from './opening.js';
 import {
   RESULT_BASIS, SCENE, TONES, breachTurns, endingMeta, game, peerPronoun,
-  pressureNote, resultAmount, reviewKind, scoredTurns, startNewClient,
+  pressureNote, resultAmount, reviewKind, scoredTurns, startNewClient, withTa,
 } from './state.js';
 
 export function tag(id) {
@@ -129,6 +129,10 @@ export function openReview() {
     (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
   const kind = reviewKind();
   const meta = endingMeta(kind);
+  // 这一整张模板里凡是指代客户的地方都用它。**跨行模板同样受那条规矩管**——
+  // 底下那份投顾处置清单当初就是靠"藏在几十行 HTML 里"躲过了第一版的
+  // 静态检查（它只逐行匹配单行的反引号），四条里三条写死着「他」。
+  const TA = peerPronoun();
 
   const view = document.createElement('section');
   view.className = 'review';
@@ -260,14 +264,14 @@ export function openReview() {
                  只是不该占住那个只有五块的第一屏。
                  **不计分、不参与任何统计**：它是"接下来还要做什么"，不是成绩。 -->
             <div class="group">
-              <div class="group-title">如果你是他的投顾，话说通之后还差这几步</div>
+              <div class="group-title">如果你是${TA}的投顾，话说通之后还差这几步</div>
               <div class="panel">
                 <ol class="disposal">
                   <li><b>先把这一笔停下</b><span>让客户当场取消转账或撤回；已提交的联系银行尝试拦截。</span></li>
-                  <li><b>核验收款方</b><span>对公户还是个人卡、户名对不对得上他说的那家机构。</span></li>
-                  <li><b>拨 96110 / 110</b><span>陪着他打，别让他挂了电话自己再想。</span></li>
+                  <li><b>核验收款方</b><span>对公户还是个人卡、户名对不对得上${TA}说的那家机构。</span></li>
+                  <li><b>拨 96110 / 110</b><span>陪着${TA}打，别让${TA}挂了电话自己再想。</span></li>
                   <li><b>在系统里留痕并上报</b><span>疑似诈骗按本机构流程报备，别只留在聊天记录里。</span></li>
-                  <li><b>约下一次回访</b><span>骗子还会再找他。这一通电话不是终点。</span></li>
+                  <li><b>约下一次回访</b><span>骗子还会再找${TA}。这一通电话不是终点。</span></li>
                 </ol>
                 <p class="empty">这几步本局不计分，也不该由一次对话代替。真实处置流程以你所在机构的规定为准。</p>
               </div>
@@ -550,7 +554,7 @@ export function paintBreaches(view) {
   // 换成一句关于**真实展业**的陈述——教学分量一分没少，断言没了。
   lead.innerHTML =
     `这一局你有 <b>${turns.length}</b> 轮踩到了执业红线。` +
-    `<br>这一节和你劝没劝住他无关 —— <b>同样几句话出自持牌投顾之口，合规是要问话的</b>。` +
+    withTa(`<br>这一节和你劝没劝住{ta}无关 —— <b>同样几句话出自持牌投顾之口，合规是要问话的</b>。`) +
     `真实展业中，投顾与客户的沟通全程留痕。`;
   box.appendChild(lead);
 
@@ -579,7 +583,7 @@ export function paintBreaches(view) {
     t.hits.filter((h) => h in BREACHES).forEach((h) => {
       const why = document.createElement('div');
       why.className = 'breachwhy';
-      why.textContent = BREACHES[h].tip;
+      why.textContent = withTa(BREACHES[h].tip);
       row.appendChild(why);
     });
     box.appendChild(row);
@@ -792,7 +796,7 @@ export function paintMirror(view) {
     .sort((a, b) => b.delta - a.delta)
     .slice(0, 3);
   const fallback = ['anchor_real_purpose', 'expose_contradiction', 'check_understanding']
-    .map((k) => (KEYS[k] ? KEYS[k].brief : '')).filter(Boolean);
+    .map((k) => (KEYS[k] ? withTa(KEYS[k].brief) : '')).filter(Boolean);
 
   list.innerHTML = '';
   (own.length ? own.map((t) => t.utterance) : fallback).forEach((text) => {
@@ -825,32 +829,45 @@ export function paintContrast(view) {
   let body = '';
   const quote = f.quote;
 
+  const TA = peerPronoun();
+  // 「这四个字{谁}已经说过了」那半句。**由服务端按场景下发**
+  // （`Scenario.warned_by`），拿不到就整句不印。
+  //
+  // 原先这里写死着「跟他女儿昨天说的那四个字」——照老陈写的，而这一支在
+  // 四个场景上都可达：刘卫东的女儿是**三天前**说的、林月娥**没有女儿**
+  // （是老公）、顾之然的手机里**根本没有家人**。一半的可达场景里，
+  // 复盘对玩家断言了一件那一局剧本里没发生过的事。
+  //
+  // 顾之然那一局照样成立：没人劝过她本来就是她最难的地方，
+  // 少这半句只是少一个类比，不影响"这句话算空口断言"这个判断本身。
+  const warned = SCENE && SCENE.warned_by
+    ? `——跟${SCENE.warned_by}说的那四个字落在同一个地方。` : '。';
+
   if (f.kind === 'mistimed') {
     head = `第 ${f.round} 轮 · 你给了依据，也下了判断`;
     body =
-      `他当时${named(f.mood)}，这句话算的是<b>空口断言</b>——`
-      + `跟他女儿昨天说的那四个字落在同一个地方。`
-      + `<br>同一句话，等他${named(f.bestMood)}再说，它是这一局分值最高的一把（${f.bestVal}×）。`
+      `${TA}当时${named(f.mood)}，这句话算的是<b>空口断言</b>${warned}`
+      + `<br>同一句话，等${TA}${named(f.bestMood)}再说，它是这一局分值最高的一把（${f.bestVal}×）。`
       + `<br><b>不是这句话错了，是时候错了。</b>`;
   } else if (f.kind === 'gap') {
     head = `第 ${f.round} 轮 · ${f.name}`;
     body =
-      `他当时${named(f.mood)}，这一招值 ${f.val}×。`
-      + `<br>同一句话，等他${named(f.bestMood)}再说，值 ${f.bestVal}×。`
+      `${TA}当时${named(f.mood)}，这一招值 ${f.val}×。`
+      + `<br>同一句话，等${TA}${named(f.bestMood)}再说，值 ${f.bestVal}×。`
       + `<br><b>动作是对的，差的是时候。</b>`;
   } else if (f.kind === 'flat') {
     head = `你用得最多的那一把 · ${f.name}`;
     body =
       `时机你挑得不错——这一局没出现"动作对、时候错"那种明显的错位。`
-      + `<br>但同一把${f.name}，在他${named(f.bestMood)}时值 ${f.bestVal}×，`
-      + `在他${named(f.worstMood)}时只值 ${f.worstVal}×${times}。`
+      + `<br>但同一把${f.name}，在${TA}${named(f.bestMood)}时值 ${f.bestVal}×，`
+      + `在${TA}${named(f.worstMood)}时只值 ${f.worstVal}×${times}。`
       + `<br><b>这一局判的就是这个差值。</b>`;
   } else {
     head = `这一局你一把钥匙都没打中 · 拿 ${f.name} 举个例`;
     body =
-      `同一句${f.name}，在他${named(f.bestMood)}时值 ${f.bestVal}×，`
-      + `在他${named(f.worstMood)}时只值 ${f.worstVal}×${times}。`
-      + (f.mood ? `<br>这一局结束时，他停在${named(f.mood)}。` : '')
+      `同一句${f.name}，在${TA}${named(f.bestMood)}时值 ${f.bestVal}×，`
+      + `在${TA}${named(f.worstMood)}时只值 ${f.worstVal}×${times}。`
+      + (f.mood ? `<br>这一局结束时，${TA}停在${named(f.mood)}。` : '')
       + `<br><b>不是话说得不够好，是时候没等到。</b>`;
   }
 
@@ -877,9 +894,9 @@ export function paintContrast(view) {
   // 时候"——这句是全作品的论点，值得在它唯一被看见的地方写出来
   const foot = document.createElement('p');
   foot.className = 'empty';
-  foot.textContent =
+  foot.textContent = withTa(
     '这一局判的从来不是你说得标不标准，是你用得是不是时候。'
-    + '同一把钥匙，在他四种情绪下值的分不一样——换个客户，这张表还会翻过来。';
+    + '同一把钥匙，在{ta}四种情绪下值的分不一样——换个客户，这张表还会翻过来。');
   box.appendChild(foot);
 
   view.querySelector('#contrastWrap').hidden = false;
@@ -931,14 +948,14 @@ export function paintKeyBars(view) {
     const note = document.createElement('div');
     note.className = 'keynote';
     if (!r.used) {
-      note.textContent = meta.tip;
+      note.textContent = withTa(meta.tip);
     } else {
       const parts = [`第 ${r.rounds.join('、')} 轮用了 ${r.used} 次`];
       if (r.eff != null) {
         const e = r.eff.toFixed(1);
         parts.push(
           r.eff >= 1.2 ? `平均 ${e}× · 时机抓得准`
-            : r.eff < 0.7 ? `平均 ${e}× · 用早了，这一招得等他晃起来`
+            : r.eff < 0.7 ? withTa(`平均 ${e}× · 用早了，这一招得等{ta}晃起来`)
             : `平均 ${e}×`);
       }
       if (r.used >= 3) parts.push('用到第三次效力只剩一半');
@@ -1110,10 +1127,10 @@ export function timingNote(t) {
   if (t.mistimedWarning) {
     const el = document.createElement('div');
     el.className = 'timing bad';
-    el.textContent =
-      `他当时${MOODS[t.judgedMood] || t.judgedMood} · `
-      + '这句话本身没问题，你给了依据 —— 但他还没到听得进去的时候，'
-      + '这时候说，跟「这是诈骗」四个字在他耳朵里是一样的';
+    el.textContent = withTa(
+      `{ta}当时${MOODS[t.judgedMood] || t.judgedMood} · `
+      + '这句话本身没问题，你给了依据 —— 但{ta}还没到听得进去的时候，'
+      + '这时候说，跟「这是诈骗」四个字在{ta}耳朵里是一样的');
     return el;
   }
   if (t.efficacy == null) return null;
@@ -1121,8 +1138,8 @@ export function timingNote(t) {
   const el = document.createElement('div');
   el.className = 'timing' + (t.efficacy >= 1.2 ? ' good' : t.efficacy < 0.7 ? ' bad' : '');
   const verdict = t.efficacy >= 1.2 ? ' 正是时候'
-    : t.efficacy < 0.7 ? ' 用早了，这一招得等他晃起来' : '';
-  el.textContent = `他当时${mood} · 这一招值 ${t.efficacy}×${verdict}`;
+    : t.efficacy < 0.7 ? ' 用早了，这一招得等{ta}晃起来' : '';
+  el.textContent = withTa(`{ta}当时${mood} · 这一招值 ${t.efficacy}×${verdict}`);
   return el;
 }
 
@@ -1131,8 +1148,8 @@ export function timingNote(t) {
 // 话术完整度，反而给了正面激励。追问窗口捕捉的正是它：他晃起来的那两轮
 // 你有没有跟上。以前这条只在引擎里算，玩家一眼都看不到。
 export const WINDOW_NOTE = {
-  hit: { text: '他正晃着，你接住了 · 这一招额外加成', cls: 'good' },
-  missed: { text: '两轮的口子空掉了，他重新硬了回去 · 扣 6 分', cls: 'bad' },
+  hit: { text: '{ta}正晃着，你接住了 · 这一招额外加成', cls: 'good' },
+  missed: { text: '两轮的口子空掉了，{ta}重新硬了回去 · 扣 6 分', cls: 'bad' },
   open: { text: '口子还开着，还剩一轮', cls: '' },
 };
 
@@ -1140,13 +1157,13 @@ export function windowNote(t) {
   const parts = [];
   const w = WINDOW_NOTE[t.windowResult];
   if (w) parts.push([w.text, w.cls]);
-  if (t.windowOpened) parts.push(['他第一次晃到这一档 · 接下来两轮是机会', 'good']);
+  if (t.windowOpened) parts.push(['{ta}第一次晃到这一档 · 接下来两轮是机会', 'good']);
   if (!parts.length) return null;
   const box = document.createElement('div');
   parts.forEach(([text, cls]) => {
     const el = document.createElement('div');
     el.className = 'window' + (cls ? ' ' + cls : '');
-    el.textContent = text;
+    el.textContent = withTa(text);
     box.appendChild(el);
   });
   return box;
@@ -1194,7 +1211,7 @@ export function tipCard(meta) {
   title.className = 'title';
   title.textContent = meta.name;
   const p = document.createElement('p');
-  p.textContent = meta.tip;
+  p.textContent = withTa(meta.tip);
   card.append(title, p);
   return card;
 }

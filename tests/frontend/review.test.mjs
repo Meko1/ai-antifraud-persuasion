@@ -307,7 +307,7 @@ describe('回到你自己那一笔', () => {
     // 从 `mirrorLead` 切起，**不从块标题切**：标题上面那段注释里正好把
     // 「让客户」「陪着他」当反例引了一遍，从那儿切会把注释算进来
     const 第一屏 = 源.slice(源.indexOf('id="mirrorLead"'), 源.indexOf('result-actions'));
-    for (const 词 of ['让客户', '本机构', '陪着他', '约下一次回访', '你所在机构']) {
+    for (const 词 of ['让客户', '本机构', '陪着${TA}', '约下一次回访', '你所在机构']) {
       assert.ok(!第一屏.includes(词),
         `「${词}」是投顾侧的动作，不该出现在这一块——它属于折叠里那份清单`);
     }
@@ -320,7 +320,9 @@ describe('回到你自己那一笔', () => {
     // 对局中玩家确实在扮投顾，那五条对他仍然成立。搬家不是删除
     const 折叠 = 源.slice(源.indexOf('evidence-content'));
     assert.match(折叠, /在系统里留痕并上报/, '投顾侧清单被删了');
-    assert.match(折叠, /如果你是他的投顾/, '搬过去之后标题要把人称说清楚');
+    // 代词走 `${TA}`（2026-08-30）：这五条整块藏在一张跨行模板里，
+    // 当初就是靠这一点躲过了静态检查，四条里三条写死着「他」
+    assert.match(折叠, /如果你是\$\{TA\}的投顾/, '搬过去之后标题要把人称说清楚');
   });
 });
 
@@ -344,14 +346,27 @@ describe('拦截那一屏：重音落在 Helper，身份是约束不是头衔', 
     // 它是三处的地基：合规红线是**执业**禁区、七把钥匙"没有一把是给建议"
     // 来自"只能问不能荐"、剧本里老陈的人设就写着这层关系。删不得
     assert.match(那一面, /class="handoff-role"/, '身份那一行不见了');
-    assert.match(那一面, /你是他的投资顾问/, '身份本身不许弱化');
+    assert.match(那一面, /你是\{ta\}的投资顾问/, '身份本身不许弱化');
   });
 
   test('开局就把合规红线讲清楚，不留到中途才弹', () => {
     // 此前玩家从没被告知不能荐，直到第 N 轮突然弹一条红色「合规红线·荐股」
-    const 约束 = 那一面.match(/<p class="handoff-role">[\s\S]*?<\/p>/)[0];
-    assert.match(约束, /不能替他做决定/, '核心矛盾二：不能替客户做决定');
-    assert.match(约束, /不能向他推荐任何产品/, '核心矛盾一：只能问，不能荐');
-    assert.match(约束, /看得见他的账户，看不见他的生活/, '核心矛盾三');
+    const 约束 = 那一面.match(/<p class="handoff-role"[^>]*>[\s\S]*?<\/p>/)[0];
+    assert.match(约束, /不能替\{ta\}做决定/, '核心矛盾二：不能替客户做决定');
+    assert.match(约束, /不能向\{ta\}推荐任何产品/, '核心矛盾一：只能问，不能荐');
+    assert.match(约束, /看得见\{ta\}的账户，看不见\{ta\}的生活/, '核心矛盾三');
+  });
+
+  test('这一行的代词是占位符，由 confirmTransfer 换掉', () => {
+    /* 2026-08-30 加。这一行原先写死四个「他」，而五个客户里三位是「她」——
+     * 这一面翻开时开局请求早回来了（同屏的金额就是 `paintTransfer()` 按场景
+     * 改写的），玩家两屏之后见到的却是周阿姨。 */
+    const 约束 = 那一面.match(/<p class="handoff-role"[^>]*>[\s\S]*?<\/p>/)[0];
+    assert.doesNotMatch(约束, /他/, '身份那一行不许写死代词，一律走 {ta}');
+    assert.match(约束, /id="handoffRole"/, '换代词要够得着它，得有 id');
+
+    const 换 = bodyOf(sourceOf('opening.js'), 'confirmTransfer');
+    assert.match(换, /handoffRole/, 'confirmTransfer 得把这一行的 {ta} 换掉');
+    assert.match(换, /withTa\(/, '换代词走统一出口，别再各写各的 replaceAll');
   });
 });

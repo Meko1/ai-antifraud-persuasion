@@ -4,7 +4,7 @@ import { postTurn, readEvents } from './api.js';
 import { openReview } from './review.js';
 import {
   ERRORS, PAYEE, PING, SCENE, endingMeta, game, money, peerInitial,
-  peerPronoun, pressureNote, saveGame, setScene, startNewClient,
+  pressureNote, saveGame, setScene, startNewClient, withTa,
 } from './state.js';
 import { paintClientPicker, paintDesk, paintOpening } from './opening.js';
 
@@ -130,7 +130,11 @@ export function paintMood(mood) {
   if (hintEl) {
     // `{ta}` 换成本局客户的代词。五个场景里三位是「她」，写死「他」的话
     // 这一行会和两行之下的输入框（「输入你想对她说的话」）当场打架。
-    const hint = (MOOD_HINTS[mood] || MOOD_HINTS.guarded).replaceAll('{ta}', peerPronoun());
+    //
+    // 2026-08-30 改走 `withTa()`：这一处原是全仓唯一走占位符的地方，
+    // 而那一批把 KEYS / 复盘 / 分享卡全接上来之后，得有一个统一出口——
+    // 静态测试认的就是它（`tests/frontend/pronoun.test.mjs`）。
+    const hint = withTa(MOOD_HINTS[mood] || MOOD_HINTS.guarded);
     if (hintEl.textContent !== hint) hintEl.textContent = hint;
   }
 

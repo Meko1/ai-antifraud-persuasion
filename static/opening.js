@@ -5,8 +5,8 @@ import { openSheet } from './sheet.js';
 import { loadHistory } from './history.js';
 import { divider, paintMood, resumeGame, say } from './chat.js';
 import {
-  PICK_KEY, PING, SCENE, TOTAL, clearSaved, game, loadSaved, saveGame, setScene,
-  startNewClient, wholeMoney,
+  PICK_KEY, PING, SCENE, TOTAL, clearSaved, game, loadSaved, peerPronoun,
+  saveGame, setScene, startNewClient, wholeMoney, withTa,
 } from './state.js';
 
 // ── 开局 ────────────────────────────────────────────────────
@@ -93,6 +93,18 @@ export function confirmTransfer() {
   $('transferFoot').hidden = true;
   $('transferHandoff').hidden = false;
   $('handoffFoot').hidden = false;
+
+  // 身份那一行的 `{ta}`。**在这里换而不是在 `paintTransfer()` 里**：
+  // 那个函数按设计"玩家已经签过字就不动"（改写发生在他眼皮底下会闪），
+  // 而这一行属于翻开的这一面，此刻才第一次被看见。
+  //
+  // 开局请求慢到还没回来时 `peerPronoun()` 退回「他」——与改动前一模一样，
+  // 不会更差；正常情况下它早回来了（同一屏的金额就是它改写的）。
+  const role = $('handoffRole');
+  if (role) {
+    role.innerHTML = withTa('你是{ta}的投资顾问：看得见{ta}的账户，看不见{ta}的生活。'
+      + '你可以问，<b>但不能替{ta}做决定，也不能向{ta}推荐任何产品</b>——那是执业红线。');
+  }
 
   const go = $('handoffGo');
   go.disabled = true;
@@ -365,6 +377,14 @@ export function markPrimerSeen() {
 
 /** 开打前那一屏。**只列名字与一句话**，见 KEYS 顶部那段关于 brief / tip 的注释。 */
 export function paintPrimer() {
+  // 底下那句里的 `{ta}` 也要换。**它在 `childElementCount` 那道闸的外面**：
+  // 闸拦的是"七条别画两遍"，而这一句每次进来都该按本局客户重刷
+  const foot = $('primerFoot');
+  if (foot && foot.dataset.ta !== peerPronoun()) {
+    foot.textContent = withTa('对面是活人写的回应，没有选项可选。你说什么，{ta}就接什么。');
+    foot.dataset.ta = peerPronoun();
+  }
+
   const list = $('primerList');
   if (!list || list.childElementCount) return;
   Object.keys(KEYS).forEach((k) => {
@@ -372,7 +392,9 @@ export function paintPrimer() {
     const name = document.createElement('b');
     name.textContent = KEYS[k].name;
     const desc = document.createElement('span');
-    desc.textContent = KEYS[k].brief;
+    // 这一屏的下一步就是聊天，输入框写着「输入你想对{ta}说的话」。
+    // 五个客户里三位是「她」，写死代词在这里当场穿帮
+    desc.textContent = withTa(KEYS[k].brief);
     li.append(name, desc);
     list.appendChild(li);
   });
