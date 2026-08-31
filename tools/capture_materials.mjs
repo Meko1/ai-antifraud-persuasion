@@ -94,13 +94,46 @@ async function 打一轮(call, 说) {
   await sleep(150);
 }
 
-/** 把这一局钉在老陈那一场。
+/** 开局**之前**就把这一局钉在老陈那一场。
+ *
+ *  `钉住老陈()` 是补救——它只能在工作台那一屏用（「换一位客户」在那儿），
+ *  而**转账确认屏与拦截屏在它之前**。于是 2026-08-30 之前出的素材里
+ *  `phone-01` / `phone-02` 是随机某位客户，`phone-03` 起才是老陈：
+ *  实测那一批的拦截屏印着「你是**她**的投资顾问」，紧挨着的下一张是老陈。
+ *  图集里这两张是相邻的。
+ *
+ *  用的仍然是**界面自己的那把钥匙**：`aap.pick.sid` 正是「换一位客户」
+ *  写下的那个键（`state.js` 的 `startNewClient`），这里只是提前到首屏之前写。
+ *  **没有为出素材改任何产品行为**。 */
+async function 开局前钉住老陈(call, base) {
+  await call('Page.navigate', { url: `${base}/` });
+  await waitFor(call, `document.readyState === 'complete'`, '首屏');
+  // **打个记号再重载，然后等记号消失。** `Page.reload` 是发出去就返回的，
+  // 不等新文档——直接往下走的话，后面那些 waitFor 全都命中的是**旧页面**
+  // （旧页面上按钮当然是就绪的），于是重载会落在流程中间，把整段录废。
+  // 实测第一版就是这样：录出来的片子里客户还是随机那位，章节也全错位了。
+  await evaluate(call, `window.__钉 = 1`);
+  // **存档也要清。** 首屏那一次 `loadGame()` 结尾就 `saveGame()` 了，
+  // 于是重载时 `boot()` 认为"有存档"，直接续到聊天屏——录出来的片子里
+  // 第 9 秒本该是拦截屏，实际是第 1 轮的对话，客户也还是随机那位。
+  // 清存档 + 写 pick，正是界面自己的「换一位客户」做的两件事
+  // （`state.js` 的 `startNewClient`：先 clearSaved，再写 PICK_KEY，再 reload）。
+  await evaluate(call, `sessionStorage.removeItem('aap.game.v1');
+    sessionStorage.removeItem('aap.transfer.seen');
+    sessionStorage.setItem('aap.pick.sid', 'chen')`);
+  await call('Page.reload');
+  await waitFor(call, `!window.__钉 && document.readyState === 'complete'`, '重载后的新文档', 25000);
+}
+
+/** 把这一局钉在老陈那一场（工作台上那把补救钥匙）。
  *
  *  **场景默认是随机分配的**（POSITIONING「主张边界」最后一条），而上面那
  *  十二句台词里写着"陈叔""王老师"——不钉住，素材里就会出现拿着老陈的台词
  *  去劝周淑琴的画面。用的是界面自己的「换一位客户」，**没有为出素材改任何
  *  产品行为**；列表里找不到姓陈的，说明当前这一局本来就是他。
- */
+ *
+ *  开局前那一手（`开局前钉住老陈`）生效时这里会直接返回——留着它是兜底：
+ *  `aap.pick.sid` 万一读不到（隐私模式），这一步仍然把人换回来。 */
 async function 钉住老陈(call) {
   if (await evaluate(call, `!!document.getElementById('pickClient')?.hidden`)) return;
   await evaluate(call, `document.getElementById('pickClient').click()`);
@@ -216,7 +249,8 @@ async function main() {
 
   try {
     await call('Emulation.setDeviceMetricsOverride', PHONE);
-    await call('Page.navigate', { url: `${server.base}/` });
+    // 首屏之前就钉住，否则 phone-01/02 会是随机某位客户，而 phone-03 起是老陈
+    await 开局前钉住老陈(call, server.base);
     await waitFor(call, `document.getElementById('transfer')?.classList.contains('on')`,
       '转账确认屏', 25000);
     await sleep(600);
