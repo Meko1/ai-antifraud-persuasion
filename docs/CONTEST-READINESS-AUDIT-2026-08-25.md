@@ -906,3 +906,94 @@ timingNote / WINDOW_NOTE / 复盘模板、`history.js` 的 cardHero、
 **验证**：`pytest` 695、`tests/frontend` 158、`tests/e2e` 14 全绿；
 成片在浏览器里逐点抽帧复核（3/9/15/20/27/34/38/42/49 秒），
 每一章的画面与字幕都对得上；`phone-05` 跟着屏上那句改名「七把钥匙」。
+
+### 2026-08-31 · 打包能不能真的用上 claude-opus-5：不能，而且降级也是关的
+
+提交前按"主模型 + 自动降级 + 怎么判断"三条逐一实测。**前两条都是坏的，
+坏在同一行配置上。**
+
+#### 一处配置，两件事一起塌
+
+本地 `.env` 里 `LLM_PROVIDER=public`，而**紧挨着的上一行注释写着**
+「2026-08-15 切到公司内网网关，模型 claude-opus-5」。注释和值对不上，
+后果是两件而不是一件：
+
+1. **主模型根本不是 claude-opus-5**，是 DeepSeek；
+2. **ADR-0007 的自动降级整条不存在**——`config._load_fallback()` 只在
+   `provider == "internal"` 时才加载 `PUBLIC_LLM_*`（provider 已经是 public 的话
+   没有第三个方向可切）。也就是说"内网 token 用尽自动切公网"这条保命路径，
+   在打出去的包里是关着的，**而它正是这份 `.env` 存在的理由之一**。
+
+改回 `internal` 之后两条同时成立。实测（从解压出来的包里起的服务）：
+
+```
+配置的模型      claude-opus-5
+当前在答的模型  claude-opus-5
+退路            {'provider': 'public', 'model': 'deepseek-v4-pro'}
+主探测 / 退路探测  都是 true
+```
+
+真打两轮，台词由 claude-opus-5 生成，`line_source=model`。
+
+#### 自动降级：拿真凭证走了一遍
+
+用一个"必定报 `401 该令牌状态不可用`"的假主 provider + **真的 DeepSeek 凭证**：
+
+```
+切换前  internal / claude-opus-5 / switched=False
+公网回话「测试通过」   流式「流式好」
+切换后  public / deepseek-v4-pro / switched=True
+原因    401 该令牌状态不可用
+```
+
+当次请求就重试到公网、往后不再试主 provider、`status()` 如实报告——
+ADR-0007 承诺的四件事都做到了。
+
+#### 第三条问出了一个真洞：**没法判断台词是不是罐头**
+
+问"怎么判断在用哪个模型 / 是不是在发兜底台词"的时候才发现，前两个问题
+`/healthz` 答得了（`llm_provider` + `llm_failover`），第三个**一个字都没有**。
+
+而这一位恰恰最要紧，因为 `/healthz` 上原有的每一位说的都是**启动那一刻**
+的事。探测通过之后网关照样可能每一轮都超时：玩家拿到的每一句都是罐头，
+`llm_probe.ok` 仍然是 true，`/healthz` 一路绿。**兜底台词是故意写得让人
+察觉不出来的**（`fallback.py` 顶部："玩家未必察觉：骗子本来就说车轱辘话"），
+所以它同样骗得过运维——在此之前唯一的痕迹是一行 `logger.warning`。
+
+这个洞不是推理出来的，是**当场撞见的**：改配置后第一次真打，
+拿到的回复是 `都跟你说了没事，你还问。`——一条罐头，
+而 `score` 事件里 `degraded: false`。翻日志才看见
+`WARNING 演绎超时（L1 降级），改用兜底台词`。
+
+> **`degraded` 不能兼任这件事。** 那一位说的是*分类*没判成，
+> 与台词是谁写的是两回事——上面那一轮正是 `degraded: false` 而台词是罐头。
+
+补了三处：
+
+| 加在哪 | 是什么 |
+|---|---|
+| `score` 事件 | `line_source`：`model` / `fallback` / `absorbed` |
+| `/healthz` | `line_sources`：三者逐轮累计。**唯一反映运行中而非启动时状态的一位** |
+| `/healthz` | `llm_model` 与 `llm_failover.active_model`：两者不一致＝已自动切到退路 |
+
+怎么读写进了 [SUBMISSION-CHECKLIST §三](SUBMISSION-CHECKLIST.md)。
+
+#### 一条没动、但要拍板的：6 秒降级线对 opus 偏紧
+
+顺手量了 claude-opus-5 的演绎耗时（带三轮历史，8 次采样）：
+
+```
+中位 3.42s   最慢 6.60s   超过 6s 预算 1/8
+```
+
+L1 降级线是 6 秒（`engine.ACT_TIMEOUT_SECONDS`，TECH-DESIGN §4/§6.2 与
+「首句 P95 ≤3s」绑在一起）。**约每八轮有一轮拿到的是罐头**，
+上面那次真打撞见的就是它。
+
+**这一条没改。** 6 秒是写进技术方案的产品决策，TECH-DESIGN §6.4 记的实测
+是"演绎首字 1.8s、整轮 2.9s"（关掉思考之后），比现在量到的快——是网关变慢了
+还是采样太少，八个样本说不清。改它要动的是"首句延迟"这条指标本身，
+**该由所有者拍板，不该顺手改掉**。现在至少它是**看得见的**：
+`line_sources.fallback` 在涨就是这件事。
+
+**验证**：`pytest` 697、`tests/frontend` 158、`tests/e2e` 14 全绿。

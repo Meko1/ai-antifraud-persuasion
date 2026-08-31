@@ -190,11 +190,26 @@ async def play_turn(
     # 台词逐句下发，同时攒起来写进 history——复盘要靠它
     spoken: List[str] = []
 
+    # 这一轮的台词是**谁写的**：模型，还是兜底台词库，还是注入吸收那条预置回应。
+    # 随 `score` 事件下发（`line_source`），并在 /healthz 上累计。
+    #
+    # **加它的理由**：兜底台词是故意写得让玩家察觉不出来的（fallback.py 顶部：
+    # "玩家未必察觉：骗子本来就说车轱辘话"），而运维那一侧同样看不出来——
+    # 在此之前唯一的痕迹是 `logger.warning("演绎超时（L1 降级）")`，
+    # 一行日志。于是"这台服务到底在用 claude-opus-5，还是每一轮都在发罐头"
+    # 这个问题，只能靠翻日志回答。
+    #
+    # **`degraded` 不能兼任这件事**：那一位说的是*分类*没判成
+    # （`classification is None`），与台词是谁写的是两件事——实测就撞见过
+    # 一轮 `degraded: false` 而台词是罐头的（分类回来了，演绎超时了）。
+    line_source = "model"
+
     absorbed = absorb_injection(utterance)
     if absorbed is not None:
         # 装听不懂：请求根本不发给模型，攻击者什么也拿不到。
         # 该轮记 neutral——不加不减，但仍吃信任流失。
         buffer = SentenceBuffer()
+        line_source = "absorbed"
         for sentence in buffer.feed(absorbed) + buffer.flush():
             spoken.append(sentence)
             yield Event("sentence", {"text": sentence})
@@ -269,6 +284,7 @@ async def play_turn(
 
             if not spoken:
                 # L1：演绎降级。绝不给玩家一片空白。
+                line_source = "fallback"
                 text = fallback_line(mood, scene=scene)
                 spoken.append(text)
                 yield Event("sentence", {"text": text})
@@ -344,6 +360,11 @@ async def play_turn(
             # 他明明给了依据。错的不是那句话，是时候。
             "mistimed_warning": outcome.mistimed_warning,
             "degraded": classification is None,
+            # 这一轮的台词是谁写的：model / fallback / absorbed。
+            # **与 `degraded` 是两件事**（那一位说的是分类），理由见上面
+            # `line_source` 的声明处。前端不渲染它——兜底台词本来就是
+            # 写给玩家察觉不出来的，这一位是给运维和评委看的。
+            "line_source": line_source,
             # 剧情事件，不是判分反馈：前端在对话里渲染成一条旁白
             "pressure": outcome.pressured,
         },

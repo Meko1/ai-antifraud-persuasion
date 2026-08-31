@@ -95,6 +95,37 @@ node tools/capture_video.mjs
 
 - [ ] 手动确认一次：`curl -s 'http://127.0.0.1:21818/healthz?probe=1'`
       → `llm_probe.ok` 与 `llm_probe_fallback.ok` **都要是 true**
+- [ ] `env` 里 `LLM_PROVIDER` 必须是 **`internal`**。写成 `public` 会同时塌掉两件事：
+      主模型不是 claude-opus-5，**而且 ADR-0007 的自动降级整条不存在**
+      （`_load_fallback()` 只在 `internal` 时加载 `PUBLIC_LLM_*`）。
+      2026-08-31 之前本地 `.env` 就一直躺在 `public` 上
+
+### 怎么判断现在到底在用哪个模型、有没有在发罐头
+
+**三个问题，三处答案，都在 `/healthz` 上**：
+
+```bash
+curl -s http://127.0.0.1:21818/healthz | python3 -m json.tool
+```
+
+| 问 | 看哪一位 | 怎么读 |
+|---|---|---|
+| **配的是哪个模型** | `llm_model` | 启动时定死，比如 `claude-opus-5` |
+| **现在真正在答的是哪个** | `llm_failover.active_model` | 和上面**不一致**就说明已经自动切到退路了；`switched_at` / `reason` 说明什么时候、为什么 |
+| **是模型在答，还是在发罐头** | `line_sources` | `{model, fallback, absorbed}` 逐轮累计 |
+
+`line_sources` 是这三位里唯一反映**运行中**而不是**启动时**状态的：
+探测通过之后网关照样可能每一轮都超时，那时候 `llm_probe.ok` 仍是 true，
+而玩家拿到的每一句都是兜底台词。
+
+- `model` 在涨 = 正常，台词是大模型写的
+- **`fallback` 在涨 = 在发罐头**。网关通但每轮超时（L1 降级线 6 秒，
+  见 TECH-DESIGN §6.2），或者已经切到退路而退路也在超时
+- `absorbed` = 注入吸收，玩家在试图操纵系统。它是功能，不是故障
+
+单轮也能看：`/api/game/turn` 的 `score` 事件带 `line_source`。
+**别拿 `degraded` 当这件事看**——那一位说的是*分类*没判成，
+和台词是谁写的是两回事（实测撞见过 `degraded: false` 而台词是罐头的）。
 - [ ] 平台若用 iframe 嵌展示页：`env` 里填 `FRAME_ANCESTORS=<平台域名>`，
       否则「作品展示」页签是一块空白（默认仍是 `'none'`）
 - [ ] **把展示页 URL 填进 `static/index.html` 的 `<meta name="af-share-url">`**

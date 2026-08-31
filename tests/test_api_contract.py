@@ -280,14 +280,37 @@ class Test存活与就绪分开:
         body = client.get("/healthz").json()
         failover = body["llm_failover"]
         assert set(failover) == {
-            "active_provider", "switched", "switched_at", "reason", "fallback",
+            "active_provider", "active_model", "switched", "switched_at",
+            "reason", "fallback",
         }
         assert isinstance(failover["switched"], bool)
+        # `active_model` 是 2026-08-31 加的第六栏。**`active_provider` 回答不了
+        # 部署当天真正要确认的那件事**——它只说"内网还是公网"，而运维要问的是
+        # "这台服务到底在用 claude-opus-5 吗"。切换之后这一位跟着变，
+        # 而启动日志里那个模型名不会变，两者一对就知道切没切过。
+        assert failover["active_model"] == body["llm_model"] or failover["switched"]
         # 有没有退路取决于运维填没填 PUBLIC_LLM_*，两种都是合法部署；
         # 契约钉的是"这一位必须有明确答案"，不是"必须有退路"
         assert failover["fallback"] is None or set(failover["fallback"]) == {
             "provider", "model", "protocol",
         }
+
+    def test_healthz报出台词是谁写的(self, client: TestClient) -> None:
+        """2026-08-31 加。**`/healthz` 原有的每一位说的都是"启动那一刻"的事**：
+        网关配没配、探测通不通、切没切过。而探测成功之后网关照样可能每一轮
+        都超时，玩家拿到的每一句都是兜底台词——这台服务在"用大模型"这件事上
+        名存实亡，`/healthz` 却一路绿。
+
+        兜底台词是**故意**写得让人察觉不出来的（`fallback.py` 顶部那句
+        "玩家未必察觉"），所以它同样骗得过运维。这三个数把它变成一个
+        看得见的比值：`fallback` 一直在涨就是在发罐头。
+        """
+        body = client.get("/healthz").json()
+        assert set(body["line_sources"]) == {"model", "fallback", "absorbed"}
+        assert all(isinstance(v, int) for v in body["line_sources"].values())
+        # 配置里那个模型名。和 `llm_failover.active_model` 一起看才回答得了
+        # "现在到底在用哪个"——切换之后这一位不变，那一位会变
+        assert "llm_model" in body
 
 
 class Test探测不对公网开放:

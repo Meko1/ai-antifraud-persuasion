@@ -69,7 +69,12 @@ class LLMClient:
         那时候再看见已经晚了八小时。
         """
         return {
-            "active_provider": self.cfg.provider, "switched": False,
+            "active_provider": self.cfg.provider,
+            # **模型名也要报**：`provider` 只说"内网还是公网"，回答不了
+            # "这台服务到底在用 claude-opus-5 还是别的"——而那正是部署当天
+            # 唯一想确认的一件事。
+            "active_model": self.cfg.model,
+            "switched": False,
             "switched_at": None, "reason": "", "fallback": None,
         }
 
@@ -239,6 +244,9 @@ class FailoverLLMClient:
         """
         return {
             "active_provider": self._active.cfg.provider,
+            # 切换之后这一位跟着变。**看这一位，不要看启动日志里那个模型名**——
+            # 切过之后启动日志说的仍然是 claude-opus-5，而实际在答的是 DeepSeek。
+            "active_model": self._active.cfg.model,
             "switched": self._active is self._fallback,
             "switched_at": self._switched_at,
             "reason": self._switch_reason,

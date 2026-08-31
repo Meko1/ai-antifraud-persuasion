@@ -430,6 +430,12 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
             elif event.name == "sentence":
                 spoken.append(event.data.get("text", ""))
             if event.name == "score":
+                # 台词是谁写的，累计一笔。**在幂等闸的外面**：它统计的是
+                # "这个进程发出去过多少句罐头"，重试那一次同样发了一句，
+                # 不该因为账已经记过就不算——它不是业务计数，是运行状态。
+                _src = event.data.get("line_source", "model")
+                if _src in _line_sources:
+                    _line_sources[_src] += 1
                 # **业务幂等键在这里认领**（P1-7）。副作用就发生在这一刻，
                 # 所以锁也必须在这一刻上——客户端在 `score` 之后、`done` 之前
                 # 断开并重试，同一个 (gid, round) 就不会被写第二遍。
@@ -519,6 +525,22 @@ def _sse(name: str, data: dict) -> str:
 # 在响应体里写着。
 
 
+#: 台词是谁写的，逐轮累计。键与 `engine.py` 的 `line_source` 一一对应。
+#
+# **为什么要有这个计数**：`/healthz` 上原有的那几位回答的是"网关通不通"，
+# 而那是一个**开局那一刻**的答案——探测成功之后网关照样可能每一轮都超时，
+# 玩家拿到的每一句都是兜底台词，而 `/healthz` 一路绿。
+#
+# 兜底台词是**故意**写得让人察觉不出来的（`fallback.py` 顶部那句
+# "玩家未必察觉：骗子本来就说车轱辘话"），所以它也骗得过运维。
+# 在此之前唯一的痕迹是一行 `logger.warning`。这三个数把"这台服务到底
+# 在用大模型，还是在发罐头"变成一个能一眼看完的比值。
+#
+# 进程内计数，不进 Redis：它回答的是"这个进程现在怎么样"，
+# 重启归零正是想要的语义。
+_line_sources: Dict[str, int] = {"model": 0, "fallback": 0, "absorbed": 0}
+
+
 def _probe_allowed(request: Request) -> bool:
     """`?probe=1` 能不能用。
 
@@ -554,6 +576,13 @@ async def healthz(request: Request, probe: int = 0) -> JSONResponse:
         # ADR-0005 反对自动切换的理由正是"无人知情"，自动切换本身没错，
         # 悄悄切才是问题。切没切、什么时候切的、原始报错是什么，都在这儿。
         "llm_failover": llm_client.status(),
+        # 配置里写的那个模型（启动时定死）。**和上面 `llm_failover.active_model`
+        # 一起看**：两者不一致就说明这个进程已经自动切到退路上去了。
+        "llm_model": settings.llm.model,
+        # 台词是谁写的。`fallback` 一直在涨 = 网关探测得通、但每一轮都在超时，
+        # 玩家看到的是罐头。这一位是 `/healthz` 上唯一能反映**运行中**
+        # 而不是**启动时**状态的东西。
+        "line_sources": dict(_line_sources),
         # 离线演示模式必须在这里报出来。**一个看不出来是演示的演示是骗局**，
         # 而健康检查是运维唯一会看的那一处
         "offline_demo": settings.offline_demo,
