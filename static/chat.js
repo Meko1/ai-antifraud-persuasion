@@ -216,7 +216,24 @@ export async function playTurn(utterance) {
         round = ev.data.round;
         game.remaining = ev.data.remaining;
         $('remaining').textContent = String(ev.data.remaining);
-        $('turnCurrent').textContent = String(round);
+        /* 抬头那个数说的是**接下来要打的那一轮**，不是刚打完的那一轮
+         * （2026-08-31 改）。
+         *
+         * 服务端 `meta.round` 给的是刚打完的序号。原先直接印它，于是玩家
+         * 发完第 1 句、正在想第 2 句的时候，抬头写着「第 1 轮 / 12」，
+         * 而旁边的格子已经掉到 11——**1 + 11 = 12，同一行自相矛盾**。
+         *
+         * 而这个仓库里另外两条路早就是"下一轮"的算法了：`resumeGame` 写的是
+         * `Math.min(已打 + 1, maxRounds)`，`rollback` 写的是
+         * `maxRounds - remaining + 1`。**刷新一下页面数字就跳一格**，
+         * 三条路对不上的时候，对的是那两条：玩家盯着这个数是为了知道
+         * 「我还能说几次」，不是为了回顾刚才那次。
+         *
+         * 用 remaining 而不是 `round + 1` 表达，是为了和 rollback 逐字一致——
+         * 那两处但凡写法不同，下次改一处漏一处。 */
+        const 下一轮 = Math.min(
+          game.maxRounds, Math.max(1, game.maxRounds - ev.data.remaining + 1));
+        $('turnCurrent').textContent = String(下一轮);
         $('roundFill').style.width = `${(round / game.maxRounds) * 100}%`;
       } else if (ev.name === 'sentence') {
         spoken.push(ev.data.text);

@@ -13,6 +13,7 @@ import json
 
 import pytest
 
+from app.fallback import AVOID_WINDOW, fallback_line
 from app.offline import (
     OFFLINE_NOTE,
     OfflineGateway,
@@ -85,6 +86,80 @@ class Test形状与线上网关一致:
         assert "".join(chunks) in DEFAULT.lines[Mood.IRRITATED]
 
 
+class Test不许说最近说过的话:
+    """看得出来的重复，是唯一能一秒钟推翻「劝阻对象是活的」的东西。
+
+    原来是无记忆的 `random.choice`，每档 10 条；玩家在同一档位连坐三五轮
+    是常态（阻力曲线要求如此）。实测一局 12 轮（蒙特卡洛 2 万次）：
+
+        窗口   紧邻重复    3 轮内重复
+        0       56.9%      72.9%     ← 原状
+        1        0.0%      37.4%
+        2        0.0%       0.0%     ← 现在
+        3        0.0%       0.0%     ← 一句都不多赚
+
+    而离线模式正是 README 里写着"路演用它"的那个模式。
+    """
+
+    def test_取词时排除上一句(self) -> None:
+        lines = list(DEFAULT.lines[Mood.GUARDED])
+        上一句 = lines[0]
+        # 跑够多次：这一条要证的是"永远不会"，不是"多半不会"
+        got = {
+            fallback_line(Mood.GUARDED, scene=DEFAULT, avoid=上一句)
+            for _ in range(400)
+        }
+        assert 上一句 not in got, "又把上一句原样说了一遍"
+        assert len(got) > 1, "排除之后退化成了固定的一句，那是另一种重复"
+
+    def test_整档被排干净也得给得出一句(self) -> None:
+        """它是"绝不给玩家一片空白"那一层，任何情况下都必须有话说。"""
+        整档 = "".join(DEFAULT.lines[Mood.GUARDED])
+        assert fallback_line(Mood.GUARDED, scene=DEFAULT, avoid=整档) in DEFAULT.lines[
+            Mood.GUARDED
+        ]
+
+    def test_窗口是最近两句不是一句(self) -> None:
+        """1 只压得住紧邻重复，隔一轮又说同一句照样刺眼。
+
+        实测（每档停留 3 轮，蒙特卡洛 2 万次）：窗口 1 时"3 轮内重复"
+        仍有 37.4%，窗口 2 降到 0.0%，窗口 3 一句都不多赚。
+        """
+        assert AVOID_WINDOW == 2, "改这个数之前先看 fallback_line 里那张实测表"
+
+    def test_离线网关自己把最近那两句喂进去(self) -> None:
+        """光有参数不算数——`act` 得真的从 history 里把它们取出来。"""
+
+        class _轮:
+            def __init__(self, reply: str) -> None:
+                self.reply = reply
+
+        最近两句 = [
+            _轮(DEFAULT.lines[Mood.IRRITATED][0]),
+            _轮(DEFAULT.lines[Mood.IRRITATED][1]),
+        ]
+        # 再塞一条更早的，确认窗口**只取最近两句**，不是把整局都排除掉
+        history = [_轮(DEFAULT.lines[Mood.IRRITATED][2]), *最近两句]
+
+        async def once():
+            return "".join(
+                [
+                    c
+                    async for c in OfflineGateway().act(
+                        mood=Mood.IRRITATED, scene=DEFAULT, history=history
+                    )
+                ]
+            )
+
+        said = {_run(once()) for _ in range(500)}
+        for 轮 in 最近两句:
+            assert 轮.reply not in said, "网关没把 history 里最近那两句都用上"
+        assert history[0].reply in said, (
+            "窗口开得太大：再往前的台词也被排除了，"
+            "十二轮下来会把一个档位的池子掏空"
+        )
+
+
 class Test关键词分类:
     """粗得毫不掩饰，够走完一局就行。真准确率是模型的活（§9.3）。"""
 
@@ -132,6 +207,24 @@ class Test藏不住:
         assert "不调用大模型" in OFFLINE_NOTE
         # 光说"是演示"不够，还要说清哪一半是真的——判分那一半
         assert "判分" in OFFLINE_NOTE
+
+    def test_告知里要说清命中判定也降级了(self) -> None:
+        """**只说"判分仍由规则表算"会让人读出一个不成立的结论。**
+
+        判分是纯函数没错，可这时候喂给它的标签来自 `_KEY_RULES` 那张
+        关键词表，不是模型。留出集实测（`python -m tools.offline_eval`）：
+        完全命中 56.9%，真值非空却一条没判中的仍占 38.9%——
+        模型那边的门槛是 85%。
+
+        也就是每五句仍有两句被判成"钥匙一把都没沾上"，而复盘整页
+        都建在这些标签上——README 又写着"路演用它"。
+        **在代码注释里承认过，不等于对用户告知过。**
+
+        准确率的下限由 `tests/test_offline_eval.py` 守着，这一条只管
+        "有没有说出口"。
+        """
+        assert "关键词" in OFFLINE_NOTE, "没说命中判定换成了关键词规则"
+        assert "准确率" in OFFLINE_NOTE, "没说这一换意味着什么"
 
     def test_那句告知不自相矛盾(self) -> None:
         """**"数据去向"那一段是替换，不是追加。**

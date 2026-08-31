@@ -1,9 +1,11 @@
 import { BREACHES, KEYS, MOODS, PENALTIES } from './keys.js';
 import { fetchStats } from './api.js';
-import { contrastFacts } from './contrast.js';
+import { contrastFacts, contrastTimeline, timingClause } from './contrast.js';
 import { fitCanvas, paintKline, palette } from './chart.js';
-import { percentileCopy, trustPercentile } from './stats.js';
-import { makeCard, paintHistory } from './history.js';
+import {
+  canCompareEndings, canCompareKeys, percentileCopy, trustPercentile,
+} from './stats.js';
+import { makeCard, paintHistory, tierRankNote } from './history.js';
 import { openClientSheet, transferSeen } from './opening.js';
 import { $, thread } from './dom.js';
 import { syncSend } from './chat.js';
@@ -166,7 +168,14 @@ export function openReview() {
            **砍掉的一块都没删，全部收进下面那个折叠。** 逐轮三段账、
            七把钥匙条、本机记录对认真的人仍然有价值，只是不该挡在第一屏。 -->
       <section class="summary ${kind}">
-        <span class="result-kicker">本局结果 · <b class="tierpill"></b></span>
+        <!-- .tierrank 说的是这一档在阶梯上的位置（history.js 的 tierRankNote）。
+             「拖住」这个词自己说不清是好是坏，而 CONTEXT.md 说结局是一道阶梯——
+             那就得把阶梯画出来，不能只亮一格。不是胜负判定，是位置。
+
+             **这一段注释里不许出现反引号。** 整张模板是一个模板字符串，
+             注释里一个反引号就把它提前闭合，从那里往下全是语法错误
+             （2026-08-31 当场栽过一次，前端 36 条测试整组红）。 -->
+        <span class="result-kicker">本局结果 · <b class="tierpill"></b><i class="tierrank"></i></span>
         <h2 class="result-title"></h2>
         <div class="savedamt num"></div>
         <div class="savedcap"></div>
@@ -187,6 +196,15 @@ export function openReview() {
       <div class="group" id="contrastWrap" hidden>
         <div class="group-title">同一句话，换个时候说</div>
         <div class="panel" id="contrastBox"></div>
+        <!-- 可探索版（A1，2026-08-31）：上面那块只讲一条教学价值最高的证据，
+             这里把这一局里其余能对照的轮次也摆出来，点哪一轮看哪一轮。
+             contrastTimeline() 拿不到矩阵时返回空数组，整块不出现——
+             与上面那块空壳不留是同一条规矩。 -->
+        <div class="panel contrast-explorer" id="contrastExplorer" hidden>
+          <div class="contrast-pills" id="contrastPills" hidden></div>
+          <p class="contrast-cap" id="contrastCap" aria-live="polite"></p>
+          <div class="contrast-bars" id="contrastBars"></div>
+        </div>
       </div>
 
       <div class="group">
@@ -358,6 +376,8 @@ export function openReview() {
   const result = resultAmount(kind);
   view.querySelector('#reviewScene').textContent = SCENE ? SCENE.name : '风险劝阻';
   view.querySelector('.summary .tierpill').textContent = meta.tier;
+  // 主动结束（unfinished）那一档返回空串，整个 `<i>` 就是空的，不占位
+  view.querySelector('.summary .tierrank').textContent = tierRankNote(kind);
   view.querySelector('.summary .result-title').textContent = meta.title;
   view.querySelector('.summary .savedamt').textContent = result.value;
   view.querySelector('.summary .savedcap').textContent = result.label;
@@ -754,9 +774,20 @@ export function paintPhone(view) {
       : got === 0 ? `一条都没有 —— 打完这一局，你对${TA}的了解和开局时一样多。`
         : got * 2 >= diggable.length ? `问出一半以上，${TA}对你是有话说的。`
           : '大部分到最后你也不知道 —— 而不知道这些，你就只能泛泛地劝。';
+  /* **「另外」这两个字不是语气词**（2026-08-31）。
+   *
+   * 原文是「${TA}手机上还有这些，4 条里${TA}跟你说到了 1 条」，而紧挨着的
+   * 列表**渲染 5 张卡**——其中一张标着「你已有」（那条银行短信就是开局那条
+   * 预警的另一面，不该算进"你问出了几条"）。数字是对的，可读者会先数卡
+   * 再读数字，数出来 5 对 4，第一反应是这一块算错了。
+   *
+   * 把被排除的那一条在句子里点名，数字和列表就对得上了。 */
+  const 已有 = rows.length - diggable.length;
   lead.innerHTML =
-    `开局你手上只有账户那一侧的一条预警。${TA}手机上还有这些，` +
-    `<b>${diggable.length}</b> 条里${TA}跟你说到了 <b class="got">${got}</b> 条。<br>${verdict}`;
+    `开局你手上只有账户那一侧的一条预警`
+    + (已有 ? `，也就是下面标着「你已有」的那条` : '')
+    + `。${TA}手机上另外这 <b>${diggable.length}</b> 条里，`
+    + `${TA}跟你说到了 <b class="got">${got}</b> 条。<br>${verdict}`;
 }
 
 /** 钥匙的维度条。
@@ -881,13 +912,15 @@ export function paintContrast(view) {
     head = `第 ${f.round} 轮 · 你给了依据，也下了判断`;
     body =
       `${TA}当时${named(f.mood)}，这句话算的是<b>空口断言</b>${warned}`
-      + `<br>同一句话，等${TA}${named(f.bestMood)}再说，它是这一局分值最高的一把（${f.bestVal}×）。`
+      + `<br>同一句话，${timingClause(f)}，它是这一局分值最高的一把（${f.bestVal}×）。`
       + `<br><b>不是这句话错了，是时候错了。</b>`;
   } else if (f.kind === 'gap') {
     head = `第 ${f.round} 轮 · ${f.name}`;
     body =
       `${TA}当时${named(f.mood)}，这一招值 ${f.val}×。`
-      + `<br>同一句话，等${TA}${named(f.bestMood)}再说，值 ${f.bestVal}×。`
+      // 「等…再说」还是「早几轮…的时候说」由 timingClause 决定：那一档要是
+      // 早就过去了（而且多半是玩家自己把他推过去的），"等"字是句假话
+      + `<br>同一句话，${timingClause(f)}，值 ${f.bestVal}×。`
       + `<br><b>动作是对的，差的是时候。</b>`;
   } else if (f.kind === 'flat') {
     head = `你用得最多的那一把 · ${f.name}`;
@@ -934,6 +967,103 @@ export function paintContrast(view) {
   box.appendChild(foot);
 
   view.querySelector('#contrastWrap').hidden = false;
+  paintContrastExplorer(view, contrastTimeline());
+}
+
+/** 四档的横条，都是同一把钥匙、同一份效力矩阵的一行。
+ *
+ *  峰值那一档用 `--gold`——全作品唯一的游戏层强调色，`.round.pivot`
+ *  早就在用它标"关键转折"那一行，这里接着用，不新造一套视觉语言。
+ *  这一轮实际所在的那一档额外挂一个「这轮」标签，两者可能是同一档
+ *  （挑对了时候），也可能不是（差的就是这一格）。
+ */
+function paintContrastBars(box, entry) {
+  box.innerHTML = '';
+  const named = (m) => MOODS[m] || m;
+  const top = Math.max(...Object.keys(MOODS).map((m) => entry.row[m] ?? 0), 0.1);
+
+  Object.keys(MOODS).forEach((m) => {
+    const v = entry.row[m];
+    if (v == null) return;
+    const row = document.createElement('div');
+    row.className = 'contrast-bar-row'
+      + (m === entry.bestMood ? ' peak' : '')
+      + (m === entry.mood ? ' at' : '');
+
+    const label = document.createElement('span');
+    label.className = 'contrast-bar-label';
+    label.textContent = named(m);
+    if (m === entry.mood) {
+      label.appendChild(document.createTextNode(' '));
+      const tag = document.createElement('b');
+      tag.className = 'contrast-bar-tag';
+      tag.textContent = '这轮';
+      label.appendChild(tag);
+    }
+
+    const track = document.createElement('span');
+    track.className = 'contrast-bar-track';
+    const fill = document.createElement('i');
+    fill.style.width = Math.max(6, (v / top) * 100) + '%';
+    track.appendChild(fill);
+
+    const num = document.createElement('span');
+    num.className = 'contrast-bar-num num';
+    num.textContent = `${v}×`;
+
+    row.append(label, track, num);
+    box.appendChild(row);
+  });
+}
+
+/** 「同一句话，换个时候说」可探索版的交互层：一排「第 N 轮」的小按钮，
+ *  点哪个就把那一轮命中的钥匙、在四个情绪档位各值多少倍摆出来。
+ *
+ *  默认选中的就是上面那块headline 讲的同一轮——先接上已经在讲的那个例子，
+ *  再让人自己点开别的轮次，不是另起一套无关的东西。
+ *  只有一轮能讲时不出现按钮，直接把那一轮的四条摆出来。
+ */
+function paintContrastExplorer(view, timeline) {
+  const wrap = view.querySelector('#contrastExplorer');
+  if (!wrap || !timeline.length) return;
+  wrap.hidden = false;
+
+  const pillsBox = wrap.querySelector('#contrastPills');
+  const cap = wrap.querySelector('#contrastCap');
+  const bars = wrap.querySelector('#contrastBars');
+
+  const show = (entry, btn) => {
+    if (btn) {
+      pillsBox.querySelectorAll('button').forEach(
+        (b) => b.setAttribute('aria-pressed', String(b === btn)));
+    }
+    cap.textContent = entry.mistimed
+      ? `第 ${entry.round} 轮 · ${entry.name} · 说早了算空口断言`
+      : `第 ${entry.round} 轮 · ${entry.name}`;
+    paintContrastBars(bars, entry);
+  };
+
+  const buttons = [];
+  if (timeline.length > 1) {
+    pillsBox.hidden = false;
+    timeline.forEach((entry) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'contrast-pill';
+      btn.setAttribute('aria-pressed', 'false');
+      btn.textContent = `第${entry.round}轮`;
+      btn.onclick = () => show(entry, btn);
+      pillsBox.appendChild(btn);
+      buttons.push(btn);
+    });
+  }
+
+  // 默认选中的对齐上面那块 headline 已经在讲的那一轮，对不上（flat/nokey
+  // 两支没有具体轮次）就退回列表第一条
+  const f = contrastFacts();
+  const initialIndex = f && f.round ? timeline.findIndex((e) => e.round === f.round) : -1;
+  const idx = initialIndex >= 0 ? initialIndex : 0;
+  show(timeline[idx], buttons[idx]);
 }
 
 export function paintKeyBars(view) {
@@ -1092,8 +1222,12 @@ export async function paintStats(view, kind) {
   const scored = scoredTurns();
   const mine = scored.length;
 
+  /* **样本不够就整行不出**（2026-08-31）。理由与两个常量的口径写在
+     `stats.js` 上面那一段：实测这里拿 2 局印出过「100% 的人也停在这一档」，
+     而同一块的脚注写着「统计自 13 局」。这是百分位那条门槛
+     （`TRUST_SAMPLE_MIN`）当初只落地了一处留下的洞。 */
   const share = data.endings && data.endings[kind];
-  if (share && share.share) {
+  if (share && share.share && canCompareEndings(data)) {
     rows.push([
       `你落在「${endingMeta(kind).title}」`,
       `${Math.round(share.share * 100)}% 的人也停在这一档`,
@@ -1102,19 +1236,23 @@ export async function paintStats(view, kind) {
 
   // 分母两边都是"轮"：全局用总轮数，你这局用你打过的轮数。
   // 换成局数会得出大于 1 的"命中率"——一局里同一把钥匙可以用很多次。
-  Object.keys(KEYS).forEach((k) => {
-    const g = data.keys && data.keys[k];
-    if (!g) return;
-    const 我的 = scored.filter((t) => t.hits.includes(k)).length;
-    rows.push([
-      KEYS[k].name,
-      `大家 ${Math.round(g.rate * 100)}% 的发言用到 · 你 ${mine ? Math.round((我的 / mine) * 100) : 0}%`,
-    ]);
-  });
+  // 所以这一批的门槛也按轮数收（`KEY_SAMPLE_MIN`），不跟上面共用一个数。
+  const 够比钥匙 = canCompareKeys(data);
+  if (够比钥匙) {
+    Object.keys(KEYS).forEach((k) => {
+      const g = data.keys && data.keys[k];
+      if (!g) return;
+      const 我的 = scored.filter((t) => t.hits.includes(k)).length;
+      rows.push([
+        KEYS[k].name,
+        `大家 ${Math.round(g.rate * 100)}% 的发言用到 · 你 ${mine ? Math.round((我的 / mine) * 100) : 0}%`,
+      ]);
+    });
+  }
 
   // 小雨那条铺垫不在这儿重复说：上面「踩过的坑」里的空口断言卡片已经写了
   // 「这四个字他这三个月听了无数遍」。这一行只负责给一个数。
-  const 空口 = data.keys && data.keys.bare_assertion;
+  const 空口 = 够比钥匙 && data.keys && data.keys.bare_assertion;
   if (空口 && 空口.rate) {
     rows.push([
       '空口说“这是诈骗”',

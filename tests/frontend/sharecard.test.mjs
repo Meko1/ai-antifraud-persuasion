@@ -165,6 +165,154 @@ describe('分享卡 · 卡面主角与复盘算的是同一件事', () => {
   });
 });
 
+describe('那个"更好的时候"，不许让人去等一个已经过去的档位', () => {
+  /* 2026-08-31。`bestMood` 是效力矩阵那一行的 argmax，**跟这一局的时间线
+     没有任何关系**，而复盘正文与分享卡都把它写成了将来时：
+     「同一句话，等{ta}烦躁再说，值 1.9×」。
+
+     实测那一局：第 6 轮支持自主，他当时松动（1.2×），bestMood 是烦躁（1.9×）——
+     可他只在第 1 轮之前烦躁过，而且是玩家自己第一句就把他推出来的。
+     复盘于是让他"等"一个五轮前就过去了的状态。
+
+     这一块是「时机是这套判分的全部论点」唯一能在三分钟里被看懂的形式，
+     在这儿给一条时间上不可能的建议特别贵。 */
+
+  const EFF = {
+    // 峰值在 annoyed，方便构造"最好的时候在前面"
+    support_autonomy: { guarded: 1.0, annoyed: 1.9, shaken: 1.2, softened: 1.1 },
+  };
+  const 轮 = (round, judgedMood, efficacy) => ({
+    round, judgedMood, efficacy, hits: ['support_autonomy'],
+    utterance: '我不替您做主，钱是您的。', delta: 1, trust: 30, before: 29,
+    pool: 0, grounded: true, lines: [], reply: '',
+  });
+  function 一局(turns) {
+    const app = loadApp();
+    app.game.turns = turns;
+    app.game.ending = { kind: 'transferred', efficacy: EFF };
+    return app;
+  }
+
+  test('峰值档位在后面 —— 说"等"', () => {
+    // 第 2 轮戒备时用（1.0×），第 5 轮他才烦躁 —— 那个窗口确实还在前面
+    const app = 一局([轮(2, 'guarded', 1.0), 轮(5, 'annoyed', 1.9)]);
+    const f = app.contrastFacts();
+    assert.equal(f.round, 2);
+    assert.equal(f.bestWindow, 'future');
+    assert.match(app.timingClause(f), /^等/, '窗口还在后面，"等"是对的');
+  });
+
+  test('峰值档位在前面 —— 不许说"等"，要说"早几轮"', () => {
+    // 第 1 轮他烦躁，玩家把他推到松动；第 4 轮才用这一把。
+    // 峰值（烦躁）已经过去，而且是玩家自己推走的
+    const app = 一局([轮(1, 'annoyed', 1.9), 轮(4, 'softened', 1.1)]);
+    const f = app.contrastFacts();
+    assert.equal(f.round, 4, '该讲落差最大的第 4 轮');
+    assert.equal(f.bestWindow, 'past');
+    const 说法 = app.timingClause(f);
+    assert.doesNotMatch(说法, /^等/,
+      `峰值档位早就过去了，还让人去"等"：${说法}`);
+    assert.match(说法, /早几轮/);
+  });
+
+  test('这一局压根没到过那一档 —— 两头都不沾，说成无时态', () => {
+    const app = 一局([轮(3, 'guarded', 1.0)]);
+    const f = app.contrastFacts();
+    assert.equal(f.bestWindow, 'never');
+    const 说法 = app.timingClause(f);
+    assert.doesNotMatch(说法, /^等|早几轮/, `没发生过的事不该有时态：${说法}`);
+  });
+
+  test('复盘正文与分享卡说的是同一句 —— 共用 timingClause', () => {
+    // 这个模块顶上那段写着"两边算同一件事就不能各算一套"，措辞同理
+    const app = 一局([轮(1, 'annoyed', 1.9), 轮(4, 'softened', 1.1)]);
+    const 卡 = app.cardHero();
+    assert.ok(卡.note.includes(app.timingClause(app.contrastFacts())),
+      `分享卡没用共用的那一句：${卡.note}`);
+    assert.doesNotMatch(卡.note, /等.{0,3}烦躁再说/, '卡上还留着将来时');
+  });
+});
+
+describe('contrastTimeline · 可探索版取数（A1）', () => {
+  // 用真实的四个档位名——`contrastFacts()` 那组用 annoyed/shaken/softened
+  // 这种占位名也能过，是因为它只比大小、不查表；这里的 paintContrastBars
+  // 要按 MOODS 的四个真实键去取 row，键名对不上会悄悄漏掉几档
+  const EFF = {
+    expose_contradiction: { guarded: 0.6, irritated: 0.7, wavering: 1.4, softening: 1.2 },
+    informed_warning: { guarded: 0.4, irritated: 0.5, wavering: 1.6, softening: 1.3 },
+  };
+
+  function 一局(turns) {
+    const app = loadApp();
+    app.game.turns = turns;
+    app.game.ending = { kind: 'transferred', efficacy: EFF };
+    return app;
+  }
+
+  test('拿不到效力矩阵就是空数组，不是 null、不报错', () => {
+    const app = loadApp();
+    app.game.turns = [];
+    app.game.ending = { kind: 'transferred', efficacy: null };
+    // 不用 deepEqual：沙箱里造出来的数组和这份测试代码里的字面量 `[]`
+    // 不是同一个 Realm 的 Array，deepStrictEqual 会因此误判——
+    // 这份文件里其余断言全走字段级比较，同一个理由
+    assert.equal(app.contrastTimeline().length, 0);
+  });
+
+  test('没命中任何东西的轮次不进列表', () => {
+    const app = 一局([
+      { round: 1, hits: [], efficacy: null, judgedMood: 'guarded',
+        utterance: '嗯', delta: -2, trust: 28, before: 30, pool: 0,
+        grounded: false, lines: [], reply: '' },
+    ]);
+    assert.equal(app.contrastTimeline().length, 0);
+  });
+
+  test('命中钥匙的轮次：round/mood/val 与四档整行都要对得上', () => {
+    const app = 一局([
+      { round: 2, hits: ['expose_contradiction'], efficacy: 0.6, judgedMood: 'guarded',
+        utterance: '您刚才说他保本，可他又说不承诺收益，这两句能同时成立吗？',
+        delta: 1, trust: 30, before: 30, pool: 0, grounded: true, lines: [], reply: '' },
+    ]);
+    const [f] = app.contrastTimeline();
+    assert.equal(f.round, 2);
+    assert.equal(f.key, 'expose_contradiction');
+    assert.equal(f.mood, 'guarded');
+    assert.equal(f.val, 0.6);
+    assert.equal(f.mistimed, false);
+    assert.deepEqual(f.row, EFF.expose_contradiction, '四档整行原样带出，供画四条横条用');
+    assert.equal(f.bestMood, 'wavering');
+    assert.equal(f.bestVal, 1.4);
+  });
+
+  test('说早了的「有据告知」：mistimed 为真，val 是 null（它不走效力矩阵）', () => {
+    const app = 一局([
+      { round: 1, hits: ['bare_assertion'], mistimedWarning: true, efficacy: null,
+        judgedMood: 'irritated', utterance: '我认为这是诈骗，理由是……',
+        delta: -2, trust: 28, before: 30, pool: 0, grounded: false, lines: [], reply: '' },
+    ]);
+    const [f] = app.contrastTimeline();
+    assert.equal(f.mistimed, true);
+    assert.equal(f.key, 'informed_warning', '讲的永远是 informed_warning 那把，不是 bare_assertion');
+    assert.equal(f.val, null);
+    assert.equal(f.mood, 'irritated');
+    assert.equal(f.bestMood, 'wavering');
+  });
+
+  test('多轮按发生顺序排列，供按钮从左到右点', () => {
+    const app = 一局([
+      { round: 2, hits: ['expose_contradiction'], efficacy: 0.6, judgedMood: 'guarded',
+        utterance: 'a', delta: 1, trust: 30, before: 30, pool: 0, grounded: true, lines: [], reply: '' },
+      { round: 5, hits: ['expose_contradiction'], efficacy: 1.2, judgedMood: 'softening',
+        utterance: 'b', delta: 3, trust: 40, before: 37, pool: 0, grounded: true, lines: [], reply: '' },
+    ]);
+    const timeline = app.contrastTimeline();
+    assert.equal(timeline.length, 2);
+    assert.equal(timeline[0].round, 2);
+    assert.equal(timeline[1].round, 5);
+  });
+});
+
 describe('分享卡 · 原话断行', () => {
   const app = loadApp();
   /** 一个够用的量文字替身：一个字算 10 宽。canvas 在沙箱里是替身，量不了真宽度。 */

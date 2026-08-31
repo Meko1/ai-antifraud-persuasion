@@ -26,11 +26,54 @@
  */
 
 import { KEYS, MOODS } from './keys.js';
-import { game, scoredTurns } from './state.js';
+import { game, peerPronoun, scoredTurns } from './state.js';
 
 /** 一把钥匙在四档里的最高 / 最低。用来说"同一句话差多少倍"。 */
 const peak = (row) => Object.entries(row).sort((a, b) => b[1] - a[1])[0];
 const floorOf = (row) => Object.entries(row).sort((a, b) => a[1] - b[1])[0];
+
+/* ── 那个"更好的时候"，在这一轮之前还是之后（2026-08-31 补）──────────────
+ *
+ * `bestMood` 只是效力矩阵那一行的 argmax，**它跟这一局的时间线毫无关系**。
+ * 而两个消费方都把它写成了将来时：「同一句话，等{ta}烦躁再说，值 1.9×」。
+ *
+ * 实测一局：第 6 轮「支持自主」，他当时松动（1.2×），bestMood 是烦躁（1.9×）。
+ * 可他**只在第 1 轮之前烦躁过**——玩家第一句就把他从烦躁里推出来了。
+ * 于是复盘让他"等"一个五轮前就已经过去、而且是他自己亲手推走的状态。
+ *
+ * 这一块是「时机是这套判分的全部论点」唯一能在三分钟里被看懂的形式
+ * （POSITIONING「成功标准」）。**在这里给一条时间上不可能的建议，
+ * 比在别处给十条废话都贵。**
+ */
+
+/** 这一局里，`bestMood` 那一档出现在第 `round` 轮之后、之前，还是从没出现。
+ *
+ *  判据取 `judgedMood`——那正是判分当时认定的档位，与效力矩阵同源。
+ *  第 1 轮的 `judgedMood` 就是开局档位，所以"开局那一下"也数得到。
+ *
+ *  @returns {'future'|'past'|'never'}
+ */
+function windowOf(turns, round, bestMood) {
+  if (round == null) return 'never';
+  if (turns.some((t) => t.round > round && t.judgedMood === bestMood)) return 'future';
+  if (turns.some((t) => t.round <= round && t.judgedMood === bestMood)) return 'past';
+  return 'never';
+}
+
+/** 「更好的那个时候」这半句话，**两个消费方共用一份**。
+ *
+ *  复盘正文与分享卡各写一套的话，同一局会给出两种说法——这个模块顶上
+ *  那段说得很清楚，两边算同一件事就不能各算一套。措辞也一样。
+ */
+export function timingClause(f) {
+  const TA = peerPronoun();
+  const mood = MOODS[f.bestMood] || f.bestMood;
+  // 已经过去了：不能说"等"。玩家要听的是"这句话该更早说"
+  if (f.bestWindow === 'past') return `早几轮，趁${TA}还${mood}的时候说`;
+  // 这一局压根没走到那一档：两头都不沾，说成无时态的条件句
+  if (f.bestWindow === 'never') return `${TA}${mood}的时候说`;
+  return `等${TA}${mood}再说`;
+}
 
 /** 倍数。分母是 0 就返回 null——不印一个 `Infinity` 上去。 */
 function ratio(big, small) {
@@ -75,6 +118,7 @@ export function contrastFacts() {
       val: null,
       bestMood,
       bestVal,
+      bestWindow: windowOf(turns, mistimed.round, bestMood),
       worstMood: null,
       worstVal: null,
       times: null,
@@ -103,6 +147,7 @@ export function contrastFacts() {
       val: t.efficacy,
       bestMood,
       bestVal,
+      bestWindow: windowOf(turns, t.round, bestMood),
       worstMood: null,
       worstVal: null,
       times: ratio(bestVal, t.efficacy),
@@ -135,8 +180,62 @@ export function contrastFacts() {
     val: null,
     bestMood,
     bestVal,
+    // 这两支不讲某一轮（`round` 是 null），措辞本来就是无时态的
+    // 「在{ta}松动时值 X×」，不经过 timingClause
+    bestWindow: 'never',
     worstMood,
     worstVal,
     times: ratio(bestVal, worstVal),
   };
+}
+
+/**
+ * 「同一句话，换个时候说」可探索版：`contrastFacts()` 只挑一轮来讲，
+ * 这个函数把**这一局里每一轮能做时机对照的证据**都摊出来，供复盘里的
+ * 那个可点选小部件用（A1，2026-08-31）。
+ *
+ * **不改 `contrastFacts()` 一个字**：分享卡的卡面主角、复盘正文的头条
+ * 都还在用它挑的那一条；这里只是从同一份 `eff` 矩阵里多榨一层数据，
+ * 两者互不干扰，`sharecard.test.mjs` 那组回归测试不用动。
+ *
+ * 判"这一轮算不算数"的标准与 `contrastFacts()` 的分支二、一是同一条：
+ * 命中了一把在效力矩阵里有行的钥匙，或者是说早了的「有据告知」。
+ * 纯失误、合规红线、没命中任何东西的轮次不进这份列表——它们没有
+ * "换个时候说值多少倍"可讲。
+ *
+ * @returns {Array<{
+ *   round: number, key: string, name: string,
+ *   mood: string, val: number|null, row: Record<string, number>,
+ *   bestMood: string, bestVal: number, mistimed: boolean,
+ * }>}
+ */
+export function contrastTimeline() {
+  const eff = game.ending && game.ending.efficacy;
+  if (!eff) return [];
+
+  const rowOf = (k) => eff[k] || null;
+  const nameOf = (k) => (KEYS[k] ? KEYS[k].name : k);
+
+  const out = [];
+  scoredTurns().forEach((t) => {
+    if (t.mistimedWarning && rowOf('informed_warning')) {
+      const row = rowOf('informed_warning');
+      const [bestMood, bestVal] = peak(row);
+      out.push({
+        round: t.round, key: 'informed_warning', name: nameOf('informed_warning'),
+        mood: t.judgedMood, val: null, row, bestMood, bestVal, mistimed: true,
+      });
+      return;
+    }
+    if (t.efficacy == null) return;
+    const k = (t.hits || []).find((h) => rowOf(h));
+    if (!k) return;
+    const row = rowOf(k);
+    const [bestMood, bestVal] = peak(row);
+    out.push({
+      round: t.round, key: k, name: nameOf(k),
+      mood: t.judgedMood, val: t.efficacy, row, bestMood, bestVal, mistimed: false,
+    });
+  });
+  return out;
 }

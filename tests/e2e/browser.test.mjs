@@ -94,6 +94,17 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
     // 再等开局那一路走完，后面每一条都建立在"这一局真的开起来了"之上
     await waitFor(call,
       `document.querySelector('.screen.on')?.id !== 'assignment'`, '开局完成', 25000);
+
+    /* 塞一局假的历史进去。**为的是把「本机对局记录」那一块画出来**——
+       它只在"这台设备之前打过"时才显示（history.js 的 `prior.length`），
+       而一次干净的 E2E 永远没有历史，于是那一整块从来没被浏览器画过一次。
+       它里面的「最少历练」卡就是 8-31 那个 `{ta}` 裸奔 bug 的案发地。
+       字段只需凑够 paintHistory 读的那几个；`uses` 全零，让"最少历练"
+       一定挑得出一把钥匙来。 */
+    await evaluate(call, `localStorage.setItem('af_history_v1', JSON.stringify([{
+      ts: Date.now() - 864e5, sid: 'chen', clientName: '陈国栋',
+      kind: 'stalled', trust: 42, rounds: 12, uses: {}, gains: {},
+    }]))`);
   });
 
   after(async () => {
@@ -199,7 +210,11 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
     assert.equal(之后.出错, false, '这一轮报错了，聊天窗口里挂着一条红提示');
     assert.equal(之后.remaining, 之前.remaining - 1,
       `剩余轮次没往下走：${之前.remaining} → ${之后.remaining}`);
-    assert.equal(之后.当前轮, '1', '打完第 1 轮，抬头那个数说的就是"第 1 轮"');
+    /* 抬头那个数说的是**下一轮**，不是刚打完那一轮。打完第 1 轮之后
+       他正在想第 2 句，那个数就该是 2——旁边的格子这时候是 11，
+       「第 1 轮 / 12」配「剩 11」是同一行自相矛盾（chat.js 里那段注释）。 */
+    assert.equal(之后.当前轮, '2',
+      '打完第 1 轮之后抬头没往前走 —— 玩家看这个数是为了知道还能说几次');
     // 判分卡不在对局中出现——边打边给答案等于把攻略印在屏幕上。
     // 这一句在沙箱里验不了：那边 `innerHTML` 不解析成节点
     assert.equal(之后.判分卡, 0, '对局中冒出了判分卡，标签与分数一律该留到复盘');
@@ -267,6 +282,55 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
     await evaluate(call, `document.getElementById('reviewDetails').open = true;
       document.getElementById('reviewDetails').dispatchEvent(new Event('toggle'))`);
     await waitFor(call, `document.getElementById('chart').width > 200`, 'K 线按真宽度铺开');
+  });
+
+  test('整页没有一个 {ta} 裸奔到屏幕上', async () => {
+    /* **这一条是 pronoun.test.mjs 的另一半。** 那份测试问的是"源码里有没有
+       写死「他」"，单向；它绿着的时候，`history.js` 仍然把
+       `KEYS[weakest].tip` 直接赋给 textContent，于是复盘「详细复盘 →
+       关键方法」那张卡上原样印着：
+
+           被洗脑的人满脑子是收益率。让{ta}自己说出「这笔钱本来是…
+
+       写死代词是印错人，占位符裸奔是**把一段代码印给用户看**。
+       静态那边补了一条（从词表取文案必须过 withTa），但真正说了算的是
+       渲染结果——所以这里直接问浏览器。跑在折叠展开之后，那时候
+       逐轮表、能力画像、本机记录三块都已经画出来了。
+
+       **只扫看得见的文本。** index.html 里躺着几处带 `{ta}` 的静态兜底
+       （`#handoffRole`、`#primerFoot`），它们由各自的 paint 在那一屏显示
+       **之前**换掉——`#handoffRole` 归 `confirmTransfer()`，而这条 E2E 的
+       路线压根没点过「确认转出」，那一屏从头到尾 `hidden`。把隐藏节点也算
+       进来，这条测试报的就是"未水合的模板"，不是"用户看见的东西"。
+       第一版就是这么误报的。
+
+       "显示之前有没有换掉"是另一个判据，由 `tests/frontend/pronoun.test.mjs`
+       的「开打前那一屏」那一组按时序单独钉（那才是慢网竞态的案发地）。 */
+    const 裸奔 = await evaluate(call, `(() => {
+      const out = [];
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        if (!n.nodeValue.includes('{ta}')) continue;
+        const el = n.parentElement;
+        // 看不见的不算：getClientRects 为空 = 这一屏根本没在显示
+        if (!el || !el.getClientRects().length) continue;
+        out.push((el.className || '?') + ' :: ' + n.nodeValue.trim().slice(0, 60));
+      }
+      return out;
+    })()`);
+    assert.deepEqual(裸奔, [],
+      `{ta} 原样印在屏幕上了，渲染方漏了 withTa()：\n${裸奔.join('\n')}`);
+  });
+
+  test('本机对局记录那一块真的画出来了', async () => {
+    // 上面那条 `{ta}` 断言的价值全押在"案发地真被画了"上。这一条钉住它：
+    // 哪天 before 里那份种子失效，`{ta}` 那条会变成一条永远绿的空跑
+    assert.equal(await evaluate(call,
+      `!document.getElementById('historyWrap').hidden`), true,
+      'historyWrap 还是 hidden —— 种进去的那局历史没生效');
+    assert.equal(await evaluate(call,
+      `!document.getElementById('historyWeak').hidden`), true,
+      '「最少历练」那张卡没画出来 —— {ta} 那条断言就落空了');
   });
 
   test('分享卡画得出来，而且是张真图', async () => {

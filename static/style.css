@@ -328,7 +328,17 @@ body {
 .deskcta:hover { filter: brightness(1.05); }
 .deskcta:active { filter: brightness(0.93); }
 .deskcta:disabled { cursor: not-allowed; }
-.deskcta b { display: block; font-size: 16px; font-weight: 600; }
+/* **字号与字重跟着 `.deskcta` 走，这里不许自己定，2026-08-31。**
+ *
+ * 这一行原来写死 `16px / 600`，而 8-29 那次无障碍修复（见本文件
+ * 「字号 16 → 19px」那段）改的是 `.deskcta` 本身。按钮里的文字全在这个
+ * `<b>` 里，`.deskcta b`（0,1,1）比 `.deskcta`（0,1,0）具体，**于是那次
+ * 修复落在了一个没有文字的元素上**：实测「给老刘发消息」仍是 16px/600，
+ * 白字压在 `--brand-orange` 上 3.64:1，够不到 AA 的 4.5:1。
+ *
+ * 改成 inherit 而不是把 19/760 抄一份过来：抄一份就是把同一个数字写在
+ * 两个地方，下次再调又会漏掉一处——这一次栽的正是这个跟头。 */
+.deskcta b { display: block; font-size: inherit; font-weight: inherit; }
 
 .deskfoot-note {
   margin: 7px 0 0;
@@ -1080,6 +1090,39 @@ body {
 .contrast-body { margin: 10px 16px 0; font-size: 13.5px; line-height: 1.85; color: var(--wx-text); }
 .contrast-body b { font-weight: 700; }
 
+/* 可探索版（A1）：其余轮次的时机对照。峰值那一档接着用 --gold——
+   跟 .contrast-quote 的引用线、.round.pivot 的关键转折是同一支强调色，
+   不为这一个部件另起一套视觉语言。 */
+.contrast-explorer { padding: 13px 0 15px; }
+.contrast-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 16px 10px; }
+.contrast-pill {
+  padding: 5px 11px;
+  border: 1px solid var(--wx-line);
+  border-radius: 13px;
+  background: none;
+  color: var(--wx-note);
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.contrast-pill[aria-pressed="true"] { border-color: var(--gold); color: var(--wx-text); font-weight: 600; }
+.contrast-cap { margin: 0 16px 6px; color: var(--wx-note); font-size: 12.5px; }
+.contrast-bars { margin: 0 16px; }
+.contrast-bar-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.contrast-bar-label { flex: none; width: 60px; color: var(--wx-note); font-size: 12px; }
+.contrast-bar-tag { color: var(--gold); font-weight: 600; }
+.contrast-bar-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--wx-line);
+  overflow: hidden;
+}
+.contrast-bar-track i { display: block; height: 100%; border-radius: 3px; background: var(--wx-rise); }
+.contrast-bar-row.peak .contrast-bar-track i { background: var(--gold); }
+.contrast-bar-row.peak .contrast-bar-label,
+.contrast-bar-row.peak .contrast-bar-num { color: var(--wx-text); font-weight: 600; }
+.contrast-bar-num { flex: none; width: 40px; text-align: right; font-size: 12px; color: var(--wx-note); }
+
 .keyrow { padding: 13px 16px; }
 .keyrow + .keyrow { box-shadow: inset 0 1px 0 var(--wx-line); }
 .keyhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
@@ -1285,6 +1328,11 @@ body {
   --wx-rise: #c74138;
   --wx-fall: #2c755b;
   --wx-note: #5f6964;
+  /* 告知那一行专用，5.12:1。**它比 `--wx-note` 深一档不是版式偏好**：
+     `.strangertip` 自己压着一层 `rgba(0,0,0,.043)`，合成底是 rgb(226,228,224)
+     而不是纸底，`--wx-note` 落上去只有 4.44:1，够不到 AA。
+     理由与实测写在那条规则上面。 */
+  --notice-ink: #585f5b;
   --rise-text: #a93732;
   --fall-text: #246b52;
   --gold-text: #745719;
@@ -1574,7 +1622,27 @@ button:disabled { cursor: not-allowed; }
    **`--quiet` → `--muted`，2026-08-29。** `#7d8580` 对纸底只有 3.50:1，
    而它 11.5px、是全屏唯一一句"这是模拟"——一条为了不喧宾夺主而看不清的
    免责声明，等于没有。`--muted` 是 5.03:1，层级仍在正文之下。 */
-.transfer-sim { margin: 20px 0 0; color: var(--muted); font-size: 11.5px; text-align: center; }
+/* **11.5 → 13px，加一条上边线（2026-08-31）。**
+ *
+ * 对比度本来就够（`--muted` 对纸底 5.39:1），问题是**它长得像银行小字**：
+ * 11.5px、居中、贴在卡片最下面——那正是"用户条款"待的位置，眼睛训练有素地
+ * 跳过去。从大赛页点进来的人第一眼看到的是一张 ¥350,000 的转账确认单和一颗
+ * 橙色「确认转出」，而唯一告诉他"这是模拟"的那行字，被排版排成了可跳过的东西。
+ *
+ * **没有挪到金额下面**（那是这一条最先想到的改法）：这一屏能起作用全靠它
+ * 像一张真的转账单，把免责塞进金额和账户之间，冷开场的那口气就散了。
+ * 位置不动，只让它从"小字"变回"一行字"：13px、深一档、上面一条分隔线，
+ * 把它和银行卡自己的那句「仅支持转入本人同名银行卡」区分开——
+ * 后者是剧情，前者是我们对用户说的话。 */
+.transfer-sim {
+  margin: 18px 0 0;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+  color: var(--notice-ink);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
 
 /* 拦截那一面。同一屏，换一副面孔——转账被拦下来这件事要发生在
    刚才那张单子上，切个屏就变成两件不相干的事了。 */
@@ -1778,8 +1846,22 @@ button:disabled { cursor: not-allowed; }
  * 一句法律上要成立的告知，不能小到需要凑近了看。
  *
  * 时间分隔线跟着一起改：它和告知共用这条规则，而 12px 的时间戳
- * 在微信里本来就是这个尺寸。 */
+ * 在微信里本来就是这个尺寸。
+ *
+ * **2026-08-31 再补一笔：还差 0.06。**
+ * 上面那次只改了字号和色值，漏算了 `.strangertip` 自己那层
+ * `rgba(0,0,0,.043)` 底色（上面 569 行那条老规则留下来的）。合成之后底是
+ * rgb(226,228,224) 而不是纸底，`--wx-note`(#5F6964) 落上去实测 **4.44:1**
+ * ——离 AA 的 4.5 差 0.06，一个刚好会被"看着挺清楚"放过去的数。
+ *
+ * 没有去把色值刮到 4.51 就收工：**一句法律上要成立的告知不该停在阈值线上**，
+ * 差 0.06 和差 0.6 是同一种失败。`--notice-ink` 给到 5.12:1，留出余量，
+ * 顺带经得起将来有人再调一次底色的深浅。
+ *
+ * 时间分隔线不跟这一条：它没有那层底色，本来就是 4.87:1，
+ * 而且它不是告知，只是个时间戳。 */
 .strangertip, .timedivider { align-self: center; max-width: 92%; margin: 2px 0 7px; color: var(--wx-note); font-size: 12px; line-height: 1.6; text-align: center; }
+.strangertip { color: var(--notice-ink); }
 .msg { display: flex; align-items: flex-start; gap: 8px; max-width: 100%; }
 .msg.me { flex-direction: row-reverse; }
 .msg .avatar { width: 29px; height: 29px; border-radius: 8px; font-size: 12px; }
@@ -1818,7 +1900,12 @@ button:disabled { cursor: not-allowed; }
 /* 12px，不是 10px。这一行写的是「不要提供密码、验证码或要求客户提供敏感信息」——
    它是这个作品的安全约束，不是版权声明。小到看不见的安全提示等于没有。 */
 .composer > p { margin: 7px 1px 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.endcta { align-self: stretch; min-height: 48px; margin: 8px 16px 0; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 15px; font-weight: 720; }
+/* **15 → 19px，同 `.primary-action` 那条无障碍修复（本文件 1650 行那段）。**
+ * 8-29 那次只改了 `.primary-action` / `.deskcta` 两个类，`.endcta`（「看复盘」）
+ * 与 `.actions button`（「生成分享卡」）漏在外面，白字压在品牌橙上仍是 3.64:1。
+ * 按同一条既定口径处理：**品牌色不动**，把字推过 WCAG 的大字号线
+ * （18.66px + bold），阈值降到 3:1。两个都是通栏按钮，放大不挤版。 */
+.endcta { align-self: stretch; min-height: 48px; margin: 8px 16px 0; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 19px; font-weight: 760; }
 
 /* 转账凭证 */
 .bubble.photo { padding: 0; background: transparent !important; box-shadow: none; }
@@ -1829,7 +1916,18 @@ button:disabled { cursor: not-allowed; }
 .receipt-to { margin-top: 2px; color: rgba(255,255,255,.84); font-size: 12px; }
 .receipt-foot { padding: 7px 14px; background: rgba(255,255,255,.12); font-size: 11px; }
 .receipt.void, .receipt.hold { background: #d6d9d6; color: #525d57; }
-.receipt.void .receipt-to, .receipt.hold .receipt-to { color: #707973; }
+/* **灰掉的那张凭证也得读得出来（2026-08-31）。**
+ *
+ * 转账凭证是彩色的（品牌底、白字），`void` / `hold` 两态把整张压成灰卡——
+ * 而副文案的颜色是照彩色底挑的，压灰之后底色亮了，字反而看不清了：
+ * 实测收款方那行 3.16:1、脚注 3.15:1，两条都够不到 AA 的 4.5。
+ *
+ * **这张卡不是装饰**：收款方那一行印着「转账给 环球汇盈-沐」——
+ * 骗局的名字就写在里面，是这一局最该被看清的一行字。
+ * 11px 那行同时提到 12px：11px 在移动端本来就低于可读下限，
+ * 与告知那一行 8-29 改 10→12px 是同一条理由。 */
+.receipt.void .receipt-to, .receipt.hold .receipt-to { color: #495049; }
+.receipt.void .receipt-foot, .receipt.hold .receipt-foot { color: #474e4a; font-size: 12px; }
 .receipt.void .receipt-amt { text-decoration: line-through; }
 
 /* 复盘首屏 */
@@ -1837,6 +1935,25 @@ button:disabled { cursor: not-allowed; }
 .review-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 22px; background: var(--paper); }
 .summary { padding: 17px 19px 14px; }
 .result-kicker { color: var(--success); font-size: 12px; font-weight: 760; }
+/* 阶梯位置那一行。
+ *
+ * **单独一行，不跟在「本局结果 · 拖住」后面。** 内联试过：
+ * 「本局结果 · 拖住 · 4 档里的第 3 档 · 上面还有「拦下」、「劝住」」
+ * 在 375px 上折成两行，「劝住」孤零零掉到第二行，把 kicker 本身也拖散了，
+ * 「拖住」那颗 pill 反而不显眼了。
+ *
+ * **颜色不跟着结局走**：上面那几条按 tone 给 kicker 上色（绿=劝住、
+ * 金=拖住、红=转账），而这一行是一句中性的事实——「4 档里的第 3 档」
+ * 不该跟着染成"好"或"坏"，那恰恰是它要替玩家分辨的那件事。
+ * `--muted` 对纸底 5.03:1，12px 正文够 AA。 */
+.result-kicker .tierrank {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 600;
+}
+.result-kicker .tierrank:empty { display: none; }
 .summary .tierpill { font-weight: inherit; }
 .result-title { margin: 8px 0 0; font-size: 29px; line-height: 1.25; letter-spacing: -.035em; }
 .savedamt { margin-top: 18px; color: var(--success); font-size: 40px; line-height: 1.05; font-weight: 800; letter-spacing: -.045em; }
@@ -1954,6 +2071,11 @@ button:disabled { cursor: not-allowed; }
 .round { display: grid; grid-template-columns: 24px 1fr auto; gap: 10px; }
 .round.pivot { background: #fbfaf3; }
 .round .no { color: var(--muted); font-size: 12px; }
+/* 关键那一轮的轮次号用**小字版**的金色。`--gold` 是给劝住线那条虚线和
+   大色块用的展示色，落在 12px 上只有 3.74:1；`--gold-text` 就是为这种地方
+   准备的（本文件调色板那一段：「4.91:1 —— 游戏层，小字用」），
+   6.43:1。上面 1063 行那条老规则更具体，得在这儿压一道。 */
+.round.pivot .no { color: var(--gold-text); }
 .round .said { font-size: 14px; line-height: 1.55; }
 .round .tags { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; color: var(--muted); font-size: 11px; }
 .tag.key { color: var(--success); }.tag.penalty, .tag.breach { color: var(--danger); }
@@ -1981,7 +2103,9 @@ button:disabled { cursor: not-allowed; }
 .actions { display: flex; gap: 9px; padding: 18px 19px 0; }
 /* 复盘上的主操作（生成分享卡）走品牌橙；「详细复盘」那个折叠头留在墨蓝。
    两块都上橙的话，最后一屏会出现两条同色大色块上下叠着，层级就没了。 */
-.actions button { flex: 1; min-height: 46px; border: 0; border-radius: 11px; background: var(--brand-orange); color: #fff; font-size: 14px; font-weight: 700; }
+/* 字号同 `.endcta`，理由见那一条。`.plain` 那一支是描边款（深字压纸底，
+   对比度另算，不受这条大字号线的约束），但同排两颗按钮字号得一样。 */
+.actions button { flex: 1; min-height: 46px; border: 0; border-radius: 11px; background: var(--brand-orange); color: #fff; font-size: 19px; font-weight: 760; }
 .actions button.plain { border: 1px solid var(--line); background: var(--paper-strong); color: var(--ink); }
 #cardWrap { padding: 14px 19px; }
 #card { display: block; width: 100%; max-width: 300px; margin: auto; border-radius: 8px; box-shadow: 0 8px 24px rgba(25,35,31,.12); }
@@ -2135,6 +2259,39 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 .primary-action:focus-visible, .deskcta:focus-visible {
   outline: 2px solid var(--navy);
   outline-offset: 2px;
+}
+
+/* ── 触控区下限 44×44（2026-08-31）────────────────────────────────────
+ *
+ * 375px 视口实测：退出 50×31、发送键 46×36、返回 54×40、换一位客户 99×40。
+ * Apple HIG 要 44pt，Material 要 48dp，而这个产品的目标用户设定是
+ * 62 岁的退休会计（刘卫东），发送键是他每一轮都要按的那一个。
+ *
+ * **不动视觉尺寸，只把可点区域撑开。** 把「退出」做成一颗 44px 高的胶囊，
+ * 会改掉整条聊天标题栏的比例——那是设计决定，不该由一条无障碍下限
+ * 顺手替设计定了。做法是在控件里铺一层看不见的 `::after`：居中、
+ * 至少 44×44、`position:absolute` 所以不参与布局，长相一个像素没变。
+ *
+ * `.skip-button` 不在名单里，它 8 月就已经写着 `height: 44px`——
+ * 这条约定本来就是从那儿来的，只是没推广开。
+ *
+ * `.back-button` 也不用给 `position`：它本来就是 `absolute`，
+ * 自己已经是定位上下文了。 */
+.chat-exit, .composer button, .ghost-action, .review-mark { position: relative; }
+.chat-exit::after,
+.composer button::after,
+.back-button::after,
+.ghost-action::after,
+/* 复盘那颗「复」是可点的（返回对话），而它只有 28×28——
+   全产品最小的一个可点目标，偏偏长得最不像按钮。 */
+.review-mark::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
 }
 
 /* 换面之后焦点落在这个 `h1` 上（opening.js `confirmTransfer`）。

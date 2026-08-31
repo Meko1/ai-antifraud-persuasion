@@ -1,11 +1,11 @@
 import { KEYS, MOODS } from './keys.js';
 import { fitCanvas, paintKline, palette, roundRect } from './chart.js';
-import { contrastFacts } from './contrast.js';
+import { contrastFacts, timingClause } from './contrast.js';
 import { drawQR } from './qr.js';
 import { percentileHeadline, percentileTier } from './stats.js';
 import {
   SCENE, endingMeta, game, peerPronoun, reviewKind, savedAmount, scoredTurns,
-  wholeMoney,
+  wholeMoney, withTa,
 } from './state.js';
 
 // ── 本机对局记录（跨局） ─────────────────────────────────────
@@ -37,6 +37,35 @@ export const TIER_LABEL = {
   unfinished: '未完成',
 };
 export const TIER_RANK = { persuaded: 4, intercepted: 3, stalled: 2, transferred: 1 };
+
+/** 这一档在阶梯上站哪儿，一句话。
+ *
+ *  **加它是因为「拖住」这个词自己说不清是好是坏**（2026-08-31）。
+ *  复盘首屏现在写着「本局结果 · 拖住 / 他说再想想 / 暂未转出，风险尚未解除」——
+ *  三句都准确，可一个第一次打的人读完仍然不知道自己算打得好还是打得砸。
+ *  CONTEXT.md 说结局是一道阶梯，而阶梯只画了一格出来。
+ *
+ *  **这不是把结局改成胜负**（POSITIONING「不做什么」拦着那一条）。
+ *  胜负是给一个赢/输的判定；这里给的是位置——阶梯本来就有四档，
+ *  告诉他站在第几档，是把已经存在的结构说出口，不是新加一个评价。
+ *
+ *  也**不是人群统计**：它不依赖任何样本，纯粹是那张阶梯表本身，
+ *  所以不受「别人打成什么样」那两条样本门槛的管。
+ */
+export function tierRankNote(kind) {
+  if (kind === 'blacklisted') return '不入档 · 这一局没走到阶梯上';
+  const rank = TIER_RANK[kind];
+  if (!rank) return '';                       // unfinished：主动结束，本来就没有档
+  const total = Object.keys(TIER_RANK).length;
+  const 从上往下 = total - rank + 1;            // 劝住=1，转账=4
+  if (从上往下 === 1) return `${total} 档里最高的一档`;
+  if (从上往下 === total) return `${total} 档里最低的一档`;
+  const 上面 = Object.entries(TIER_RANK)
+    .filter(([, r]) => r > rank)
+    .sort((a, b) => a[1] - b[1])
+    .map(([k]) => `「${TIER_LABEL[k]}」`);
+  return `${total} 档里的第 ${从上往下} 档 · 上面还有${上面.join('、')}`;
+}
 
 export function loadHistory() {
   try {
@@ -153,7 +182,12 @@ export function paintHistory(view, kind) {
     weakBox.hidden = false;
     weakBox.querySelector('.keyname').textContent = KEYS[weakest].name;
     weakBox.querySelector('.keynum').textContent = `${list.length} 局里用过 ${totalUses[weakest]} 次`;
-    weakBox.querySelector('.keynote').textContent = KEYS[weakest].tip;
+    // `tip` 里带 `{ta}`，**必须过 withTa**。漏了这一层不是印错代词，是把
+    // 占位符原样印在屏幕上（实测："让{ta}自己说出「这笔钱本来是给孩子办婚礼的」"）。
+    // 同一份 `KEYS[k].tip` 在 review.js 的 keybars 里是包了的，这一处是同一批
+    // 改动里漏掉的第二个调用点——`pronoun.test.mjs` 扫的是"有没有写死「他」"，
+    // 单向，接不住这个方向的错。反向那条断言 8-31 补在同一份测试里。
+    weakBox.querySelector('.keynote').textContent = withTa(KEYS[weakest].tip);
   }
 }
 
@@ -221,12 +255,15 @@ export function cardHero() {
   // 写死代词的话，六成的对局分享出去都在指错人，而分享者自己也未必回头看。
   const TA = peerPronoun();
   let note;
+  // 「等…再说」还是「早几轮…的时候说」，与复盘正文共用 `timingClause`：
+  // 那一档要是早就过去了，"等"字在这张卡上同样是句假话，而这张卡会被
+  // 发到别人手机上，是全作品最不容易被复核的一块
   if (f.kind === 'mistimed') {
-    note = `${TA}当时${named(f.mood)}，这句算空口断言；等${TA}${named(f.bestMood)}再说，`
+    note = `${TA}当时${named(f.mood)}，这句算空口断言；${timingClause(f)}，`
       + `是这一局分值最高的一把`;
   } else if (f.kind === 'gap') {
     note = `${TA}当时${named(f.mood)}，这一招值 ${f.val}×；`
-      + `同一句话，等${TA}${named(f.bestMood)}再说，值 ${f.bestVal}×`;
+      + `同一句话，${timingClause(f)}，值 ${f.bestVal}×`;
   } else {
     note = `同一把${f.name}，在${TA}${named(f.bestMood)}时值 ${f.bestVal}×，`
       + `在${TA}${named(f.worstMood)}时只值 ${f.worstVal}×`;

@@ -16,7 +16,7 @@ from typing import Any, AsyncIterator, Dict, Iterable, List, Optional, Protocol
 import logging
 
 from .classify import Classification, evidence_present, parse_classification
-from .fallback import ending_fallback, fallback_line
+from .fallback import AVOID_WINDOW, ending_fallback, fallback_line
 from .guard import breaker
 from .scenario import scenario_for
 from .safety import SAFE_FALLBACK, absorb_injection, screen_sentence
@@ -285,7 +285,15 @@ async def play_turn(
             if not spoken:
                 # L1：演绎降级。绝不给玩家一片空白。
                 line_source = "fallback"
-                text = fallback_line(mood, scene=scene)
+                # 同样避开最近那两句（窗口与离线模式共用 `AVOID_WINDOW`）。
+                # 线上这条路是网关抖动才走到的，撞车概率远低于离线模式，
+                # 但**连着降级两轮**恰恰是最容易撞的场景，而那正是玩家
+                # 最可能截图的两轮
+                text = fallback_line(
+                    mood,
+                    scene=scene,
+                    avoid="".join(r.reply for r in session.history[-AVOID_WINDOW:]),
+                )
                 spoken.append(text)
                 yield Event("sentence", {"text": text})
 

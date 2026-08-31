@@ -370,3 +370,76 @@ describe('拦截那一屏：重音落在 Helper，身份是约束不是头衔', 
     assert.match(换, /withTa\(/, '换代词走统一出口，别再各写各的 replaceAll');
   });
 });
+
+describe('人群对比：样本不够就不说，宁可不显示', () => {
+  /* 2026-08-31。`TRUST_SAMPLE_MIN` 那条门槛（stats.js 顶上）当初只落地在
+     百分位一处，隔壁「别人打成什么样」一道闸都没有。实测接口返回
+     `games: 13, turns: 30, endings.stalled: {count: 2, share: 1.0}`，
+     屏幕上于是写着「100% 的人也停在这一档」——**样本是 2 局**，
+     而同一块的脚注写着「统计自 13 局、30 轮对话」。
+
+     这个作品最值钱的资产是主张边界。运行中的界面拿 n=2 印一个 100% 的
+     人群结论，伤的正是它。 */
+  const app = loadApp();
+
+  const 局 = (n) => ({ endings: { stalled: { count: n, share: 1 } }, turns: 9999 });
+
+  test('两局就敢说「100% 的人」—— 这一档必须闭嘴', () => {
+    assert.equal(app.canCompareEndings(局(2)), false);
+  });
+
+  test('刚到 20 局才开口', () => {
+    assert.equal(app.canCompareEndings(局(19)), false);
+    assert.equal(app.canCompareEndings(局(20)), true);
+  });
+
+  test('分母是入档局数，不是 games —— 被拉黑的局不该把比例稀释掉', () => {
+    // games 报 100，可真正入档的只有 3 局：这一行仍然不能说
+    const data = { games: 100, turns: 9999, endings: { stalled: { count: 3, share: 1 } } };
+    assert.equal(app.canCompareEndings(data), false);
+  });
+
+  test('钥匙命中率按轮数收，跟结局那条不共用一个数', () => {
+    assert.equal(app.canCompareKeys({ turns: 30 }), false);
+    assert.equal(app.canCompareKeys({ turns: 200 }), true);
+  });
+
+  test('空数据不许抛，也不许当成够了', () => {
+    for (const d of [null, undefined, {}, { endings: null }]) {
+      assert.equal(app.canCompareEndings(d), false);
+      assert.equal(app.canCompareKeys(d), false);
+    }
+  });
+});
+
+describe('结局阶梯：「拖住」得自己说清站在第几档', () => {
+  /* 2026-08-31。复盘首屏写着「本局结果 · 拖住 / 他说再想想 /
+     暂未转出，风险尚未解除」——三句都准确，可第一次打的人读完仍然
+     不知道自己算打得好还是打得砸。CONTEXT.md 说结局是一道阶梯，
+     而界面只亮了一格。
+
+     **这不是把结局改成胜负**（POSITIONING「不做什么」拦着那条）：
+     胜负是给一个赢/输的判定，位置是把阶梯本来就有的结构说出口。 */
+  const app = loadApp();
+
+  test('中间那几档报位置，并说清上面还有谁', () => {
+    assert.equal(app.tierRankNote('stalled'), '4 档里的第 3 档 · 上面还有「拦下」、「劝住」');
+    assert.equal(app.tierRankNote('intercepted'), '4 档里的第 2 档 · 上面还有「劝住」');
+  });
+
+  test('两头只说最高最低，不去列一串', () => {
+    assert.match(app.tierRankNote('persuaded'), /最高/);
+    assert.match(app.tierRankNote('transferred'), /最低/);
+  });
+
+  test('被拉黑不入档 —— 不许硬塞进阶梯里排一个名次', () => {
+    // TIER_RANK 里本来就没有它（CONTEXT.md「结局」），
+    // 给它编一个"第 5 档"等于把"没走到阶梯上"说成"走到了最后一档"
+    assert.match(app.tierRankNote('blacklisted'), /不入档/);
+    assert.doesNotMatch(app.tierRankNote('blacklisted'), /第 \d 档/);
+  });
+
+  test('主动结束返回空串，那一行整个不出现', () => {
+    assert.equal(app.tierRankNote('unfinished'), '');
+  });
+});

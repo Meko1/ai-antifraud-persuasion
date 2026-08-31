@@ -163,6 +163,11 @@ export async function loadGame() {
   paintOpening();
   paintTransfer();
   paintClientPicker();
+  // **首屏也要在这儿重刷一次。** 它可能已经画出来、已经在玩家眼前了——
+  // `enterGame()` 显示那一屏时不等这个请求（那是有意的）。代词没变的话
+  // `paintPrimer()` 自己那道闸会当场返回，不花任何代价；变了才重画。
+  // 少这一行，上面那道闸就没有人去触发，慢网下七条永远停在默认「他」。
+  paintPrimer();
   saveGame();
 }
 
@@ -375,18 +380,42 @@ export function markPrimerSeen() {
   }
 }
 
-/** 开打前那一屏。**只列名字与一句话**，见 KEYS 顶部那段关于 brief / tip 的注释。 */
+/** 开打前那一屏。**只列名字与一句话**，见 KEYS 顶部那段关于 brief / tip 的注释。
+ *
+ *  **两处都按代词做闸，不是按"画过没有"**（2026-08-31）。原先脚注按
+ *  `dataset.ta` 判、七条列表按 `childElementCount` 判，两道闸的判据不一样——
+ *  而 `enterGame()` 显示这一屏时**不等开局请求**（见那边的注释：那是有意的，
+ *  读这一屏的时间在给「首屏 ≤3 秒」买单）。于是慢网下会走出这么一局：
+ *
+ *  · 画的时候 `/api/game/start` 还没回来，`SCENE` 是 null，
+ *    `peerPronoun()` 退回默认「他」，七条全画成「他」；
+ *  · 开局响应到了，`setScene()` 把本局客户换成周淑琴（她）；
+ *  · 脚注那道闸认得出代词变了，重刷成「她」；
+ *    列表那道闸只问"画过没有"，七条原样留着。
+ *
+ *  **实测结果是同一屏六行「他」配一行「她」**，而下一屏的输入框写着
+ *  「输入你想对她说的话」。这正是 `tests/frontend/pronoun.test.mjs` 开头
+ *  逐条列出、要杜绝的那个 bug，从一条静态扫描**看不见**的时序路径回来了：
+ *  那份测试扫的是源码里有没有写死「他」，而这里源码是对的，错的是画的时机。
+ *
+ *  五个场景里三位是「她」（周淑琴／林月娥／顾之然），六成的对局踩得到。
+ *  且这一屏**只对首次玩家显示**——也就是从大赛页点进来的那一批。
+ *
+ *  闸留着不能删（这一屏每局都会进来一次，无谓重画七个 DOM 节点没有意义），
+ *  只是判据从"画过没有"换成"跟本局客户对不对得上"。 */
 export function paintPrimer() {
-  // 底下那句里的 `{ta}` 也要换。**它在 `childElementCount` 那道闸的外面**：
-  // 闸拦的是"七条别画两遍"，而这一句每次进来都该按本局客户重刷
+  const ta = peerPronoun();
+
   const foot = $('primerFoot');
-  if (foot && foot.dataset.ta !== peerPronoun()) {
+  if (foot && foot.dataset.ta !== ta) {
     foot.textContent = withTa('对面是活人写的回应，没有选项可选。你说什么，{ta}就接什么。');
-    foot.dataset.ta = peerPronoun();
+    foot.dataset.ta = ta;
   }
 
   const list = $('primerList');
-  if (!list || list.childElementCount) return;
+  if (!list || list.dataset.ta === ta) return;
+  // 重画之前先清空。少这一行，代词一变就是七条追加到七条后面
+  list.textContent = '';
   Object.keys(KEYS).forEach((k) => {
     const li = document.createElement('li');
     const name = document.createElement('b');
@@ -398,6 +427,7 @@ export function paintPrimer() {
     li.append(name, desc);
     list.appendChild(li);
   });
+  list.dataset.ta = ta;
 }
 
 export async function enterGame() {
