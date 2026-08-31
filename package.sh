@@ -16,8 +16,12 @@
 #
 # 而方式 B 的部署路径**就是把 ZIP 上传到平台**，平台随后还会联合安全部门
 # 对部署结果做漏洞扫描。所以这个开关只服务一种场景：**你自己 ssh 上去手动
-# 部署**（官方 FAQ Q3 明确允许）。为了让这两种包永远不会被拿混，开了开关
-# 的产物文件名会带上 `-WITH-SECRETS-DO-NOT-UPLOAD`，见下面 ZIP_PATH。
+# 部署**（官方 FAQ Q3 明确允许）。
+#
+# 2026-08-31 之前，开了这个开关的产物文件名会带 `-WITH-SECRETS-DO-NOT-UPLOAD`
+# 后缀，专门防"两种包被拿混"。按明确要求改成了统一文件名（见下面 ZIP_PATH
+# 那段注释）——**这条护栏现在只剩终端里的 log 警告**，选文件上传前得自己
+# 认得清哪次跑带了这个开关，文件名不再替你把关了。
 #
 # 默认（不设这个变量）行为跟这条规范写的一样：`.env` 排除在外，
 # 部署机靠 start.sh 的 ${RUNTIME_DIR}/env 拿密钥（见 start.sh 那段注释）。
@@ -41,13 +45,12 @@ APP_ID="ai-antifraud-persuasion"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST_DIR="${APP_DIR}/dist"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-# 文件名自己说清楚这个包能不能上传。**别把这段改成一个注释**——
-# 上传是在浏览器里选文件，那一刻能看见的只有文件名。
-if [ "${INCLUDE_SECRETS}" = "1" ]; then
-  ZIP_PATH="${DIST_DIR}/${APP_ID}-${STAMP}-WITH-SECRETS-DO-NOT-UPLOAD.zip"
-else
-  ZIP_PATH="${DIST_DIR}/${APP_ID}-${STAMP}.zip"
-fi
+# 2026-08-31 按要求改回统一命名：不管含不含密钥，文件名都是
+# `${APP_ID}-${STAMP}.zip`，不再带 WITH-SECRETS-DO-NOT-UPLOAD 后缀。
+# **这样一来文件名不再能替你分辨这个包能不能上传**——上传前要靠下面
+# 那两条 `log` 警告（终端里看得见）或自己确认这次跑没跑
+# PACKAGE_INCLUDE_SECRETS=1，别单看文件名。
+ZIP_PATH="${DIST_DIR}/${APP_ID}-${STAMP}.zip"
 
 log()  { echo "[package] $*"; }
 fail() { echo "[package][ERROR] $*" >&2; exit 1; }
