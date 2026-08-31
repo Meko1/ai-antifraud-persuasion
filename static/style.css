@@ -1911,6 +1911,10 @@ button:disabled { cursor: not-allowed; }
 .review-details > summary::-webkit-details-marker { display: none; }
 .review-details[open] > summary { margin-bottom: 19px; }
 .restart-action { width: 100%; min-height: 49px; margin-top: 9px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--ink); font-size: 15px; font-weight: 720; }
+/* 「回去接着打」：未完成那一档唯一的主按钮，走 .endcta 同一支橙——
+   它是这一屏此刻最该被按的那个，「开始一位新客户」在它旁边只能是次选。 */
+.continue-action { width: 100%; min-height: 49px; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 15px; font-weight: 720; }
+.continue-action[hidden] { display: none; }
 .evidence-content { padding-bottom: 8px; }
 
 /* 折叠后的逐轮证据 */

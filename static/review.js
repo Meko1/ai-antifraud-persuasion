@@ -5,9 +5,12 @@ import { fitCanvas, paintKline, palette } from './chart.js';
 import { percentileCopy, trustPercentile } from './stats.js';
 import { makeCard, paintHistory } from './history.js';
 import { openClientSheet, transferSeen } from './opening.js';
+import { $, thread } from './dom.js';
+import { syncSend } from './chat.js';
 import {
   RESULT_BASIS, SCENE, TONES, breachTurns, endingMeta, game, peerPronoun,
-  pressureNote, resultAmount, reviewKind, scoredTurns, startNewClient, withTa,
+  pressureNote, resultAmount, reviewKind, saveGame, scoredTurns, startNewClient,
+  withTa,
 } from './state.js';
 
 export function tag(id) {
@@ -323,6 +326,13 @@ export function openReview() {
             <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>：同一把钥匙在客户不同的情绪档位上值不同的分，这张规则表是纯函数、可以离线重跑。<b>但"命中了哪一把"仍由模型判定</b>，那一步不是确定性的——所以别把这里的分当成一个精确刻度，它是画像，不是成绩单。</p>
           </div>
         </details>
+        <!-- 「未完成」专属：endEarly()（control.js）把这一局标成已结束时，
+             服务端那张令牌其实没被消费——/api/game/exit 的文档字符串自己
+             写着"用户回来还能续"。原先这句话只停在注释里，没有对应的入口：
+             点了"就到这儿，看复盘"就再也回不去聊天了，测试用户的原话是
+             "感觉刚才说的都白说了"。默认隐藏，只在 kind === 'unfinished'
+             时解开——其余结局是真收场，不该看见这个按钮。 -->
+        <button class="continue-action" id="continueChat" type="button" hidden>回去接着打</button>
         <button class="restart-action" id="restart" type="button">开始一位新客户</button>
         <!-- 「换一位」只在演示态出现（catalog 为空时隐藏）。
              它和上面那个按钮的区别是**挑不挑**：随机来一位是默认，
@@ -463,9 +473,35 @@ export function openReview() {
   another.onclick = openClientSheet;
   view.querySelector('#makeCard').onclick = () => makeCard(view);
   view.querySelector('#reviewBack').onclick = () => view.remove();
+  const continueBtn = view.querySelector('#continueChat');
+  if (kind === 'unfinished') {
+    continueBtn.hidden = false;
+    continueBtn.onclick = () => resumeUnfinished(view);
+  }
   view.querySelector('#reviewDetails').addEventListener('toggle', (event) => {
     if (event.currentTarget.open) paintChart(view);
   }, { once: true });
+}
+
+/** 撤销「就到这儿，看复盘」。
+ *
+ *  服务端从没消费过这张令牌（`/api/game/exit` 不改变任何对局状态），
+ *  `endEarly()`（control.js）只是前端自己把 `game.exited` 标成了 true——
+ *  这里原样把它撤回去，聊天就能从掉线的地方接着打。
+ *
+ *  `game.exited` 必须复位，不能只是把输入框解锁：`resumeGame()`（chat.js）
+ *  一刷新页面就看这个标记，不复位的话，玩家接着打的这几轮一遇刷新
+ *  又会被强制弹回这张复盘页——刚续上的这几轮当场再废一次。
+ */
+function resumeUnfinished(view) {
+  game.exited = false;
+  // 撤销「你结束了这次对话」那句系统提示：继续打下去之后它就不再是实话。
+  thread.querySelectorAll('.exit-tip').forEach((el) => el.remove());
+  $('composer').hidden = false;
+  saveGame();
+  view.remove();
+  syncSend();
+  $('say').focus();
 }
 
 /** 合规红线那一节。

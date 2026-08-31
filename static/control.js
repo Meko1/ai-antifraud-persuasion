@@ -66,7 +66,9 @@ export function endEarly() {
   reportExit(game.token, 'finished_early');
   $('composer').hidden = true;
   const tip = document.createElement('p');
-  tip.className = 'strangertip';
+  // `exit-tip` 单独标一下：复盘页「回去接着打」要把它从聊天记录里摘掉——
+  // 撤销这个决定之后，这句「你结束了」就成了一句不实的记录。
+  tip.className = 'strangertip exit-tip';
   tip.textContent = '你结束了这次对话。这笔钱最后怎么样，本次模拟没有给出结果。';
   thread.appendChild(tip);
   saveGame();
