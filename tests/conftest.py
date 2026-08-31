@@ -8,6 +8,21 @@ import os
 
 os.environ.setdefault("STATE_SIGNING_SECRET", "test-secret-not-a-real-key")
 
+# **测试不许连真实 Redis。** `app/config.py` 用 `load_dotenv()` 自动读项目根
+# 目录那份 `.env`——而 2026-08-31 之后它带着大赛共享实例的真实凭证（打包
+# 也要用它，见 package.sh 的 PACKAGE_INCLUDE_SECRETS）。`load_dotenv()` 默认
+# 不覆盖已经存在的环境变量，所以在这里先占住 REDIS_URL，`app.stats.stats` /
+# `app.guard.guard` 两个模块级单例造出来时看到的就是空值，跟本机 `.env`
+# 填了什么无关。
+#
+# **不占住会怎样**：`Stats.enabled` 从 False 变 True，`/api/stats` 开始真的
+# 尝试连 10.126.192.12（这台沙箱到不了那个内网地址），0.5 秒超时、
+# fire-and-forget 的写入任务在某个用例的事件循环还没收尾就被回收——
+# 实测两个用例单独跑、跟同类一起跑都是绿的，只有跑全量套件才红，
+# 因为它们撞上的是**上一个用例遗留的、还没超时完的 Redis 连接尝试**，
+# 跟这两个用例本身要测的东西毫无关系。
+os.environ.setdefault("REDIS_URL", "")
+
 import pytest
 
 
