@@ -237,6 +237,11 @@ export function openReview() {
       </div>
 
       <div class="result-actions">
+        <!-- 「未完成」专属，排在这一组的最前面：对刚退出这一局的人来说，
+             这是唯一真正紧迫的动作，理由和取色都写在下面 .continue-action
+             那条注释里。默认隐藏，只在 kind === 'unfinished' 时解开——
+             其余结局是真收场，不该看见这个按钮。 -->
+        <button class="continue-action" id="continueChat" type="button" hidden>回去接着打</button>
         <details class="review-details" id="reviewDetails">
           <!-- 折叠标题由 JS 改写：踩了合规红线的话要在标题上说出来。
                收进折叠不等于藏起来——那一块是"你自己有没有事"，
@@ -326,13 +331,6 @@ export function openReview() {
             <p class="howscored">上面每一分都是<b>程序按规则表算的，不是模型打的</b>：同一把钥匙在客户不同的情绪档位上值不同的分，这张规则表是纯函数、可以离线重跑。<b>但"命中了哪一把"仍由模型判定</b>，那一步不是确定性的——所以别把这里的分当成一个精确刻度，它是画像，不是成绩单。</p>
           </div>
         </details>
-        <!-- 「未完成」专属：endEarly()（control.js）把这一局标成已结束时，
-             服务端那张令牌其实没被消费——/api/game/exit 的文档字符串自己
-             写着"用户回来还能续"。原先这句话只停在注释里，没有对应的入口：
-             点了"就到这儿，看复盘"就再也回不去聊天了，测试用户的原话是
-             "感觉刚才说的都白说了"。默认隐藏，只在 kind === 'unfinished'
-             时解开——其余结局是真收场，不该看见这个按钮。 -->
-        <button class="continue-action" id="continueChat" type="button" hidden>回去接着打</button>
         <button class="restart-action" id="restart" type="button">开始一位新客户</button>
         <!-- 「换一位」只在演示态出现（catalog 为空时隐藏）。
              它和上面那个按钮的区别是**挑不挑**：随机来一位是默认，

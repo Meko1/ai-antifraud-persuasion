@@ -1911,10 +1911,14 @@ button:disabled { cursor: not-allowed; }
 .review-details > summary::-webkit-details-marker { display: none; }
 .review-details[open] > summary { margin-bottom: 19px; }
 .restart-action { width: 100%; min-height: 49px; margin-top: 9px; border: 1px solid var(--line); border-radius: 12px; background: transparent; color: var(--ink); font-size: 15px; font-weight: 720; }
-/* 「回去接着打」：未完成那一档唯一的主按钮，走 .endcta 同一支橙——
-   它是这一屏此刻最该被按的那个，「开始一位新客户」在它旁边只能是次选。 */
-.continue-action { width: 100%; min-height: 49px; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 15px; font-weight: 720; }
-.continue-action[hidden] { display: none; }
+/* 「回去接着打」：未完成那一档唯一的主按钮，排在这一组最前面。
+   **不填实心橙**——上面「带走这一局」的「生成分享卡」已经用掉了这一屏
+   唯一的实心橙（1978 行那条注释：两块都填色，层级就没了）。这里改用
+   描边＋橙字：仍然读得出"这是被强调的那个"，但不会跟生成分享卡叠成
+   两块同重的色块。下面单独留出 18px，把它和「详细复盘 / 开始一位新客户 /
+   换一位客户」这组次要操作分成两层，别让四个按钮糊成一条等重的堆叠。 */
+.continue-action { width: 100%; min-height: 49px; margin-bottom: 18px; border: 1.5px solid var(--brand-orange); border-radius: 12px; background: var(--paper-strong); color: var(--brand-orange-text); font-size: 15px; font-weight: 760; }
+.continue-action[hidden] { display: none; margin-bottom: 0; }
 .evidence-content { padding-bottom: 8px; }
 
 /* 折叠后的逐轮证据 */
