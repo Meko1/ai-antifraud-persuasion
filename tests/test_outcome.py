@@ -51,6 +51,18 @@ class Test契约:
         report = parse_report(self._payload(trigger_type="fund_redemption"))
         assert report.trigger_type == "fund_redemption"
 
+    def test_不给异动类型也行(self) -> None:
+        """可选字段，宿主不愿意给也不该被拒。"""
+        assert parse_report(self._payload()).trigger_type == ""
+
+    def test_拼错的异动类型直接拒而不是悄悄开一个新键(self) -> None:
+        """**不校验的话，一个拼错的类型会在 Redis 里开一个新键**，
+        按类型拆分的统计就此永久碎成两份，没有任何一处报过错——
+        与 `trigger.build_context` 对 `trigger_type` 的态度必须一致。
+        """
+        with pytest.raises(OutcomeError, match="trigger_type"):
+            parse_report(self._payload(trigger_type="清仓"))
+
     def test_自定义观测窗口照收(self) -> None:
         """撤单率的观测窗口与放弃率不同，不该被硬编码的 24 卡死。"""
         report = parse_report(self._payload(window_hours=48))

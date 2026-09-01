@@ -30,7 +30,7 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 from .config import settings
-from .trigger import Arm, assign_arm
+from .trigger import Arm, TriggerType, assign_arm
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,21 @@ def parse_report(payload: Optional[Dict[str, Any]]) -> OutcomeReport:
 
     observed_at = int(data.get("observed_at") or time.time())
     window_hours = int(data.get("window_hours") or 24)
-    trigger_type = str(data.get("trigger_type", "")).strip()
+
+    # 可选字段，但给了就必须是闭集里的值——**不猜一个最接近的**，
+    # 与 trigger.build_context 对 trigger_type 的态度同一条原则。
+    # 不校验的话，一个拼错的异动类型会在 Redis 里悄悄开一个新键，
+    # 按类型拆分的统计就此永久碎成两份，没有任何一处报过错。
+    raw_trigger_type = str(data.get("trigger_type", "")).strip()
+    trigger_type = ""
+    if raw_trigger_type:
+        try:
+            trigger_type = TriggerType(raw_trigger_type.lower()).value
+        except ValueError as exc:
+            raise OutcomeError(
+                f"trigger_type={raw_trigger_type!r} 不是合法的异动类型，"
+                f"允许的是 {[t.value for t in TriggerType]}"
+            ) from exc
 
     return OutcomeReport(
         anomaly_id=anomaly_id,

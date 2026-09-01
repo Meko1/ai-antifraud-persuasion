@@ -766,6 +766,7 @@ async def outcome_report(request: Request, body: OutcomeReportBody) -> JSONRespo
     try:
         report = parse_report(body.model_dump())
     except OutcomeError as exc:
+        logger.info("拒绝非法回传: %s", exc)
         return JSONResponse(
             {"code": "invalid_report", "message": str(exc)}, status_code=400
         )
