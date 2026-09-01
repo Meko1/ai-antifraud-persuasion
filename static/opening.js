@@ -85,10 +85,53 @@ export function boot() {
  *  它挡的是同一串连击，不是慢手。 */
 const HANDOFF_ARM_MS = 450;
 
+/** 拦截那一下的提示音与震动。
+ *
+ *  **放在按下「确认转出」那一刻，不放在开屏**——这不是取舍，是浏览器的规矩：
+ *  `AudioContext` 与 `navigator.vibrate()` 都要求页面先发生过一次真实交互
+ *  （Chrome 的 autoplay / user-activation 策略），"一进页面就响"那一版在
+ *  桌面 Chrome 上根本不会响，只会静默失败。而按下确认恰好是这一屏戏剧性
+ *  最强的一拍：钱正要出去，系统把它摁住了——声音落在这里比落在开屏更对。
+ *  开屏那一下的告警交给纯视觉的边缘晕染（`.transfer-alarm`），它不受这条限制。
+ *
+ *  低动态偏好下两样都跳过。`prefers-reduced-motion` 严格说管的是动效不是声音，
+ *  但设了这条的人要的是"别惊动我"，而一声毫无预告的提示音正是惊动。
+ *
+ *  全程 try/catch、不 await：不支持 Web Audio 的浏览器、被策略拦下的调用、
+ *  iOS 上根本不存在的 `vibrate`——任何一个都不许挡住拦截面翻开。 */
+function alarmFeedback() {
+  if (REDUCED) return;
+  try { navigator.vibrate?.([28, 60, 28]); } catch { /* 不支持震动就算了 */ }
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const at = ctx.currentTime;
+    // 两声下行（C6 → G5）。**下行读起来是"被摁住了"，上行是"办好了"**——
+    // 这一下要说的是前者。峰值 .05：它是一句提示音，不是音效。
+    [[1046.5, 0], [784, .12]].forEach(([hz, off]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = hz;
+      gain.gain.setValueAtTime(.0001, at + off);
+      gain.gain.exponentialRampToValueAtTime(.05, at + off + .012);
+      gain.gain.exponentialRampToValueAtTime(.0001, at + off + .11);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(at + off);
+      osc.stop(at + off + .12);
+    });
+    // 放完就关：别把一个 AudioContext 挂到会话结束，浏览器对同时存在的
+    // 上下文数量是有上限的。
+    setTimeout(() => { ctx.close().catch(() => {}); }, 600);
+  } catch { /* 拿不到音频就静默播出，这一屏其余部分一个字都不受影响 */ }
+}
+
 /** 按下「确认转出」：不切屏，只把这一屏换成拦截那一面。
  *  切屏留给下一步——**这笔转账被拦下来这件事，要发生在同一屏上**，
  *  换个屏幕就变成了两件不相干的事。 */
 export function confirmTransfer() {
+  alarmFeedback();
   $('transferForm').hidden = true;
   $('transferFoot').hidden = true;
   $('transferHandoff').hidden = false;
