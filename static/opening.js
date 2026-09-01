@@ -168,7 +168,6 @@ export async function loadGame() {
   // `paintPrimer()` 自己那道闸会当场返回，不花任何代价；变了才重画。
   // 少这一行，上面那道闸就没有人去触发，慢网下七条永远停在默认「他」。
   paintPrimer();
-  saveGame();
 }
 
 /** 把转账确认屏那两处可变内容改写成**本局这位客户**的数字。
@@ -462,6 +461,12 @@ export async function enterGame() {
   say('me', PING());
   say('them', game.opening);
   $('say').focus();
+  // **存档要在这儿落，不能在 loadGame() 里。** 请求一回来就存的话，
+  // 玩家还没点开聊天——甚至还在转账确认屏上——sessionStorage 里已经有一份
+  // "可续局"的状态。这时候刷新一下，boot() 认得出 savedGame，直接把他
+  // 甩进 chat 屏，转账确认与开打前那一屏（primer）全被跳过。
+  // 只有真正进了聊天，这份存档才是"续局"该续的东西。
+  saveGame();
 }
 
 /** 换一位客户。**只在演示态出现**（见 index.html 里那段注）。 */
