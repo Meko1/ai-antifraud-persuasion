@@ -1615,6 +1615,15 @@ button:disabled { cursor: not-allowed; }
   color: var(--danger);
   font-size: 12px;
   line-height: 1.6;
+  /* 只跳两下就归于静止（2026-09-01）：这一屏是访客落地的第一屏，
+     异动提示要像"刚弹出的新警报"抓一下视线，跳个不停反而是噪音。
+     环色取它自己的文字色 `--danger`，跟旁的 live-label 圆点共用同一套
+     "信号在跳动"语言（pulse 关键帧），不是另起一套动效。 */
+  animation: transfer-moves-alert 1.6s ease-out 2;
+}
+@keyframes transfer-moves-alert {
+  0% { box-shadow: 0 0 0 0 rgba(147,75,63,.35); }
+  70%, 100% { box-shadow: 0 0 0 10px rgba(147,75,63,0); }
 }
 /* 「模拟界面」那一行：明确、但不喧宾夺主。**不许删。**
    作品名也挂在这里（就绪度审计 P1-5），理由见 index.html 那段注。
@@ -1642,6 +1651,22 @@ button:disabled { cursor: not-allowed; }
   font-size: 13px;
   line-height: 1.5;
   text-align: center;
+}
+/* 悬念行：免责声明本身不动，这一句是它的延伸（见 index.html 那段注）。
+   `--ink` 比免责声明的 `--notice-ink` 深一档、加粗，读的时候先看见免责，
+   再落到这一句——它才是"要不要继续往下点"的理由。
+   渲染后延迟 0.5s 淡入 + 轻微上浮，视线正好从卡片顶部的金额一路看下来，
+   落在这句话上时它刚好显形。 */
+.transfer-hook {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-weight: 760;
+  animation: transfer-hook-in .5s ease-out .5s both;
+}
+@keyframes transfer-hook-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* 拦截那一面。同一屏，换一副面孔——转账被拦下来这件事要发生在
@@ -1733,6 +1758,17 @@ button:disabled { cursor: not-allowed; }
   box-shadow: 0 8px 20px rgba(25,35,31,.12);
 }
 .primary-action:active, .deskcta:active { transform: translateY(1px); }
+/* 呼吸光晕只挂在这一屏的「确认转出」上，不挂进共用的 `.primary-action`——
+   后面「坐到对面」「知道了，开始」「联系客户」用的是同一个类，那几屏
+   已经进入对话情境，一个持续呼吸的按钮和那时候的语气不搭。
+   幅度压得很低：外圈用按钮自己的品牌橙，叠在原有投影上，不换掉它。 */
+#transferGo {
+  animation: transfer-cta-breathe 2.4s ease-in-out infinite;
+}
+@keyframes transfer-cta-breathe {
+  0%, 100% { box-shadow: 0 8px 20px rgba(25,35,31,.12), 0 0 0 0 rgba(234,84,4,.35); }
+  50% { box-shadow: 0 8px 20px rgba(25,35,31,.12), 0 0 0 8px rgba(234,84,4,0); }
+}
 .primary-foot p { margin: 8px 0 0; color: var(--muted); text-align: center; font-size: 11px; }
 
 /* 客户档案 */
