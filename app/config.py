@@ -113,6 +113,11 @@ class Settings:
     # 一条 curl 循环打不出量来。
     rate_limit_start: int
     rate_limit_turn: int
+    # `POST /api/outcome/report` 的鉴权密钥（app/outcome.py）。空 = 端点直接
+    # 503，不是静默放行——调用方是宿主 App 的后台系统而不是玩家浏览器，
+    # 没有状态令牌可用，"没配"和"配错"必须能分清楚，否则任何人都能
+    # 往统计里注水。留空不影响启动，也不影响任何一局对局。
+    outcome_report_secret: str
 
 
 def _load_fallback(provider: str) -> Optional[LLMSettings]:
@@ -155,6 +160,7 @@ def load_settings() -> Settings:
         offline_demo=_bool("OFFLINE_DEMO", False),
         rate_limit_start=int(os.getenv("RATE_LIMIT_START", "20")),
         rate_limit_turn=int(os.getenv("RATE_LIMIT_TURN", "60")),
+        outcome_report_secret=os.getenv("OUTCOME_REPORT_SECRET", "").strip(),
         # 平台强制固定 21818；保留环境变量只是为了本地调试时能换端口
         port=int(os.getenv("PORT", "21818")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),

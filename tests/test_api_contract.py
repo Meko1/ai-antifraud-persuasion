@@ -306,7 +306,9 @@ class Test存活与就绪分开:
         看得见的比值：`fallback` 一直在涨就是在发罐头。
         """
         body = client.get("/healthz").json()
-        assert set(body["line_sources"]) == {"model", "fallback", "absorbed"}
+        assert set(body["line_sources"]) == {
+            "model", "fallback", "absorbed", "safety_escalation",
+        }
         assert all(isinstance(v, int) for v in body["line_sources"].values())
         # 配置里那个模型名。和 `llm_failover.active_model` 一起看才回答得了
         # "现在到底在用哪个"——切换之后这一位不变，那一位会变

@@ -19,7 +19,12 @@ from .classify import Classification, evidence_present, parse_classification
 from .fallback import AVOID_WINDOW, ending_fallback, fallback_line
 from .guard import breaker
 from .scenario import scenario_for
-from .safety import SAFE_FALLBACK, absorb_injection, screen_sentence
+from .safety import (
+    SAFE_FALLBACK,
+    absorb_injection,
+    detect_real_world_risk,
+    screen_sentence,
+)
 from .scoring import (
     MAX_ROUNDS,
     Ending,
@@ -204,12 +209,17 @@ async def play_turn(
     # 一轮 `degraded: false` 而台词是罐头的（分类回来了，演绎超时了）。
     line_source = "model"
 
-    absorbed = absorb_injection(utterance)
+    # 真实人身安全信号优先于反操纵检查——两者同时命中时，先接住求救。
+    # `or` 短路：`risk_reply` 非空就不会再看注入吸收，语义上正是这个优先级。
+    risk_reply = detect_real_world_risk(utterance)
+    absorbed = risk_reply or absorb_injection(utterance)
     if absorbed is not None:
-        # 装听不懂：请求根本不发给模型，攻击者什么也拿不到。
-        # 该轮记 neutral——不加不减，但仍吃信任流失。
+        # 装听不懂，或者（优先级更高）接住一次真实求助：两种都不转发给模型。
+        # 该轮记 neutral——不加不减，但仍吃信任流失；真实求助不该被扣信任度，
+        # 可这条件同样不该单独放行——不然"假装在求助"会变成新的免罚话术，
+        # 这一格的取舍与合规红线同理，留给后续观测数据去校正力度。
         buffer = SentenceBuffer()
-        line_source = "absorbed"
+        line_source = "safety_escalation" if risk_reply is not None else "absorbed"
         for sentence in buffer.feed(absorbed) + buffer.flush():
             spoken.append(sentence)
             yield Event("sentence", {"text": sentence})

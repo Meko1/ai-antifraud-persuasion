@@ -118,13 +118,17 @@ def test_令牌不合法时返回错误事件而不是500() -> None:
 
 def test_统计接口在没配redis时返回不可用而不是报错() -> None:
     """统计是旁路。没配 Redis 时它必须安静地说"没有"，
-    而不是 500——一个纯展示接口不该让健康检查看起来像出事了。"""
+    而不是 500——一个纯展示接口不该让健康检查看起来像出事了。
+
+    `outcomes`（app/outcome.py 的 24 小时回传）是独立的第二个数据源，
+    同样没配 Redis，同样报 `available: false`，不影响也不依赖前一个。
+    """
     client = TestClient(app)
 
     resp = client.get("/api/stats")
 
     assert resp.status_code == 200
-    assert resp.json() == {"available": False}
+    assert resp.json() == {"available": False, "outcomes": {"available": False}}
 
 
 def test_打完的令牌不能再打一次() -> None:

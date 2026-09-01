@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -31,6 +32,7 @@ from .scenario import scenario_for
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
 from .offline import OfflineGateway
+from .outcome import OutcomeError, outcome_store, parse_report
 from .provenance import versions
 from .scoring import MAX_ROUNDS, WIN_THRESHOLD, is_finished, mood_for
 from .state_token import (
@@ -538,7 +540,9 @@ def _sse(name: str, data: dict) -> str:
 #
 # 进程内计数，不进 Redis：它回答的是"这个进程现在怎么样"，
 # 重启归零正是想要的语义。
-_line_sources: Dict[str, int] = {"model": 0, "fallback": 0, "absorbed": 0}
+_line_sources: Dict[str, int] = {
+    "model": 0, "fallback": 0, "absorbed": 0, "safety_escalation": 0,
+}
 
 
 def _probe_allowed(request: Request) -> bool:
@@ -635,8 +639,14 @@ async def api_stats(sid: str = "", source: str = "") -> JSONResponse:
 
     `source` 决定读哪个口径（演示态 / 真实接入）。同样是为了让那句话成立——
     比的必须是同一类对局，见 `stats.snapshot`。
+
+    `outcomes` 是 24 小时后回传的结果（app/outcome.py），按 arm 分组；
+    与其余字段是两个独立的数据源，**没有回传就是 `available: false`**，
+    不代表对局统计本身出了问题。
     """
-    return JSONResponse(await stats.snapshot(sid, source))
+    body = await stats.snapshot(sid, source)
+    body["outcomes"] = await outcome_store.snapshot()
+    return JSONResponse(body)
 
 
 async def _demo_tokens() -> AsyncIterator[str]:
@@ -710,6 +720,68 @@ async def game_exit(request: Request, body: ExitRequest) -> JSONResponse:
             source=session.origin.source,
         )
     return JSONResponse({"ok": True, "recorded": recorded})
+
+
+# ── 结局回传 ──────────────────────────────────────────────────────────────
+#
+# `app/trigger.py` 一路带着 anomaly_id/subject_ref/arm 走完开局，却没有接口
+# 告诉宿主 App 该往哪儿把"24 小时后这笔到底完成没有"传回来——核心指标
+# （24h 内转出放弃率）因此即使真接了异动流水也算不出来。这个端点补的是
+# 这段缺口：接收判断结果，不产生判断，也不需要新的服务端状态
+# （`arm` 从 `subject_ref` 现算，见 app/outcome.py）。
+#
+# **鉴权**：调用方是宿主 App 的后台系统，不是玩家浏览器，没有状态令牌可用，
+# 换成一个共享密钥。密钥未配置时直接 503——"没配"和"配错"要能分清楚，
+# 静默放行任何请求等于任何人都能往这份统计里注水。
+
+class OutcomeReportBody(BaseModel):
+    anomaly_id: str = Field(max_length=128)
+    subject_ref: str = Field(max_length=128)
+    status: str = Field(max_length=32)
+    observed_at: Optional[int] = None
+    window_hours: Optional[int] = None
+    trigger_type: str = Field(default="", max_length=64)
+
+
+@app.post("/api/outcome/report")
+async def outcome_report(request: Request, body: OutcomeReportBody) -> JSONResponse:
+    """宿主 App / 交易系统回传一条异动的 24 小时后结果。见 app/outcome.py。"""
+    secret = settings.outcome_report_secret
+    if not secret:
+        return JSONResponse(
+            {"code": "not_configured", "message": "未配置 OUTCOME_REPORT_SECRET"},
+            status_code=503,
+        )
+    # 常数时间比较：这是一个共享密钥，用 `==` 比较会把耗时差异泄露给
+    # 一个逐字节猜密钥的攻击者
+    provided = request.headers.get("x-outcome-secret", "")
+    if not hmac.compare_digest(provided, secret):
+        return JSONResponse({"code": "unauthorized"}, status_code=401)
+
+    if not await guard.allow(
+        f"outcome:{_client_key(request)}", limit=settings.rate_limit_turn
+    ):
+        return _too_many("outcome")
+
+    try:
+        report = parse_report(body.model_dump())
+    except OutcomeError as exc:
+        return JSONResponse(
+            {"code": "invalid_report", "message": str(exc)}, status_code=400
+        )
+
+    recorded = await outcome_store.record(report)
+    if not recorded:
+        # 这份数据没有第二个来源：Redis 不可用时要让宿主 App 知道重试，
+        # 而不是回一个 200 假装记下来了（那样这条回传就永久丢了）
+        return JSONResponse(
+            {
+                "code": "storage_unavailable",
+                "message": "统计存储不可用，这份回传没有第二个来源，请重试",
+            },
+            status_code=503,
+        )
+    return JSONResponse({"ok": True, "arm": report.arm.value})
 
 
 @app.get("/api/demo/stream")

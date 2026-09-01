@@ -310,6 +310,26 @@ async def test_台词是谁写的要说清楚_模型与兜底与注入吸收各�
     ]
     assert next(e for e in events if e.name == "score").data["line_source"] == "absorbed"
 
+    # 三、真实求助：同样不发给模型，但走的是安全升级这条独立的口子——
+    # 与"absorbed"必须能分开，运维要能看出这一轮是被真实风险信号打断的，
+    # 不是被一次注入攻击打断的
+    real_risk_gateway = FakeGateway(台词="不该被调用", 分类结果="{}")
+    events = [
+        e async for e in play_turn(
+            new_session(gid="01JTESTGID"),
+            "救命，他们现在就在我家。",
+            gateway=real_risk_gateway,
+            secret=SECRET, now=NOW,
+        )
+    ]
+    assert real_risk_gateway.演绎调用次数 == 0, "真实求助信号不该被转发给模型"
+    score = next(e for e in events if e.name == "score")
+    assert score.data["line_source"] == "safety_escalation"
+    # 与注入吸收同一档：既不命中钥匙也不触发失误，delta 为 0；
+    # 但信任度仍按每轮默认的自然流失下降（scoring.DRIFT），不因此获得豁免
+    assert score.data["delta"] == 0
+    assert score.data["drift"] < 0
+
 
 # ── 结局那一屏 ────────────────────────────────────────────────────────────
 
