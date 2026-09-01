@@ -1619,9 +1619,11 @@ button:disabled { cursor: not-allowed; }
      异动提示要像"刚弹出的新警报"抓一下视线，跳个不停反而是噪音。
      环色取它自己的文字色 `--danger`，跟旁的 live-label 圆点共用同一套
      "信号在跳动"语言（pulse 关键帧），不是另起一套动效。 */
-  animation: transfer-moves-alert 1.6s ease-out 2;
+  animation: alert-ring 1.6s ease-out 2;
 }
-@keyframes transfer-moves-alert {
+/* **叫 `alert-ring` 不叫 `transfer-…`**：客户档案那条「资产异动预警」用的
+   是同一下告警（本文件末尾那段），两屏说的是同一件事，就该是同一个动作。 */
+@keyframes alert-ring {
   0% { box-shadow: 0 0 0 0 rgba(147,75,63,.35); }
   70%, 100% { box-shadow: 0 0 0 10px rgba(147,75,63,0); }
 }
@@ -2433,3 +2435,82 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 /* 全局 reduced-motion 兜底**在本文件 1229 行**，与这里原有的一条逐字相同。
    重复的那一份 2026-08-29 删了：两条同名规则并存时，下一个人改其中一条
    会以为改完了。 */
+
+/* ── 其余三屏的入场（2026-09-01）────────────────────────────────────
+ *
+ * 转账确认屏之后，剩下真正平的是三屏：开场异动、客户档案、七把钥匙。
+ * 聊天屏与复盘不在其中——它们本来就有气泡入场、心情切换、条形生长，
+ * 再加一层只会变成噪音。
+ *
+ * **刻意不给三屏同一个入场动画。** 每一屏共用的 `.screen.on { animation: enter }`
+ * 已经承担了"换了一屏"这件事；在它上面再对每屏套同一套淡入上浮，作品会显得
+ * 是从模板里生出来的。所以三屏各拿一个跟自己职责相称的动作，动效语汇则复用
+ * 已有的那几样（`growbar` 的条形生长、`alert-ring` 的告警脉冲）。
+ *
+ * **每一条都挂在 `.screen.on` 下面，这一点不是写着好看的。**
+ * 直接写 `.home-note { animation: … }` 的那一版是错的：屏幕虽然
+ * `display:none`，动画照样从**页面加载**那一刻开始跑（实测切到客户档案时
+ * `currentTime` 已经 15 秒），玩家走到这两屏时早就跑完了，等于没加。
+ * 挂到 `.screen.on` 上，动画属性只在这一屏被切上来时才生效，
+ * 于是它是从"这一屏被看见"那一刻开始的——`showScreen()` 切的正是这个 class
+ * （dom.js）。回头再进这一屏（客户档案 → 返回 → 再进）也会重新演一遍。 */
+
+/* 开场异动屏：**案子落到你手上的那一拍。**
+   五样东西同时出现，这一屏读起来是一张海报；错开之后它才像一条刚进来的
+   记录——状态灯先亮，划出那道线，然后标题、经过，金额压在最后。
+   金额落在最后不是排版偏好：它是这一屏唯一的数字，也是玩家真正要接住的
+   那个东西，前面四步都是在给它让路。 */
+.screen.on .opening-body > .live-label { animation: opening-in .42s var(--ease) .05s both; }
+.screen.on .opening-rule { animation: growbar .4s var(--ease) .16s both; transform-origin: left center; }
+.screen.on #openingTitle { animation: opening-in .46s var(--ease) .24s both; }
+.screen.on .opening-lead { animation: opening-in .46s var(--ease) .34s both; }
+.screen.on .opening-record { animation: opening-in .46s var(--ease) .44s both; }
+@keyframes opening-in {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 客户档案：**一份正在被调出来的档案。**
+   「资产异动预警」跳两下——跟转账确认屏那条异动提示是同一个 `alert-ring`，
+   因为它们说的本来就是同一件事，玩家在两屏之间是能认出来的。
+   之后交底那段话、再之后档案本身，两拍落定。
+
+   **不逐行错峰 `.fact`**：那几行里只有 warn 的默认摊开，其余由「其余 N 项
+   账户信息」点开时才 `appendChild`（见 opening.js `paintDesk`）——带延迟的话，
+   点开之后那几行要愣半秒才出来，那不是入场，那是卡顿。 */
+.screen.on .alertbar { animation: alert-ring 1.6s ease-out 2; }
+.screen.on .home-note { animation: opening-in .44s var(--ease) .14s both; }
+.screen.on .ccard { animation: opening-in .44s var(--ease) .24s both; }
+
+/* 七把钥匙：**七条要被一条一条读进去，不是当成一整块看过去。**
+   所以这一屏的动作就是逐条落下，60ms 一条——这是这七条唯一一次露面
+   （primer 只在这台设备第一次开打时出现），读完它们的时间只有这一次。
+   写死七条不用 `nth-child(n)` 通配：KEYS 就是七把，多一条少一条都是
+   keys.js 出了事，那时候该修的是那边，不是让这里默默兜住。 */
+.screen.on .primer-list li { animation: opening-in .38s var(--ease) both; }
+.screen.on .primer-list li:nth-child(1) { animation-delay: .10s; }
+.screen.on .primer-list li:nth-child(2) { animation-delay: .16s; }
+.screen.on .primer-list li:nth-child(3) { animation-delay: .22s; }
+.screen.on .primer-list li:nth-child(4) { animation-delay: .28s; }
+.screen.on .primer-list li:nth-child(5) { animation-delay: .34s; }
+.screen.on .primer-list li:nth-child(6) { animation-delay: .40s; }
+.screen.on .primer-list li:nth-child(7) { animation-delay: .46s; }
+
+/* 低动态偏好下，同样是**降级成静态等价物，不是降级成没有**
+   （理由与转账确认屏那段一样，见本文件 `.transfer-alarm` 上面那段注）。
+   全局那条规则压时长**不压延迟**，不归零的话整屏会分批凭空蹦出来，
+   比动效本身更扰人。选择器同样带 `.screen.on`：上面那几条是 (0,2,0)，
+   这里不跟着带的话压不过它们。 */
+@media (prefers-reduced-motion: reduce) {
+  .screen.on .opening-body > .live-label, .screen.on .opening-rule,
+  .screen.on #openingTitle, .screen.on .opening-lead, .screen.on .opening-record,
+  .screen.on .home-note, .screen.on .ccard, .screen.on .primer-list li {
+    animation-delay: 0s !important;
+  }
+  /* 脉冲没了，换一道贴边的实线，让它仍然读得出是一条警报而不是一块浅色底。
+     用 inset 阴影不用 border：`.alertbar` 自己已经有 1px 边框，改边框会动布局。 */
+  .screen.on .alertbar {
+    animation-name: none;
+    box-shadow: inset 0 0 0 1px rgba(187,78,63,.3);
+  }
+}
