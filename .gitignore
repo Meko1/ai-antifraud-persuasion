@@ -38,5 +38,13 @@ run/
 
 # 跑批导出的台词（tools/act_eval.py --dump）。几百 KB 的模型输出，
 # 不进仓库——要比对基线就自己跑一次。
-baseline-lines.jsonl
+#
+# **两条模式，不是一条**：`*-lines.jsonl` 漏掉带后缀的那批
+# （`baseline-chen-lines.MIXED-MODEL.jsonl` 不以 `-lines.jsonl` 结尾），
+# 它们 2026-09-03 一直躺在 `git status` 的未跟踪区里。
+baseline-*.jsonl
 *-lines.jsonl
+
+# 文档的 PDF 导出。**导一次就旧一次**——源文件是 .md，
+# 要发 PDF 就在演示前现导，别让一份过时的导出留在仓库里冒充现状。
+docs/*.pdf

@@ -308,7 +308,7 @@
       <div class="turn-line">
         <span>第 <b class="num" id="turnCurrent">1</b> 轮 / <span class="num" id="turnTotal">12</span></span>
         <span class="round-meter" aria-hidden="true"><i id="roundFill"></i></span>
-        <span class="legacy-trust-track" hidden><i id="trustFill"></i><i id="trustGoal"></i></span>
+        <!-- 隐藏，但**不是死的**：E2E 拿它读当前剩余轮次（tests/e2e/browser.test.mjs）。 -->
         <span id="remaining" hidden>12</span>
       </div>
       <!-- 时机线索。**它说的是"他现在什么状态、这意味着什么"，不是"该用哪一把"**——
@@ -346,7 +346,7 @@
      一套焦点捕获、一套 Esc、一套返回焦点，写三遍必然有一遍会漏掉其中一样。 -->
 <div class="sheet-host" id="sheetHost" hidden></div>
 <!-- **type="module" 不是可选的。** app.js 从 2026-08-24 起是入口模块，
-     其余十二个模块由浏览器自己按 import 拉（全部同源，`script-src 'self'`
+     其余模块由浏览器自己按 import 拉（全部同源，`script-src 'self'`
      照旧成立）。**没有打包步骤**，改回普通 script 会当场 SyntaxError。
      module 天然是 defer 的，因此这个标签放哪儿都行，仍然留在 body 末尾。 -->
 <script type="module" src="static/app.js"></script>

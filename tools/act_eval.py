@@ -817,14 +817,14 @@ def main() -> int:
     switched = bool(llm_client.status().get("switched"))
     if args.dump and switched:
         st = llm_client.status()
-        print(FAIL(
-            f"\n跑批中途换过模型（→ {st.get('active_provider')}/{st.get('active_model')}），"
+        print(
+            f"\n{FAIL} 跑批中途换过模型（→ {st.get('active_provider')}/{st.get('active_model')}），"
             f"**不写 {args.dump}**。\n"
             f"  原因：{st.get('reason') or '见上面的降级提示'}\n"
             f"  这一批是两个模型混出来的，量演绎质量不成立。"
             f"修好网关后整批重跑；\n"
             f"  已有的 baseline 不在 git 里，覆盖掉就找不回来了。"
-        ))
+        )
         args.dump = None
 
     if args.dump:
@@ -856,6 +856,21 @@ def main() -> int:
     print(f"场景 {scene.id} · {scene.name}（{scene.kind}）")
     print(format_report(report))
     print()
+
+    # **中途换过模型，门槛一律不算数**（2026-09-03，与上面拒绝写 dump 同一件事）。
+    #
+    # 只拦 dump 是拦漏了：这一批的六道门槛照样会算出来、照样会印"全部通过"，
+    # 而它量的是两个模型混起来的输出。**一个假绿灯比一条红灯坏得多**——
+    # 红灯会被查，绿灯会被写进交接文档，然后再也没人回来看。
+    if switched:
+        st = llm_client.status()
+        print(
+            f"{FAIL} 门槛不作数：本批中途换过模型"
+            f"（→ {st.get('active_provider')}/{st.get('active_model')}）。\n"
+            f"  这一批是两个模型混出来的，六道门槛量的不是任何一个模型。"
+            f"修好网关后整批重跑。"
+        )
+        return 1
 
     failures = check_thresholds(report)
     if failures:

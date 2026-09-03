@@ -244,7 +244,7 @@
 > `app/provenance.py`（版本与标签出处），令牌升到 v4，前端加了退出、
 > 七种问法回看、挑客户三处。
 >
-> **逐条对照请读 [AUDIT-RESPONSE-2026-08-23.md](AUDIT-RESPONSE-2026-08-23.md)。**
+> **逐条对照请读 AUDIT-RESPONSE-2026-08-23.md（已归档，见 git 历史）。**
 > 那份文档里最该先看的是第三节——**三条做不了的**（真实交易结果、
 > 真人证据、可信身份），它们不在代码这一侧，不要照着代码去找。
 >
@@ -298,7 +298,7 @@
 
 ## 8-22 第十一个会话：执行 PIVOT-C-END 那四项
 
-状态表与逐条经过写在 [PIVOT-C-END.md](PIVOT-C-END.md)（就地更新在每一节开头），
+状态表与逐条经过写在 PIVOT-C-END.md（已归档，见 git 历史）（就地更新在每一节开头），
 这里只留下一句会影响下一个人怎么干活的：
 
 | 任务 | 结果 | 落在哪 |
@@ -726,7 +726,7 @@ node --test tests/e2e/*.test.mjs                    # 真浏览器 E2E，要 Chr
    接话的前提是"可以反复练"（REDESIGN-TRAINER D2），POSITIONING.md 新写的
    成功标准却说"训练可以打第二局，干预只有一次机会"——两者正面冲突。继续做
    还是砍，需要先拍板，见
-   [POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md § P0-2](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)。
+   POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md（已归档，见 git 历史） § P0-2。
 3. 在目标服务器上跑 50 并发压测（§10.3）。本机数不作数，这条门槛量的是网关并发额度。
 4. **配上 `REDIS_URL`**。已经把 `/api/stats` 接进复盘了，但不配 Redis 那一节
    永远不出现——「别人打成什么样」是复盘里唯一一句能把玩家放进人群里的话。

@@ -99,11 +99,6 @@ def ending_fallback(ending: Ending, scene: Optional[object] = None) -> Sequence[
     return (scene or _default()).ending_lines[ending]
 
 
-def waiting_line(scene: Optional[object] = None) -> str:
-    """排队期间前端显示的等待文案，角色兼容，不是转圈加载。"""
-    return (scene or _default()).waiting
-
-
 def _default():
     # 局部导入避免 scenario ← persona ← （无）与 fallback 之间绕出循环依赖
     from .scenario import DEFAULT

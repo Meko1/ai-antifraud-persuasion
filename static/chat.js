@@ -128,7 +128,7 @@ export function paintMood(mood) {
   // 它是辅助信息，不该因为少一个 id 就把这一轮的渲染整个掀掉。
   const hintEl = $('moodHint');
   if (hintEl) {
-    // `{ta}` 换成本局客户的代词。五个场景里三位是「她」，写死「他」的话
+    // `{ta}` 换成本局客户的代词。客户里「她」占一半，写死「他」的话
     // 这一行会和两行之下的输入框（「输入你想对她说的话」）当场打架。
     //
     // 2026-08-30 改走 `withTa()`：这一处原是全仓唯一走占位符的地方，
@@ -137,13 +137,6 @@ export function paintMood(mood) {
     const hint = withTa(MOOD_HINTS[mood] || MOOD_HINTS.guarded);
     if (hintEl.textContent !== hint) hintEl.textContent = hint;
   }
-
-  // 细条不带数字也不闪：它只是个余光里的东西，用来兜住"完全没有反馈"的茫然
-  const pct = Math.max(0, Math.min(100, game.trust));
-  const fill = $('trustFill');
-  fill.style.width = pct + '%';
-  fill.className = 'st-fill' + (pct < 20 ? ' danger' : pct < 45 ? ' low' : '');
-  $('trustGoal').style.left = game.threshold + '%';
 }
 
 // ── 一轮 ────────────────────────────────────────────────────

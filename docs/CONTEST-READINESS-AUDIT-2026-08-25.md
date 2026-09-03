@@ -10,7 +10,7 @@
 > → 六个视角逐条落证据。
 >
 > **与既有审计文档的关系**：
-> [POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)
+> POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md（已归档，见 git 历史）
 > 查的是「定位 vs 代码对不对得上」，本文查的是「作品 vs 大赛规则对不对得上」。
 > 两者不重叠的部分才写进来；重叠的（分享卡文案、接话线拍板）本文不重复。
 
@@ -240,7 +240,7 @@ CONTEST-POSITIONING §一 备了标题 / 团队名 / 思路概述三件套，
 #### P0-5 主张里最贵的那个数，赛期内一次都测不到
 
 [POSITIONING.md](POSITIONING.md#L127) 把全部价值压在「24h 内转出取消率」上，
-而 [AUDIT-RESPONSE-2026-08-23.md:36](AUDIT-RESPONSE-2026-08-23.md) 自己写着
+而 AUDIT-RESPONSE-2026-08-23.md（已归档，见 git 历史）:36 自己写着
 这个数只能由交易系统回传、这个仓库里没有也不该有。
 
 这不是新问题（8-24 的审计已经写过），但**换到高管视角它的性质变了**：
@@ -362,7 +362,7 @@ offline.py 顶部诚实地写了「这张表粗得毫不掩饰」，但**粗的�
 **没有一份「先读这个」的入口**。新会话被要求读 HANDOFF → CONTEXT →
 TECH-DESIGN 的相关章节，而 HANDOFF 自己开头有四层嵌套的时间轴引文块。
 
-同批还有一个具体的坑：[`COMPETITIVE-RESEARCH-AND-BUSINESS-AUDIT.md`](COMPETITIVE-RESEARCH-AND-BUSINESS-AUDIT.md)
+同批还有一个具体的坑：COMPETITIVE-RESEARCH-AND-BUSINESS-AUDIT.md（已归档，见 git 历史）
 的第 6/8 节整节已经作废，但正文一字未删（8-24 审计 P1-1 已记，仍未处理）。
 
 #### P1-13 `static/review.js` 1088 行，是拆分之后仍然最大的一块
@@ -486,7 +486,7 @@ HANDOFF 8-25 自己记着：`novice 胜率 0.0%（6000 局零胜）`，
 
 它还和本作品自己的剧情打架：老陈今早从证券账户划走 10 万到**自己的卡**，
 那 30 万"放在他自己的银行卡上，投顾看不见"
-（[PROJECT-INTRODUCTION §3](PROJECT-INTRODUCTION.md)）。
+（PROJECT-INTRODUCTION §3）。
 **剧本一直是对的，只有这一屏把两步并成了一步。**
 
 **改法不是把这一屏削弱，是把它改成只有券商 App 才会出现的那一屏**：
@@ -548,7 +548,7 @@ zhou「今日赎回、已在活期」、liu 今天赎回 + 今日转出，四处
 
 **二 · chen 的开局第一屏把券商看不见的钱写进了预警，还顺手泄了「三十万」。**
 原文「账户已经转出 10 万元，**还有 20 万元可能继续流出**」——那 20 万在他
-自己的银行卡上（[PROJECT-INTRODUCTION §3](PROJECT-INTRODUCTION.md)：投顾看不见），
+自己的银行卡上（PROJECT-INTRODUCTION §3：投顾看不见），
 账上只剩 2.8 万；这句话跟它自己的下半句"你不知道钱去了哪里"、跟 `desk_note`
 那句"账户只能告诉你发生了什么"直接打架。更要紧的是**三十万这个总数是这一局
 要问出来的东西**，第一屏先说了，就是 8-17 那次"未扎根打法生成器"的小号版。
@@ -584,8 +584,8 @@ liu / ben「理财赎回到账」——银行只会这么说自己代销的产�
 同一处还有「把基金与股票一次性全部**赎回**」——股票是卖出，基金才是赎回。
 
 **连带改到的文档**：`hang` 的 incident_hint 从「今天一次清仓」改成「昨天一次清仓」，
-[README](../README.md)、[PROJECT-INTRODUCTION](PROJECT-INTRODUCTION.md)、
-[POSITIONING](POSITIONING.md)、[PIVOT-C-END](PIVOT-C-END.md) 四处引用它的原话
+[README](../README.md)、PROJECT-INTRODUCTION、
+[POSITIONING](POSITIONING.md)、PIVOT-C-END 四处引用它的原话
 一并跟上。POSITIONING 那三条**触发信号本身一个字没动**——改的是场景里那句台账。
 
 **验证**：`pytest` 691 条、`tests/frontend` 102 条、`tests/e2e` 14 条全绿；

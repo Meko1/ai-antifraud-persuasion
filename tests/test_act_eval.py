@@ -291,3 +291,32 @@ def test_退避带抖动_并发几路不会一起醒() -> None:
     样本 = {_backoff_for(限流, 0) for _ in range(50)}
 
     assert len(样本) > 1, "退避是个定值，几路会一直同步"
+
+
+def test_结论记号是字符串_不许当函数调() -> None:
+    """`tools/console.py` 的 `OK` / `FAIL` 是**字符串常量**，不是格式化函数。
+
+    **这一条是 2026-09-03 一个真 bug 的回归测试。** 当时 `act_eval.main()`
+    里有两处写成 `print(FAIL(...))`——两处都在"中途换过模型"的错误分支上，
+    于是它们只在**事情已经出问题的那一刻**才被执行，而那一刻拿到的不是
+    那句写得很清楚的警告，是一句 `TypeError: 'str' object is not callable`。
+
+    错误路径没有测试覆盖是常态，所以这里不去构造那个分支，而是直接扫源码：
+    判据简单、跑得快，且下一次有人写成 `FAIL(` 时会当场红。
+    """
+    import re
+    from pathlib import Path
+
+    根 = Path(__file__).resolve().parent.parent
+    命中 = [
+        f"{文件.relative_to(根)}:{i}"
+        for 目录 in ("tools", "app")
+        for 文件 in sorted((根 / 目录).rglob("*.py"))
+        for i, line in enumerate(文件.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"\b(OK|FAIL)\s*\(", line.split("#")[0])
+    ]
+
+    assert not 命中, (
+        "把结论记号当函数调了（它是 str，调用会 TypeError）："
+        f"{命中}。要拼前缀就写 f\"{{FAIL}} …\""
+    )

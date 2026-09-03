@@ -31,7 +31,7 @@
 
 用法：
     python -m tools.stats_seed --dry-run          # 只打印会写什么，不连 Redis
-    python -m tools.stats_seed                    # 四个场景各 20 局
+    python -m tools.stats_seed                    # 每个场景各 20 局
     python -m tools.stats_seed --games 50 --scenario zhou
     python -m tools.stats_seed --purge            # 清掉本作品的全部统计键
 """
@@ -52,7 +52,7 @@ from app.scenario import SCENARIOS, Scenario
 from app.scoring import Ending, GameState, evaluate_turn, new_game
 from tools.balance_sim import PERSONAS, Persona
 
-# 复盘里百分位那一节的门槛（static/app.js `trustPercentile`）。
+# 复盘里百分位那一节的门槛（`static/stats.js` 的 `trustPercentile`）。
 # 少于这个数就不显示——宁可不显示，也不显示一个不成立的排名。
 PERCENTILE_FLOOR = 20
 

@@ -9,7 +9,7 @@ act_eval 量的是模型**逐轮生成**的台词有多不重样；开场白根�
 开场白条数。零模型调用，秒级出数。
 
 用法：
-    python -m tools.opening_diversity            # 四个场景各自的撞车率表
+    python -m tools.opening_diversity            # 每个场景各自的撞车率表
     python -m tools.opening_diversity --sessions 15,30
 
 跟 balance_sim 一样：门槛数字未标定时不设，只把数字摆出来——

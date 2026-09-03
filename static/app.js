@@ -32,10 +32,13 @@
  *   history.js   本机对局记录与分享卡
  *   opening.js   开场、客户档案、课程表、挑客户
  *   control.js   退出、七种问法
+ *   contrast.js  复盘「同一句话换个时候说」那一支
+ *   qr.js        分享卡上那个二维码（自绘，不拉第三方库）
  *
- * 上面六个是复核清单 P2-1 点名的六块，下面六个是它们共用的底座。
+ * chat / review / history / opening / control / contrast 是视图，
+ * dom / keys / state / api / stats / chart / qr 是它们共用的底座。
  * 方向只有一条：**视图依赖状态，状态不依赖视图**。dom / keys / state /
- * api / stats / chart 一个视图模块都不 import，这一条是硬的。
+ * api / stats / chart / qr 一个视图模块都不 import，这一条是硬的。
  *
  * 视图之间有环，而且去不掉，因为产品本来就是环的：
  *

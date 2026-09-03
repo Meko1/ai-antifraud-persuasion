@@ -3,11 +3,10 @@
 > 写于 2026-08-29。**全部条目的查证日期都是这一天。**
 >
 > **这一页的用法：其余文档只引用，不复述。** 之前每条外部事实在
-> README、[POSITIONING.md](POSITIONING.md)、[PROJECT-INTRODUCTION.md](PROJECT-INTRODUCTION.md)、
-> [PIVOT-C-END.md](PIVOT-C-END.md)、[CONTEST-POSITIONING.md](CONTEST-POSITIONING.md)
-> 里各写一遍，改一处漏三处——
-> [POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)
-> 记的就是这个病。所以外部事实只在这一页有正文，别处一律链过来。
+> README、[POSITIONING.md](POSITIONING.md)、[PROJECT-DEEP-DIVE.md](PROJECT-DEEP-DIVE.md)、
+> [CONTEST-POSITIONING.md](CONTEST-POSITIONING.md) 里各写一遍，改一处漏三处——
+> 2026-08-24 那次一致性审计（已归档，见 git 历史）记的就是这个病。
+> 所以外部事实只在这一页有正文，别处一律链过来。
 >
 > **每条都要写"它不能支持什么"。** 这一栏不是谦虚，是这一页存在的理由：
 > 上一版定位垮在"《反电信网络诈骗法》给金融机构压了劝阻义务"这句话上——
@@ -246,7 +245,7 @@ Helper 就是本项目的机制。
 - 全部在实验室或有研究员在场的条件下完成，**不是在用户自己正要转账的那一刻**。
 - 因此这些证据支持的是"机制可信"，**支持不了"干预有效"**——
   后者仍然是 0 次测量，这一点与
-  [POSITIONING-CONSISTENCY-AUDIT §二.1](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)
+  POSITIONING-CONSISTENCY-AUDIT §二.1
   的判断一致，没有被推翻。
 
 > **一处待核对**：本节开头的出处写着 arXiv:2601.12324，而手上这份是 ACM 版

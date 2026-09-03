@@ -7,10 +7,10 @@
 > 本项目属此赛道。这是**内部员工创新赛**，不是对外公开赛，下文第二节的判断建立在
 > 这个前提上。
 >
-> 与 [POSITIONING.md](POSITIONING.md)、[PIVOT-C-END.md](PIVOT-C-END.md)、
-> [POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)
+> 与 [POSITIONING.md](POSITIONING.md)、PIVOT-C-END.md（已归档，见 git 历史）、
+> POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md（已归档，见 git 历史）
 > 的关系：**本文不是另起一个产品定位，是给现有的"C 端异动干预"定位套一层参赛叙事**。
-> 判分引擎、五个场景、24 个人格一行不动；改的是外面怎么讲、新增哪一层。
+> 判分引擎、六个场景、28 个人格一行不动；改的是外面怎么讲、新增哪一层。
 > 如果本文与 POSITIONING.md 在措辞上有出入，以 POSITIONING.md 为产品定位的准绳，
 > 本文只管参赛材料这一件事。
 
@@ -143,11 +143,18 @@
 
 **2026-09-01 更正**：这句话原先的前提是"场景当前随机分配（等权 20% 一个）"，
 那个前提已经不成立——[`app/trigger.py`](../app/trigger.py) 上线后，demo 模式下场景由
-"先随机出一个异动类型、再从该类型的候选场景里选"两步产生，五个场景的实际权重变成
-chen/liu/ben≈24%、zhou/hang≈14%（候选表不均匀：`FULL_LIQUIDATION`/`FUND_REDEMPTION`/
-`LARGE_TRANSFER_OUT`/`UNUSUAL_PAYEE` 各只对应 2 个候选场景，只有 `BEHAVIOR_DEVIATION`
-对应全部 5 个）。按新权重重算：
-`0.24×58.4 + 0.14×47.1 + 0.24×53.1 + 0.24×55.7 + 0.14×53.8 ≈ 54.3%`。
+"先随机出一个异动类型、再从该类型的候选场景里选"两步产生。
+
+**2026-09-03 第六个场景（shao · 健康恐吓）加进来之后重算了一次。** shao 挂在
+`FUND_REDEMPTION` 与 `LARGE_TRANSFER_OUT` 两条上，于是这两张候选表从 2 个变成 3 个，
+权重跟着变：
+
+| 场景 | chen | zhou | liu | ben | hang | shao |
+|---|---|---|---|---|---|---|
+| 实际权重 | 20.0% | 10.0% | 20.0% | 20.0% | 13.3% | 16.7% |
+
+按新权重重算最低一档（转账）的加权占比：
+`0.200×58.4 + 0.100×47.1 + 0.200×53.1 + 0.200×55.7 + 0.133×53.8 + 0.167×54.1 ≈ 54.4%`。
 
 **结论方向没变，"一半以上"仍然成立，数字比原先的 53.6% 还略高**，但支撑它的理由要换成
 "这是 demo 模式当前候选表算出来的加权值"，不能再写"随机分配"。**这个数跟着
@@ -178,7 +185,7 @@ chen/liu/ben≈24%、zhou/hang≈14%（候选表不均匀：`FULL_LIQUIDATION`/`
 |---|---|---|---|
 | Tier 0 | 低风险异动 | 静默记录 + 一句话提醒，不打断 | 无，需新写 |
 | Tier 1 | 中风险异动 | 60–90 秒快速核验 | 无，需新写，量级不大 |
-| Tier 2 | 高风险异动（杀猪盘/冒充公检法/荐股群等已建模的五个场景） | 现有三分钟角色互换对话 | 已完成，[`app/scoring.py`](../app/scoring.py) 判分引擎、[`app/scenario.py`](../app/scenario.py) 五个场景、[`app/persona.py`](../app/persona.py) 24 个人格，两万局蒙特卡洛标定过 |
+| Tier 2 | 高风险异动（杀猪盘/冒充公检法/荐股群等已建模的六个场景） | 现有十二轮角色互换对话 | 已完成，[`app/scoring.py`](../app/scoring.py) 判分引擎、[`app/scenario.py`](../app/scenario.py) 六个场景、[`app/persona.py`](../app/persona.py) 28 个人格，两万局蒙特卡洛标定过 |
 | 处置闭环 | 任意层级结束后 | 核验收款方 / 转人工 / 安全返回交易 | 无，需新写 |
 
 > **2026-08-29：这张表是目标形态，不是落地顺序，两者别混着讲。**
@@ -193,7 +200,7 @@ chen/liu/ben≈24%、zhou/hang≈14%（候选表不均匀：`FULL_LIQUIDATION`/`
 **为什么不直接拿现有三分钟对局去投**：官方"作品方向建议"写的是"将 AI 能力融入
 真实业务或日常工作场景"，奖励的是"这东西怎么接进真实业务流程"，不只是"这个
 demo 好不好玩"。而现有产品最大的空缺（见
-[POSITIONING-CONSISTENCY-AUDIT §一](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)）
+POSITIONING-CONSISTENCY-AUDIT §一）
 是：判分只判"信任度"，从不判"有没有真的做安全动作"——对话结束之后用户该干什么，
 产品里一直没有答案。加处置闭环，是把这个空缺显式补进定位里，不是新造一个概念。
 
@@ -253,11 +260,11 @@ AI 平台，是主动表明生态归属，不是蹭外部商标。
 
 ### 不用动的（demo 主角，两万局标定过）
 
-- 判分引擎 [`app/scoring.py`](../app/scoring.py)（655 行，纯函数，可离线重跑）
-- 五个场景 [`app/scenario.py`](../app/scenario.py)（1609 行，剧本/人格/台词/效力矩阵覆写全在一处）
-- 24 个人格变体 [`app/persona.py`](../app/persona.py)（841 行）
+- 判分引擎 [`app/scoring.py`](../app/scoring.py)（685 行，纯函数，可离线重跑）
+- 六个场景 [`app/scenario.py`](../app/scenario.py)（2040 行，剧本/人格/台词/效力矩阵覆写全在一处）
+- 28 个人格变体 [`app/persona.py`](../app/persona.py)（962 行）
 - 现有的对局流程、复盘、分享卡（分享卡内容本身另有问题，见
-  [POSITIONING-CONSISTENCY-AUDIT §三 P0-1](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)，
+  POSITIONING-CONSISTENCY-AUDIT §三 P0-1，
   与这次参赛定位无关，不在本文处理范围）
 
 ### 材料里要如实标注为"设计中"的
@@ -268,7 +275,7 @@ Tier 0 / Tier 1 的判定逻辑、处置闭环的三个动作（核验收款方 
 
 ## 四、材料里必须如实框住的三个风险
 
-这三条不是这次新发现的，[POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md 第二节](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)
+这三条不是这次新发现的，POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md（已归档，见 git 历史） 第二节
 已经写过，这里只重复对参赛材料有直接影响的部分：
 
 1. **核心成功指标（24 小时内转出放弃率）赛期内测不了**，需要接入真实交易系统
@@ -303,7 +310,7 @@ Tier 0 / Tier 1 的判定逻辑、处置闭环的三个动作（核验收款方 
 3. 找一位风控/合规条线的同事看一眼现有 demo（"面向公司全员"这个前提让这一步
    成本很低），问三个问题：这个异动信号你们真看得到吗、这条线真归你们吗、
    愿不愿意为一次拦截担责——这条建议在
-   [POSITIONING-CONSISTENCY-AUDIT §四](POSITIONING-CONSISTENCY-AUDIT-2026-08-24.md)
+   POSITIONING-CONSISTENCY-AUDIT §四
    里也提过，现在成本更低，值得真的去做。
 4. ~~"作品类型"下拉框选项确认后回填~~ **✅ 已回填：金融财经**，见第一节。
    仍待确认一项：**作品标签的"添加"是否支持自由输入**，不支持则走退回方案。
