@@ -310,13 +310,42 @@ _META_WORDS = re.compile(
 )
 
 
+# **数的是"非汉字的字母"，不是"拉丁字母"**（2026-09-03 改）。
+#
+# 上面那两条阈值原先只认 `ch.isascii() and ch.isalpha()`，而这一段自己的
+# 判据写的是「**老陈在微信上打中文**」——两者差着所有非拉丁的文字。
+#
+# 差别不是理论上的。shao 那一批跑批（929 轮）里有一轮模型退化成复读，
+# 吐了 71 行西里尔字母的 `Загрузка…`（俄语"加载中"）。英文版的同一件事
+# （`I think the intended structure…`）被这一层稳稳拦住，
+# **而这一轮原样下发给了玩家**——他会看到老陈连发七十条俄语。
+#
+# 一轮 / 929，但它是确定会发生的那一类：模型退化不挑语言，
+# 而这一层的阈值挑。
+#
+# 阈值一格没动（8 个字母、占比 25%），只把"哪些算字母"放宽到
+# 汉字之外的全部字母。「A股这两天」照旧只有 1 个，两条都抓不到它，
+# 这仍然是要的。
+_CJK = (
+    (0x4E00, 0x9FFF),      # 基本区
+    (0x3400, 0x4DBF),      # 扩展 A
+    (0xF900, 0xFAFF),      # 兼容表意文字
+)
+
+
+def _is_cjk(ch: str) -> bool:
+    code = ord(ch)
+    return any(lo <= code <= hi for lo, hi in _CJK)
+
+
 def _not_his_words(sentence: str) -> bool:
     if _ROLE_LABEL.match(sentence):
         return True
     if _META_WORDS.search(sentence) or _BOILERPLATE.search(sentence):
         return True
-    latin = sum(1 for ch in sentence if ch.isascii() and ch.isalpha())
-    return latin >= _LATIN_MIN_CHARS and latin / len(sentence) >= _LATIN_MIN_RATIO
+    foreign = sum(1 for ch in sentence if ch.isalpha() and not _is_cjk(ch))
+    return (foreign >= _LATIN_MIN_CHARS
+            and foreign / len(sentence) >= _LATIN_MIN_RATIO)
 
 
 # 一个只有标点的句子。按句缓冲在「…」上切一刀，「群里几百号人都在跟……」

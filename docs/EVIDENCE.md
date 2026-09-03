@@ -4,7 +4,7 @@
 >
 > **这一页的用法：其余文档只引用，不复述。** 之前每条外部事实在
 > README、[POSITIONING.md](POSITIONING.md)、[PROJECT-DEEP-DIVE.md](PROJECT-DEEP-DIVE.md)、
-> [CONTEST-POSITIONING.md](CONTEST-POSITIONING.md) 里各写一遍，改一处漏三处——
+> [CONTEST.md](CONTEST.md) 里各写一遍，改一处漏三处——
 > 2026-08-24 那次一致性审计（已归档，见 git 历史）记的就是这个病。
 > 所以外部事实只在这一页有正文，别处一律链过来。
 >

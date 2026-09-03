@@ -3,7 +3,7 @@
 > 本文用途：给需要**完整、可讲、能扛住追问**的项目介绍的场景使用——路演前自查、
 > 向新同事/评委/合作方讲解、准备 Q&A。内容整合自 [README.md](../README.md)、
 > [CONTEXT.md](../CONTEXT.md)、[POSITIONING.md](POSITIONING.md)、[EVIDENCE.md](EVIDENCE.md)、
-> [CONTEST-POSITIONING.md](CONTEST-POSITIONING.md)、[SUBMISSION-CHECKLIST.md](SUBMISSION-CHECKLIST.md)
+> [CONTEST.md](CONTEST.md)
 > 以及 `tools/` 下四个跑批脚本的源码，
 > 新增并重点展开了"实验与验证难度"一章——这是最容易被问穿、也是原有文档里最分散的部分。
 >
@@ -569,9 +569,10 @@
 | [README.md](../README.md) | 一页对外介绍,含主张边界与本地运行指令 |
 | [docs/POSITIONING.md](POSITIONING.md) | 产品身份准绳:核心矛盾、成功标准、不做什么 |
 | [docs/EVIDENCE.md](EVIDENCE.md) | 每条外部引用事实的出处,以及它不能支持什么 |
-| [docs/CONTEST-POSITIONING.md](CONTEST-POSITIONING.md) | 参赛定位与报名表逐栏定稿 |
-| [docs/SUBMISSION-CHECKLIST.md](SUBMISSION-CHECKLIST.md) | 提交当天的操作清单与三条硬边界答法 |
+| [docs/CONTEST.md](CONTEST.md) | 参赛：规则出处、报名文案定稿、素材规格、部署清单、答辩硬边界 |
+| [docs/结局阶梯.md](结局阶梯.md) | 六个场景 × 五种人设的结局分布（`balance_sim` 跑批产物，可重出）|
 | [docs/TECH-DESIGN.md](TECH-DESIGN.md) | 技术方案施工图 |
+| [docs/HANDOFF.md](HANDOFF.md) | 交接说明与踩过的坑（给接手的人，不是给评委）|
 | [docs/adr/](adr/) | 七条不可轻易反转的架构决策及理由 |
 | `app/scoring.py` | 判分引擎,纯函数,可蒙特卡洛离线重跑 |
 | `app/scenario.py` | 六个场景:剧本、人格、台词、效力矩阵覆写 |

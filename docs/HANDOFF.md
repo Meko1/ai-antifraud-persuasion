@@ -37,7 +37,7 @@
 > ### 2026-08-29 P0-6 拍板"为拿票做设计"，随之动了两处
 >
 > 边界在 [POSITIONING「为拿票做设计」](POSITIONING.md)，赛期九条打法与
-> 外部依据在 [CONTEST-POSITIONING §六](CONTEST-POSITIONING.md)。
+> 外部依据在 [CONTEST.md 第九节「为拿票做设计」](CONTEST.md)。
 > 代码上落地了两条（S1/S4），下一个会话真会踩到的是第一条：
 >
 > **新模块 [`static/contrast.js`](../static/contrast.js)，改判分显示前先看它。**
@@ -62,7 +62,7 @@
 > ### 2026-08-29 提交前那一轮：分享卡回链、降级可见性、素材脚本
 >
 > 三件事，逐条与理由在
-> [CONTEST-READINESS-AUDIT §四](CONTEST-READINESS-AUDIT-2026-08-25.md)。
+> [CONTEST.md](CONTEST.md)。
 > 这里只留下下一个会话真的会踩到的几条：
 >
 > **一 · 分享卡卡尾多了二维码**（P1-9）。编码器是自带的
@@ -91,7 +91,7 @@
 >
 > 一次双子代理 critique（设计评审 + 机械检测/浏览器实测各一路，互不可见），
 > 起分 **21/36**。逐条报告在
-> [CONTEST-READINESS-AUDIT §四](CONTEST-READINESS-AUDIT-2026-08-25.md) 与
+> [CONTEST.md](CONTEST.md) 与
 > `.impeccable/critique/`。这里只留会再犯的：
 >
 > **P0 · 两个按钮共用页脚同一个像素矩形，而换面是 0ms 硬切。** 130ms 双击
@@ -130,7 +130,7 @@
 >
 > 上一条改完，顺手把五个场景的档案、揭晓短信、开局预警和界面时钟逐条量了一遍。
 > **六处，没有一处碰判分**，逐条与理由在
-> [CONTEST-READINESS-AUDIT §四](CONTEST-READINESS-AUDIT-2026-08-25.md)。
+> [CONTEST.md](CONTEST.md)。
 > 这里只留下一个会反复踩到的规则和一个新字段：
 >
 > **规则：卖出资金 T+1 可取。**「今天清仓、今天把钱转走」在券商这边走不通，
@@ -171,7 +171,7 @@
 > **两条别改回去**：作品名**不上标题栏**——上了，"我刚签了字"那一下就没了；
 > 那个大橙「确认转出」按钮**照旧留着**，它不是疏漏，是这一屏存在的全部理由。
 > 逐条与验证结果见
-> [CONTEST-READINESS-AUDIT §四](CONTEST-READINESS-AUDIT-2026-08-25.md)。
+> [CONTEST.md](CONTEST.md)。
 
 > ### 2026-08-25 这一轮改了什么（三件事，起因是一次难度审查）
 >

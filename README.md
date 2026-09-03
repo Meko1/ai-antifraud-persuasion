@@ -139,8 +139,7 @@ node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 np
 │   ├── POSITIONING.md  产品身份 · 核心矛盾 / 成功标准 / 不做什么
 │   ├── EVIDENCE.md     外部证据台账 · 每条外部事实的出处，以及它**不能**支持什么
 │   ├── 结局阶梯.md      六个场景 × 五种人设的结局分布（balance_sim 跑批产物）
-│   ├── CONTEST-POSITIONING.md  参赛定位 · 内部创新赛专用叙事，不是产品定位本身
-│   ├── SUBMISSION-CHECKLIST.md  提交清单 · 逐栏文案 / 素材 / 部署当天 / 被问到时怎么答
+│   ├── CONTEST.md      参赛 · 规则出处 / 报名文案定稿 / 素材 / 部署清单 / 答辩边界
 │   ├── TECH-DESIGN.md  技术方案 · 施工图
 │   ├── HANDOFF.md      交接说明 · 踩过的坑
 │   └── adr/            七条不可轻易反转的决策及其理由

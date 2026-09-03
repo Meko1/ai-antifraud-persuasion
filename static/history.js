@@ -545,7 +545,10 @@ export function makeCard(view) {
 
   ctx.fillStyle = c.gray;
   ctx.font = `400 14px ${c.sans}`;
-  ctx.fillText('AI 反诈劝阻 · 三分钟角色对调', pad, lineTop + 30);
+  // **口径跟着界面走**（2026-09-03）：`index.html` 的交接屏已经从
+  // 「接下来三分钟」改成「接下来十二轮」，而这一行是**被截图传出去的那一行**——
+  // 两处不一致时，外面看到的是这一行。轮次是这个作品说了算的量，分钟不是。
+  ctx.fillText('AI 反诈劝阻 · 十二轮角色对调', pad, lineTop + 30);
 
   if (url && !hasQR) {
     ctx.fillStyle = c.note;
