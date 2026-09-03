@@ -228,6 +228,56 @@ def test_要玩家挖出来的线索都带匹配规则(scene) -> None:
 
 
 @pytest.mark.parametrize("scene", 场景)
+def test_可挖线索的分母与揭晓清单对得上(scene) -> None:
+    """`diggable` 是服务端那一侧的分母，复盘那一侧算的是 `!own` 的行数。
+
+    两侧各算各的（一个为落数、一个为显示），所以这条断言守的是它们
+    **按同一个定义在数**：带 `test` 的 ⇔ 不带 `own` 的。
+    哪天有人给自带那条补了个正则，或者给可挖那条漏了正则，
+    两个数字会静默地分岔，而分岔之后落进 Redis 的指标是错的。
+    """
+    assert list(scene.diggable) == [r for r in scene.phone if not r.own]
+
+
+def _触发词(pattern: str) -> str:
+    """从一条匹配规则里挑一个纯字面的择一分支，用来造测试文本。
+
+    **不能拿 `PhoneRow.line` 当输入**：那是别人发到他手机上的那条消息，
+    而 `test` 匹配的是**他在局里自己说出来的话**，两者本来就不同词
+    （ben 的老公那条，消息是"你最近老在手机上弄啥呢"，规则是 `老公|丈夫|…`）。
+    """
+    for alt in pattern.split("|"):
+        if alt and not re.search(r"[\[\](){}.*+?^$\\]", alt):
+            return alt
+    return ""
+
+
+@pytest.mark.parametrize("scene", 场景)
+def test_线索覆盖只数劝阻对象那一侧且不多不少(scene) -> None:
+    """`clues_surfaced` 只吃文本、只数正则，不碰任何状态。
+
+    守的是**数数这件事**，不是正则设计得好不好（那是 tools/cue_coverage.py
+    拿真实语料去量的事）：空局是 0；每条线索各自能被数到一次；
+    全喂进去正好等于分母，**不会因为自带那条也被数进来而超出**。
+    """
+    assert scene.clues_surfaced([]) == 0
+    assert scene.clues_surfaced(["", "  "]) == 0
+
+    触发 = {r.name: _触发词(r.test) for r in scene.diggable}
+    缺 = [n for n, w in 触发.items() if not w]
+    assert not 缺, f"{scene.id} 的「{'、'.join(缺)}」挑不出纯字面触发词，测试造不出输入"
+
+    # 逐条：一条触发词只该数出一条，不能被别人的规则顺手一起匹配掉
+    for name, word in 触发.items():
+        assert scene.clues_surfaced([f"我跟你说{word}这件事"]) >= 1, (
+            f"{scene.id} 的「{name}」数不出来"
+        )
+
+    # 全喂进去：正好等于分母。超出就说明 own 那条被算进来了
+    assert scene.clues_surfaced(list(触发.values())) == len(scene.diggable)
+
+
+@pytest.mark.parametrize("scene", 场景)
 def test_客户档案至少有一行是玩家手里的牌(scene) -> None:
     """`warn` 标着的那几行是矛盾点（"风测保守型"对"三个月 47 笔"）。
 

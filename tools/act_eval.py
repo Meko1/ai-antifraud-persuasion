@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import random
 import re
 import statistics
 import sys
@@ -49,6 +50,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from tools.console import FAIL, guard
+from app.llm import llm_client
 from app.persona import opening_for
 from app.safety import screen_sentence
 from app.scenario import DEFAULT, SCENARIOS, Scenario, scenario_for
@@ -124,6 +126,34 @@ def _has_english_leak(raw: str) -> bool:
 # 空的一模一样"，凭空抬高首句重复率，那比丢掉这一轮更糟。
 ACT_RETRIES = 2
 RETRY_BACKOFF = 2.0
+
+# **限流要另算一档退避**（2026-09-03）。
+#
+# 上面那 2 秒是照"瞬时 5xx"定的，而网关真正会拒的是限流：
+# `RateLimitError: 429 … 该令牌对模型的 RPM 已经到达上限`。RPM 是一个
+# **按分钟算的窗口**，2 秒和 4 秒两次重试全落在同一个窗口里，退了等于没退。
+#
+# 实测（48 次调用一组）：并发 8 挂 54%、并发 4 挂 23%、并发 3 挂 8%，
+# 而三档的**成功吞吐都是每分钟 30 次左右**——那就是上限本身。
+# 也就是说抬并发一次吞吐都买不到，只买到失败率。
+#
+# 失败在这个脚本里不是"少几个样本"那么轻：`tools/cue_coverage.py` 数的是
+# 一局里线索抖出来没有，**缺掉的轮次会把覆盖率系统性压低**，
+# 而那正是要量的东西。所以宁可退得久一点。
+#
+# 加抖动是因为并发的几路会在同一刻一起撞上限、再一起退避同样的时长，
+# 醒来又是同一刻——不抖的话它们会一直同步，等于并发数从没降下来过。
+RATE_LIMIT_BACKOFF = 20.0
+RATE_LIMIT_MARKERS = ("RateLimitError", "429", "RPM")
+
+
+def _backoff_for(exc: BaseException, attempt: int) -> float:
+    """这一次该退多久。限流走长退避 + 抖动，其余照旧。"""
+    text = str(exc)
+    base = (RATE_LIMIT_BACKOFF
+            if any(m in text for m in RATE_LIMIT_MARKERS)
+            else RETRY_BACKOFF)
+    return base * (attempt + 1) * (1.0 + random.random() * 0.5)
 
 
 @dataclass(frozen=True)
@@ -328,13 +358,19 @@ async def play_route(
                 break
             except Exception as exc:  # noqa: BLE001 - 瞬时故障不该中断跑批
                 if attempt == ACT_RETRIES:
+                    # **消息也要印**（2026-09-03）。原先只印异常类型名，
+                    # 于是一批 960 次调用全灭时，日志上是几百行一模一样的
+                    # `LLMError`，既看不出是限流、是拒答还是网关挂了，
+                    # 也就没法决定该降并发、该换 provider 还是该改提示词。
+                    # 截断到 200 字：错误体可能很长，而跑批日志要还能读。
+                    detail = " ".join(str(exc).split())[:200]
                     print(
                         f"  ! {route.id}#{run} 第 {round_} 轮放弃："
-                        f"{type(exc).__name__}",
+                        f"{type(exc).__name__}: {detail}",
                         flush=True,
                     )
                 else:
-                    await asyncio.sleep(RETRY_BACKOFF * (attempt + 1))
+                    await asyncio.sleep(_backoff_for(exc, attempt))
         if raw is None:
             failures.append((route.id, run, round_))
             # 这一轮没有台词，后面几轮的历史因此缺一块。照跑不误：
@@ -677,7 +713,7 @@ async def measure_drift(
                 if attempt == ACT_RETRIES:
                     print(f"  ! 一条判定放弃：{type(exc).__name__}", flush=True)
                     return None
-                await asyncio.sleep(RETRY_BACKOFF * (attempt + 1))
+                await asyncio.sleep(_backoff_for(exc, attempt))
         return None
 
     results = await asyncio.gather(*(one(u, c) for u, c in pairs))
@@ -763,6 +799,33 @@ def main() -> int:
             concurrency=args.concurrency,
         )
     )
+
+    # **中途换过模型就不许写 dump**（2026-09-03，踩过一次才加的）。
+    #
+    # 那次是这样：内网网关的 token 在跑批跑到一半时用尽，ADR-0007 的自动降级
+    # 把后半批切到了公网模型，而这个脚本**照常把两个模型的台词写进了同一个
+    # 文件**——文件里没有任何一个字段说得清哪一行是谁说的。
+    #
+    # 代价是实打实的：这批语料量的是"老陈演得像不像人"，混了两个模型之后
+    # 每一个指标都不成立；而 `baseline-*.jsonl` 不在 git 里，
+    # **那次覆盖直接毁掉了上一份可用的基线**，且当时 token 已尽、重跑不了。
+    #
+    # 一份混模型的语料比没有语料坏得多：没有语料是看得见的空缺，
+    # 混模型的语料看起来一切正常，然后静默污染每一个下游指标
+    # （act_eval 自己的六道门槛、tools/cue_coverage.py 的线索覆盖率）。
+    # 所以这里宁可什么都不写，并且把话说清楚。
+    switched = bool(llm_client.status().get("switched"))
+    if args.dump and switched:
+        st = llm_client.status()
+        print(FAIL(
+            f"\n跑批中途换过模型（→ {st.get('active_provider')}/{st.get('active_model')}），"
+            f"**不写 {args.dump}**。\n"
+            f"  原因：{st.get('reason') or '见上面的降级提示'}\n"
+            f"  这一批是两个模型混出来的，量演绎质量不成立。"
+            f"修好网关后整批重跑；\n"
+            f"  已有的 baseline 不在 git 里，覆盖掉就找不回来了。"
+        ))
+        args.dump = None
 
     if args.dump:
         with args.dump.open("w", encoding="utf-8") as fh:

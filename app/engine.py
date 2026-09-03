@@ -416,15 +416,20 @@ async def play_turn(
         except Exception:  # noqa: BLE001 - 判分已经下发了，这一屏绝不能再丢
             logger.exception("结局台词生成失败，改用预置收尾")
             lines = []
+        # 生成失败或被安全层剥空时用预置收尾。逐轮台词降级还能靠
+        # "骗子本来就说车轱辘话"糊过去，最后一屏糊不过去：玩家会看到
+        # 判分跳完之后对话直接断掉，连一句收尾都没有。
+        #
+        # **收口成一个变量**（2026-09-03）：下面线索覆盖要数的是他真正说出口的
+        # 那批话，而复盘那一侧数的是下发出去的 `lines`——原先这里现算现发，
+        # 降级到预置收尾时两侧数的就不是同一批文本了。
+        final_lines = lines or list(ending_fallback(outcome.ending, scene))
         yield Event(
             "ending",
             {
                 "kind": outcome.ending.value,
                 "trust": outcome.state.trust,
-                # 生成失败或被安全层剥空时用预置收尾。逐轮台词降级还能靠
-                # "骗子本来就说车轱辘话"糊过去，最后一屏糊不过去：玩家会看到
-                # 判分跳完之后对话直接断掉，连一句收尾都没有。
-                "lines": lines or list(ending_fallback(outcome.ending, scene)),
+                "lines": final_lines,
                 # **本场景的效力矩阵，只在结局这一屏下发。**
                 #
                 # 这是全作品唯一无法被竞品复制的那条判据（「判的是用得是不是
@@ -441,6 +446,25 @@ async def play_turn(
                 "efficacy": {
                     key: {mood.value: row[mood] for mood in Mood}
                     for key, row in scene.efficacy.items()
+                },
+                # **线索覆盖：这一局他抖出来了几条。**
+                #
+                # 它**不给前端显示用**——复盘那一侧自己按同一批正则算一遍
+                # （`paintPhone`），两处都算是有意的：那边算是为了显示，
+                # 这里算是为了落数，而客户端报上来的数字不能当指标用。
+                #
+                # 定级是「机制自证指标」，不进成功标准（POSITIONING「成功标准」
+                # 那一节的主指标仍然只有放弃率与撤单率，参与度指标一律作废）。
+                # 它回答的是另一个问题：**这一局的信息差到底成立没有。**
+                # 一个打满十二轮、一条线索都没露出来的对局，无论结局落在哪一档
+                # 都是空转，而在此之前没有任何一个字段看得见这件事。
+                "clues": {
+                    "got": scene.clues_surfaced(
+                        [session.opening]
+                        + [record.reply for record in history]
+                        + final_lines
+                    ),
+                    "of": len(scene.diggable),
                 },
                 # **隐藏线索在这里下发，不在开局**（P1-14）。
                 # 他手机上那几条是这一局要挖的答案；开局响应里带着它，

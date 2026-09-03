@@ -81,6 +81,33 @@ def key_endings(mode: str, arm: str = "") -> str:
     return f"{_ns(mode)}:endings" + (f":{arm}" if arm else "")
 
 
+def _max_diggable(sid: str = "") -> int:
+    """这个场景有几条要挖的线索；不指定场景时取五个场景里最多的那个。
+
+    **从 `app.scenario` 派生，不在这儿抄一个 4。** 五个场景现在恰好都是 4 条，
+    抄一个常量今天完全正确，而加第六个场景、或者某个场景多写一条线索时，
+    它不会报任何错——只会让分布最后一档静默地漏掉。
+    与 tools/opening_diversity.py 顶部那条是同一类病。
+
+    查不到的 sid 落回全局最大值，**不返回 0**：0 会让 `clue_buckets` 只剩一格，
+    而前端拿它当数组用。上游 `scenario_for()` 本来就把未知场景兜到默认场景，
+    这一层跟着兜住，别让一个显示接口因为一个脏 sid 吐出半个结构。
+    """
+    from .scenario import SCENARIOS  # 局部导入：stats 被 guard/main 很早就拉起来
+
+    全部 = [len(s.diggable) for s in SCENARIOS]
+    命中 = [len(s.diggable) for s in SCENARIOS if s.id == sid]
+    return max(命中 or 全部, default=0)
+
+
+def key_clues(sid: str, mode: str = DataMode.LIVE.value) -> str:
+    """线索覆盖分布，**按场景分开存**，理由同信任度（见下面那段注）：
+    五个场景的可挖条数目前都是 4，但劝阻对象抖不抖得出来是各演各的，
+    混着算会把"这个场景的老陈哑了"平摊成"整体略低"。
+    """
+    return f"{_ns(mode)}:clues" + (f":{sid}" if sid else "")
+
+
 def data_mode(*, offline: bool, degraded: bool = False, source: str = "") -> str:
     """这条事件记进哪个口径。
 
@@ -250,6 +277,31 @@ class Stats:
         _spawn(self._hincr(KEY_ENDINGS, kind))
         _spawn(self._hincr(key_endings(mode, arm), kind))
 
+    def record_clues(
+        self, got: int, of: int, sid: str = "",
+        *, offline: Optional[bool] = None, source: str = "",
+    ) -> None:
+        """这一局劝阻对象抖出来了几条线索。**机制自证指标，不是成功指标。**
+
+        成功标准那一节的主指标仍然只有 24h 放弃率与撤单率
+        （docs/POSITIONING.md），参与度指标一律作废，这一条也不往那儿凑。
+        它回答的是一个别的、目前没有任何字段回答得了的问题：
+        **这一局的信息差成立没有？**
+
+        一个打满十二轮、一条线索都没露出来的对局，无论结局落在哪一档都是空转。
+        跨局看这个分布，就能把"玩家不会问"（是玩法）和"劝阻对象没长嘴"
+        （是缺陷）分开——离线跑批那一侧的同名指标是 `tools/cue_coverage.py`，
+        两边判据同源（`Scenario.clues_surfaced`）。
+
+        存的是**条数**，不是比例：分母写在键值里没有意义，五个场景目前都是 4，
+        真的不一样了也该看得见原始条数，而不是一个被除过的数。
+        """
+        if not (self.enabled and of > 0):
+            return
+        off = settings.offline_demo if offline is None else offline
+        mode = data_mode(offline=off, source=source)
+        _spawn(self._hincr(key_clues(sid, mode), str(max(0, min(got, of)))))
+
     def record_trust(
         self, kind: str, trust: int, sid: str = "",
         *, offline: Optional[bool] = None, source: str = "",
@@ -331,7 +383,9 @@ class Stats:
             pipe.hgetall(KEY_ENDINGS)
             pipe.hgetall(KEY_HITS)
             pipe.hgetall(key_trust(sid, mode))
-            games, turns, endings, hits, trust_buckets = await pipe.execute()
+            pipe.hgetall(key_clues(sid, mode))
+            (games, turns, endings, hits,
+             trust_buckets, clue_buckets) = await pipe.execute()
         except Exception as exc:  # noqa: BLE001
             logger.warning("统计读取失败: %s", exc)
             return {"available": False}
@@ -367,6 +421,19 @@ class Stats:
             # 不能直接拿 games 当样本数——games 含被拉黑、半途而废这些没入档的局。
             "trust_buckets": [
                 int(trust_buckets.get(str(i), 0)) for i in range(_TRUST_BUCKETS)
+            ],
+            # 线索覆盖分布：下标即"这一局他抖出来了几条"，长度 = 可挖条数 + 1
+            # （0 条也是一档，而且是最该看见的那一档）。
+            #
+            # **写进去了读不出来 = 没这个指标。** `record_clues` 先落的地，
+            # snapshot 这一侧当时漏了，于是它只是在 Redis 里堆着——
+            # 机制自证指标要能被人读到才算数（2026-09-03 补）。
+            #
+            # 不在这儿算均值或达标率：那是判断，而这个接口只吐分布。
+            # 判断留给读的人，和信任度那 20 个桶同一个规矩。
+            "clue_buckets": [
+                int(clue_buckets.get(str(i), 0))
+                for i in range(_max_diggable(sid) + 1)
             ],
             # 这份分布是哪个口径的。**看板上要能看见它**——
             # 一个不写明口径的百分位，读的人只能猜它跟谁比过

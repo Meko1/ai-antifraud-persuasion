@@ -12,7 +12,10 @@ import pytest
 from app.scenario import SCENARIOS
 from app.scoring import MAX_ROUNDS, Mood
 from tools.act_eval import (
+    RATE_LIMIT_BACKOFF,
+    RETRY_BACKOFF,
     Reply,
+    _backoff_for,
     is_echo_question,
     load_routes,
     summarize,
@@ -252,3 +255,39 @@ def test_括号动作按轮计且看的是模型原样吐出来的() -> None:
     report = summarize(replies, runs_per_route=1)
 
     assert report.stage_direction_rate == 0.5
+
+
+# ── 跑批容错 ──────────────────────────────────────────────────────────────
+
+
+def test_限流要退到下一个分钟窗口_其余错误照旧() -> None:
+    """RPM 是按分钟算的窗口，2 秒和 4 秒两次重试全落在同一个窗口里。
+
+    真实错误体长这样：
+    `RateLimitError: Error code: 429 - {... 该令牌对模型的 RPM 已经到达上限 ...}`
+    """
+    限流 = RuntimeError(
+        "流式调用失败: RateLimitError: Error code: 429 - "
+        "{'error': {'message': '该令牌对模型的RPM已经到达上限，当前值 31，RPM限制 30'}}"
+    )
+    瞬时故障 = RuntimeError(
+        "upstream connect error or disconnect/reset before headers"
+    )
+
+    # 抖动是乘上去的（1.0~1.5 倍），所以比区间而不是比等号
+    for attempt in range(2):
+        长 = _backoff_for(限流, attempt)
+        短 = _backoff_for(瞬时故障, attempt)
+        assert RATE_LIMIT_BACKOFF * (attempt + 1) <= 长 <= RATE_LIMIT_BACKOFF * (attempt + 1) * 1.5
+        assert RETRY_BACKOFF * (attempt + 1) <= 短 <= RETRY_BACKOFF * (attempt + 1) * 1.5
+        assert 长 > 短, "限流退得必须比瞬时故障久，否则退了等于没退"
+
+
+def test_退避带抖动_并发几路不会一起醒() -> None:
+    """不抖的话并发的几路会同时撞限流、同时退同样久、同时醒——
+    等于并发数从没降下来过，下一轮再一起撞一次。
+    """
+    限流 = RuntimeError("RateLimitError: 429")
+    样本 = {_backoff_for(限流, 0) for _ in range(50)}
+
+    assert len(样本) > 1, "退避是个定值，几路会一直同步"

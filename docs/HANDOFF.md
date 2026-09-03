@@ -454,7 +454,64 @@ speedrun 78.1% / parrot 0.4% / 加权被拉黑 9.4%）。
 **ben 那一份要重跑**，路线与代码都已就位，网关好了直接：
 
 ```bash
-.venv/bin/python -m tools.act_eval --scenario ben --concurrency 4 --dump baseline-ben-lines.jsonl
+.venv/bin/python -m tools.act_eval --scenario ben --concurrency 8 --dump baseline-ben-lines.jsonl
+```
+
+> **2026-09-03：并发从 4 改成 8，同时改了退避——两件事必须一起看。**
+>
+> 网关现在有 **RPM 限制 30**（错误体原话：`RateLimitError: 429 … 该令牌对模型
+> claude-opus-5 的 RPM 已经到达上限，当前值 31，RPM限制 30`）。而跑批的重试
+> 退避原本是 2 秒 / 4 秒，照"瞬时 5xx"定的——**RPM 是按分钟算的窗口，
+> 两次重试全落在同一个窗口里，退了等于没退。**
+>
+> 实测（每组 48 次调用）：
+>
+> | 并发 | 旧退避 | 新退避（`RATE_LIMIT_BACKOFF`，20 秒 + 抖动） |
+> |---|---|---|
+> | 3 | 挂 8% | — |
+> | 4 | 挂 23% | **0** |
+> | 6 | — | **0** |
+> | 8 | 挂 54% | **0**，且最快 |
+>
+> 抖动不是锦上添花：不抖的话并发几路会同时撞限流、同退同样久、同时醒，
+> 等于并发数从没降下来过。
+>
+> **失败在这个脚本里不是"少几个样本"那么轻**：`tools/cue_coverage.py` 数的是
+> 一局里线索抖出来没有，缺掉的轮次会把覆盖率系统性压低，而那正是要量的东西。
+>
+> 还有一条：跑批日志原先只印异常类型名，一批全灭时是几百行一模一样的
+> `LLMError`，看不出是限流、拒答还是网关挂了。**现在连消息一起印**——
+> 这次能定位到 RPM 就是靠它。
+
+### 2026-09-03 的事故：一次跑批毁掉了一份基线
+
+同一批重跑里，**内网网关的 token 在跑到一半时用尽**，ADR-0007 的自动降级
+把后半批切到了公网模型，而 `act_eval` **照常把两个模型的台词写进了同一个
+文件**——dump 里没有任何一个字段说得清哪一行是谁说的。
+
+结果：
+
+| 语料 | 状态 |
+|---|---|
+| `baseline-ben-lines.jsonl` | 干净（全程内网模型），948 行 |
+| `baseline-hang-lines.MIXED-MODEL.jsonl` | **作废**，跑到第 19/66 行就切了，大半份是公网模型 |
+| `baseline-chen-lines.MIXED-MODEL.jsonl` | **作废**，447/960 次失败，且它覆盖掉了 8-22 那份可用的 chen 基线 |
+
+**放大这次损失的是一件小事：`baseline-*.jsonl` 不在 git 里。**
+覆盖掉就找不回来，而当时 token 已尽、重跑不了。
+
+已加的防线（[`tools/act_eval.py`](../tools/act_eval.py)）：**跑批中途换过模型
+就拒绝写 dump**，并把原因印出来。理由是一份混模型的语料比没有语料坏得多——
+没有语料是看得见的空缺，混模型的语料看起来一切正常，然后静默污染每一个
+下游指标（act_eval 自己的六道门槛、`tools/cue_coverage.py` 的线索覆盖率）。
+
+**还欠着的**：网关 token 修好之后，`chen` / `hang` 两份要重跑，
+第六个场景 `shao` 的 §9.4 六道门槛也还没跑过（那一条要调模型）。
+
+```bash
+.venv/bin/python -m tools.act_eval --scenario chen --concurrency 8 --dump baseline-chen-lines.jsonl
+.venv/bin/python -m tools.act_eval --scenario hang --concurrency 8 --dump baseline-hang-lines.jsonl
+.venv/bin/python -m tools.act_eval --scenario shao --concurrency 8 --dump baseline-shao-lines.jsonl
 ```
 
 ### 二、标注集 155 → 189 条，第一次能按场景切分
@@ -1348,7 +1405,7 @@ TECH-DESIGN §1/§8、安全层金额测试（新增 `100000` 与 `28000` 两个
 三批全跑完了，命令与结果：
 
 ```
-.venv/bin/python -m tools.act_eval --dump baseline-lines.jsonl   # 960 次，约 23 分钟
+.venv/bin/python -m tools.act_eval --dump baseline-lines.jsonl   # 960 次（8-17 时约 23 分钟；网关加了 RPM 30 之后更久，见上文）
 .venv/bin/python -m tools.classify_eval                          # ×2，没有 temperature 了
 .venv/bin/python -m tools.act_eval --drift baseline-lines.jsonl  # 抽 200 条
 ```

@@ -295,6 +295,79 @@ def test_没有信任度记录时分布是全零数组而不是缺字段() -> No
     assert snap["trust_buckets"] == [0] * 20
 
 
+def test_线索覆盖分布写得进也读得出() -> None:
+    """**写进去了读不出来 = 没这个指标。**
+
+    `record_clues` 先落的地，`snapshot` 那一侧当时漏了，于是它只在 Redis 里
+    堆着——机制自证指标要能被人读到才算数。这条测试守的就是那个口子。
+
+    下标即"这一局他抖出来了几条"，所以长度是可挖条数 + 1：**0 条也是一档，
+    而且是最该看见的那一档**（打满十二轮一条线索都没露出来 = 这一局空转）。
+    """
+    async def scenario() -> Dict[str, Any]:
+        fake = FakeRedis()
+        s = _wired(fake)
+        s.record_clues(3, 4, "chen")
+        s.record_clues(3, 4, "chen")
+        s.record_clues(0, 4, "chen")
+        await _drain()
+        return await s.snapshot("chen")
+
+    snap = asyncio.run(scenario())
+    assert len(snap["clue_buckets"]) == 5, "四条可挖 → 五档（0~4）"
+    assert snap["clue_buckets"][3] == 2
+    assert snap["clue_buckets"][0] == 1
+    assert sum(snap["clue_buckets"]) == 3
+
+
+def test_没有线索记录时分布是全零数组而不是缺字段() -> None:
+    snap = asyncio.run(_wired(FakeRedis()).snapshot())
+    assert snap["clue_buckets"] == [0] * 5
+
+
+def test_线索覆盖按场景分开_且分母不许在代码里抄一个4() -> None:
+    """理由同信任度：各场景各演各的，混着算会把"某个场景哑了"平摊掉。
+
+    分母从 `app.scenario` 派生。五个场景现在恰好都是 4 条，
+    抄一个常量今天完全正确、加第六个场景时静默出错。
+    """
+    from app.scenario import SCENARIOS
+
+    async def scenario() -> Dict[str, Any]:
+        fake = FakeRedis()
+        s = _wired(fake)
+        s.record_clues(4, 4, "chen")
+        s.record_clues(1, 4, "zhou")
+        await _drain()
+        return {"chen": await s.snapshot("chen"), "zhou": await s.snapshot("zhou"),
+                "liu": await s.snapshot("liu")}
+
+    snaps = asyncio.run(scenario())
+    assert snaps["chen"]["clue_buckets"][4] == 1
+    assert sum(snaps["chen"]["clue_buckets"]) == 1
+    assert snaps["zhou"]["clue_buckets"][1] == 1
+    assert sum(snaps["liu"]["clue_buckets"]) == 0
+
+    for scene in SCENARIOS:
+        assert len(asyncio.run(_wired(FakeRedis()).snapshot(scene.id))["clue_buckets"]) \
+            == len(scene.diggable) + 1, f"{scene.id} 的分布长度没跟着场景走"
+
+
+def test_可挖条数为零的分母不写入() -> None:
+    """`of` 是 0 的时候一个字都不该落——那是个坏调用，不是一局零覆盖。
+
+    两者混进同一个桶，"0 条"那一档就再也说不清是他没说还是这局没线索。
+    """
+    async def scenario() -> Dict[str, Any]:
+        fake = FakeRedis()
+        s = _wired(fake)
+        s.record_clues(0, 0, "chen")
+        await _drain()
+        return await s.snapshot("chen")
+
+    assert sum(asyncio.run(scenario())["clue_buckets"]) == 0
+
+
 def test_信任度分布按场景分开互不串味() -> None:
     """复盘那句口径写的是「只比较相同客户、相同规则版本的有效记录」。
 

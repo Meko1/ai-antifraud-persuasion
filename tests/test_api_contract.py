@@ -147,7 +147,13 @@ class Test开局上下文:
         assert body["catalog"] == []
 
     def test_演示态给客户清单(self, client: TestClient) -> None:
-        assert len(client.post("/api/game/start").json()["catalog"]) == 5
+        """**条数从 SCENARIOS 派生，不写死。** 写死的话加一个场景就红一次，
+        而每一次红都只是在提醒"数字过期了"，不是在提醒契约破了。
+        """
+        from app.scenario import SCENARIOS
+
+        catalog = client.post("/api/game/start").json()["catalog"]
+        assert len(catalog) == len(SCENARIOS)
 
 
 class Test断流重试不重复记账:

@@ -12,7 +12,9 @@
 
 import pytest
 
+from app.scenario import SCENARIOS
 from app.trigger import (
+    _CANDIDATES,
     Arm,
     TriggerError,
     TriggerType,
@@ -48,9 +50,16 @@ class Test真实接入:
         去劝一个"清空持仓准备转账"的人，两件事在他眼里不是一回事，
         角色对调那个想法就落空了。
         """
+        # **候选名单从 `_CANDIDATES` 取，不在这儿手抄一份。**
+        # 抄一份的话，加第六个场景时这条测试会红，而红的原因不是它守的
+        # 那件事坏了，是清单过期了——一条会因为"东西变多了"而误报的测试，
+        # 下一个人只会把它改绿，顺手把真正的判据也一起改没。
+        候选 = _CANDIDATES[TriggerType.FUND_REDEMPTION]
+        assert 候选, "赎回类异动必须有候选场景"
+
         for _ in range(20):
             ctx = self._ctx(anomaly_id=f"AN-{_}")
-            assert ctx.sid in ("zhou", "liu"), f"赎回不该落到 {ctx.sid}"
+            assert ctx.sid in 候选, f"赎回不该落到 {ctx.sid}"
 
     def test_同一条异动永远是同一个场景(self) -> None:
         """用户刷新、App 重启、干预中断后回来——**客户不能凭空换人**。
@@ -154,8 +163,11 @@ class Test演示态:
 
 
 class Test客户清单:
-    def test_五个场景都在(self) -> None:
-        assert {c["id"] for c in catalog()} == {"chen", "zhou", "liu", "ben", "hang"}
+    def test_每个场景都在(self) -> None:
+        """**清单从 SCENARIOS 派生。** 原文手抄着五个 id，加第六个场景时
+        它会红，而红的原因是清单过期，不是清单漏人——那正是这条要守的反面。
+        """
+        assert {c["id"] for c in catalog()} == {s.id for s in SCENARIOS}
 
     def test_只给名字与一句话不给答案(self) -> None:
         """**挑客户是在选题目，不是在挑一道已经知道答案的题。**

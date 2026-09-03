@@ -78,10 +78,15 @@ class Arm(str, Enum):
 #   liu   杀猪盘      赎回理财 → 转到"投资平台"
 #   ben   刷单返利    清空账户 → 垫付本金
 #   hang  虚拟币量化   清仓持仓 → 转入交易所
+#   shao  健康恐吓     赎回稳健理财 → 交给"健康管理"机构
+#
+# **shao 挂在赎回与大额转出这两条上，不挂清仓。** 他赎的是持有九年的稳健理财、
+# 账户里还剩一万八，这跟"持仓一次性归零"不是同一个动作；
+# 而一个刚赎回理财的人去劝一个刚赎回理财的人，才对得上。
 _CANDIDATES: Dict[TriggerType, Tuple[str, ...]] = {
     TriggerType.FULL_LIQUIDATION: ("chen", "hang"),
-    TriggerType.FUND_REDEMPTION: ("zhou", "liu"),
-    TriggerType.LARGE_TRANSFER_OUT: ("chen", "ben"),
+    TriggerType.FUND_REDEMPTION: ("zhou", "liu", "shao"),
+    TriggerType.LARGE_TRANSFER_OUT: ("chen", "ben", "shao"),
     TriggerType.UNUSUAL_PAYEE: ("ben", "liu"),
     # 行为背离是个兜底型信号，它不指向某一种资金动作，所以候选是全集
     TriggerType.BEHAVIOR_DEVIATION: tuple(s.id for s in SCENARIOS),

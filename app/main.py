@@ -488,6 +488,14 @@ async def _turn_events(body: TurnRequest, gateway: ModelGateway) -> AsyncIterato
                         kind, event.data.get("trust", 0), session.sid,
                         offline=settings.offline_demo, source=session.origin.source,
                     )
+                    # 线索覆盖同理，按场景分桶。**引擎算好了才发**——
+                    # 这个数不接受客户端上报（app/stats.py `record_clues`）
+                    clues = event.data.get("clues") or {}
+                    stats.record_clues(
+                        int(clues.get("got", 0)), int(clues.get("of", 0)),
+                        session.sid,
+                        offline=settings.offline_demo, source=session.origin.source,
+                    )
             yield _sse(event.name, event.data)
         # 走完整轮才记消费。中途出错的那一张令牌必须还能重试——
         # 玩家刚说的那句话不该因为网关抖了一下就作废。

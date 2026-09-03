@@ -460,6 +460,46 @@ async def test_效力矩阵只随结局下发_对局中一个字都没有() -> N
     )
 
 
+async def test_线索覆盖随结局下发_且只数劝阻对象说过的话() -> None:
+    """机制自证指标（app/stats.py `record_clues`）：这一局信息差成立没有。
+
+    两条一起守：
+
+    - **数的是他那一侧。** 玩家把「王老师」三个字说烂了也不算——判据是
+      "他说没说过"，与复盘揭晓、与 tools/cue_coverage.py 同源。
+      这条最容易被后来的人改坏：把 `record.utterance` 一起喂进去，
+      指标当场变成"玩家提过几个关键词"，而那是另一件完全不同的事。
+    - **降级到预置收尾时，数的仍是真正发出去的那批台词**（`final_lines`），
+      不是那个已经空掉的 `lines`。
+    """
+    session = 最后一轮的session()
+    # 历史里那句回答带着「结婚」，命中老伴那条；玩家自己的话里塞满王老师，
+    # 它一条都不该算
+    session = dataclasses.replace(session, history=(
+        dataclasses.replace(session.history[0], utterance="王老师王老师王老师启航财经"),
+    ))
+    gateway = 结局生成失败的Gateway(
+        台词="……你让我想想。", 分类结果='{"hit_keys": [], "grounded": false}'
+    )
+
+    events = [
+        event
+        async for event in play_turn(
+            session, "陈叔，您先别转。", gateway=gateway, secret=SECRET, now=NOW,
+        )
+    ]
+
+    ending = next(e for e in events if e.name == "ending")
+    clues = ending.data["clues"]
+    assert clues["of"] == len(DEFAULT.diggable) == 4
+    # 「给孩子结婚用的」命中老伴那条；玩家嘴里的王老师/启航一条都不算
+    assert clues["got"] == DEFAULT.clues_surfaced(
+        [session.opening] + [r.reply for r in session.history] + ending.data["lines"]
+    )
+    assert clues["got"] >= 1, "历史里那句「给孩子结婚用的」该被数到"
+    assert clues["got"] < clues["of"], "玩家复读的王老师不许算进他头上"
+
+
 # ── 分类降级 ──────────────────────────────────────────────────────────────
 
 

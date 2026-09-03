@@ -58,7 +58,9 @@ fail() { echo "[package][ERROR] $*" >&2; exit 1; }
 command -v zip >/dev/null 2>&1 || fail "未找到 zip 命令"
 mkdir -p "${DIST_DIR}"
 
-ZIP_INCLUDES=(install.sh start.sh stop.sh requirements.txt app static)
+# tools/ 进包是为了让部署机上能跑运维脚本（如 loadtest.py 灌真实对局、
+# stats_seed.py 造排行榜样本），不是运行时依赖——app/ 启动不读这个目录。
+ZIP_INCLUDES=(install.sh start.sh stop.sh requirements.txt app static tools)
 
 if [ "${INCLUDE_SECRETS}" = "1" ]; then
   [ -f "${APP_DIR}/.env" ] \
