@@ -68,6 +68,49 @@
   <!-- `aria-labelledby` 指着标题栏那个 `strong`：face 1 上一个 heading 都没有
        （标题栏刻意不是 `h1`，理由见上），不给这一层名字的话，屏幕阅读器按标题
        列表导航时整屏是空的。face 2 的 `h1` 自己承担那一面的标题。 -->
+  <!-- ══ 入口卡：这个功能接进妙想之后住在哪 ══════════════════════════════
+       **默认不出现。** 只有带 `?from=miaoxiang` 时才会成为首屏——
+       冷开场必须是「按下确认前的最后一帧」那个转账屏，那是反复拍板过的钩子，
+       前面加一屏技能网格会把它磨钝。
+
+       它存在的理由只有一个：参赛评的是"这东西怎么接进真实业务流程"，
+       而这一屏一句话不用说就回答了那个问题。
+
+       **它是我们自己画的一屏，不是妙想界面的截图。** 只放我们这一张卡，
+       不摆妙想别的技能——那样就成了伪造他们的产品页，而素材的规矩是
+       「画面全是真跑出来的」。这一屏是**设计提案**，用他们的视觉语言写，
+       不冒充他们的现状。 -->
+  <section class="screen entry-screen" id="entry" aria-labelledby="entryTitle">
+    <div class="osbar"><span>09:41</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <header class="appbar appbar-centered">
+      <strong>助手</strong>
+    </header>
+    <div class="entry-body">
+      <p class="entry-kicker">
+        <img src="static/assets/miaoxiang-mark.svg" alt="" width="18" height="18">
+        <span>妙想</span>
+      </p>
+      <h1 id="entryTitle">账户安全</h1>
+      <p class="entry-lead">转出前的最后一道，不打断交易主链路。</p>
+
+      <button class="entry-card" id="entryGo" type="button">
+        <span class="entry-icon" aria-hidden="true">
+          <img src="static/assets/miaoxiang-mark.svg" alt="" width="26" height="26">
+        </span>
+        <span class="entry-card-main">
+          <b>反诈演练</b>
+          <i>异动触发 · 十二轮角色对调</i>
+        </span>
+        <span class="entry-arrow" aria-hidden="true">↗</span>
+      </button>
+
+      <p class="entry-note">
+        <b>这一屏是设计，不是妙想的现状。</b>
+        它画的是这个作品接进妙想之后所处的位置；妙想目前没有上线这个技能。
+      </p>
+    </div>
+  </section>
+
   <section class="screen on transfer-screen" id="transfer" aria-labelledby="transferBar">
     <!-- 边缘警示晕染（2026-09-01）：风控命中的那一下，屏幕四边泛一圈红，
          500ms 快进快出，跟下面那块异动提示的两下脉冲同时起。

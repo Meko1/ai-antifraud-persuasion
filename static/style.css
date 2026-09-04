@@ -2853,3 +2853,100 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
   --danger: #b03b30;
   --success: #0d7350;
 }
+
+/* ══ 入口卡（?from=miaoxiang）══════════════════════════════════════════════
+ * 用妙想的视觉语言写我们自己的一屏：渐变底、白卡、渐变圆角方图标、重字重标题。
+ * 它跟外壳五屏共用同一套 token（下面那条把它并进 #opening 那组作用域）。
+ */
+#entry {
+  --paper: var(--mx-card);
+  --paper-strong: #ffffff;
+  --ink: var(--mx-ink);
+  --muted: var(--mx-muted);
+  --line: var(--mx-line);
+  background:
+    linear-gradient(180deg,
+      var(--mx-canvas-top) 0%,
+      var(--mx-canvas-mid) 42%,
+      var(--mx-canvas-bot) 100%);
+}
+#entry > .osbar,
+#entry > .appbar { background: transparent; border-bottom: 0; }
+
+.entry-body { flex: 1; min-height: 0; overflow-y: auto; padding: 26px 20px 22px; }
+
+.entry-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  color: var(--mx-brand);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.entry-kicker img { display: block; }
+
+#entryTitle {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  line-height: 1.2;
+}
+.entry-lead { margin: 10px 0 22px; color: var(--mx-muted); font-size: 14.5px; line-height: 1.7; }
+
+/* 技能卡本体。**它是唯一一张**——不摆妙想别的技能，那样就成了伪造他们的产品页 */
+.entry-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 15px;
+  border: 0;
+  border-radius: var(--mx-radius);
+  background: var(--mx-card);
+  box-shadow: var(--mx-shadow);
+  text-align: left;
+  transition: box-shadow 220ms var(--ease), transform 220ms var(--ease);
+}
+.entry-card:hover { box-shadow: var(--mx-shadow-lift); }
+.entry-card:active { transform: translateY(1px); }
+
+/* 妙想的图标是 3D 渐变圆角方，不是线性图标 */
+.entry-icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #eef1ff, #e3e9ff 60%, #e8f7f0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+.entry-card-main { flex: 1; min-width: 0; }
+.entry-card-main b { display: block; color: var(--mx-ink); font-size: 16.5px; font-weight: 750; }
+.entry-card-main i {
+  display: block;
+  margin-top: 4px;
+  color: var(--mx-muted);
+  font-style: normal;
+  font-size: 13px;
+}
+.entry-arrow { flex: none; color: var(--mx-brand); font-size: 17px; font-weight: 700; }
+
+/* **这一段不许删。** 它是这一屏能存在的条件：明写它是设计不是现状。
+   参赛材料的边界写在 docs/CONTEST.md 第五节——可以说"设计为接入妙想"，
+   不能说"妙想已上线这个功能"。 */
+.entry-note {
+  margin: 20px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .66);
+  color: var(--mx-muted);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.entry-note b { color: var(--mx-ink); font-weight: 700; }
+
+#entry ::selection { background: rgba(43, 92, 230, .16); }
+#entry :focus-visible { outline: 3px solid rgba(43, 92, 230, .34); outline-offset: 3px; }
