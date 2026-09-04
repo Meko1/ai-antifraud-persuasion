@@ -1,42 +1,15 @@
 :root {
   color-scheme: light;
 
-  --wx-bg: #ededed;        /* 会话列表与聊天背景 */
-  --wx-white: #ffffff;
-  --wx-green: #95ec69;     /* 自己发出的气泡 */
-  --wx-brand: #07c160;     /* 微信绿：按钮、进度 */
-  --wx-text: #191919;
-  --wx-sub: #b2b2b2;       /* 次要文字：时间、预览 */
-  --wx-gray: #7f7f7f;      /* 系统提示文字 */
-  --wx-line: #e3e3e3;
+  /* **这里只剩三个 token。** 2026-09-04 之前它有 21 个，其中 18 个在下面
+     两张表里被逐个盖掉了——留着不是无害的：它顶上写着 `--wx-green: #95ec69`，
+     读的人（包括写这段话的人）会以为聊天屏是微信绿，而实际生效的是
+     第二张表里的沙绿 `#dce8e1`。**一份读起来像真相、实际不生效的声明，
+     比没有更坏。** 现在只留真正没被盖掉的那三个。
+     色值本身没丢：微信那一套在最后一张表里，理由也写在那儿。 */
   --wx-field: #ededed;     /* 搜索框底色 */
-  --wx-red: #fa5151;       /* 未读红点、拒收 */
   --wx-pay: #fa9d3b;       /* 转账卡片橙 */
-  --wx-rise: #e64340;      /* 涨：信任上升 */
-  --wx-fall: #09bb07;      /* 跌：信任下降 */
-  --gold: #c9a227;         /* 游戏层专用 */
-
-  /* ── 同一批颜色的"能当正文用"的深色版 ────────────────────────────────
-   *
-   * 微信那几个灰是给**时间戳和会话预览**用的，当次要信息一闪而过没问题。
-   * 但复盘页拿它们写的是**正文**——图例、时机说明、每轮掉了多少分。
-   * 实测对白底的对比度：`--wx-sub` 2.12:1、`--wx-fall` 2.59:1、`--gold` 2.42:1，
-   * 而正常字号的门槛是 4.5:1。**三个都不到一半。**
-   *
-   * 做法是把"图形色"和"文字色"分开，而不是把整套灰调暗：
-   * K 线的蜡烛、劝住线那条金色虚线继续用鲜亮的原色（它们是大色块，
-   * 红涨绿跌正是这个产品的视觉根），小字一律换成下面这几个。
-   * 色相没动，看上去还是同一套颜色。
-   */
-  --wx-note: #6b6b6b;      /* 5.33:1 —— 复盘里的说明文字 */
-  --rise-text: #cc302d;    /* 5.21:1 —— 涨，小字用 */
-  --fall-text: #0a8006;    /* 5.12:1 —— 跌，小字用 */
-  --gold-text: #8a6d10;    /* 4.91:1 —— 游戏层，小字用 */
-
-  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
-    "Microsoft YaHei", "Source Han Sans SC", sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --ease: cubic-bezier(0.22, 0.8, 0.28, 1);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -1277,7 +1250,12 @@ body {
   /* #bd4f40 → #bb4e3f，2026-08-29：原值落在纸底上是 4.46:1，差 AA 的 4.5 一点点。
      它印着「资金异动 · 等待处理」和工作台那行异动摘要，两处都是正文级小字。
      保色相压到刚过线，肉眼并排看不出差别。 */
-  --signal: #bb4e3f;
+  /* #bd4f40 → #bb4e3f → #b14a3b。**每次调都是因为它脚下的底变了。**
+     8-29 那次是纸底（4.46→4.54）；2026-09-04 这次是因为它同时站到了两块新底上：
+     聊天区从 #eceeea 换成真微信的 #ededed，开场那一屏从纸底换成妙想渐变。
+     实测旧值在聊天灰上 4.20:1、在渐变顶 #e8ecfb 上 4.17:1，两处都掉出 AA。
+     新值三处全过：聊天灰 4.59、渐变顶 4.56、白卡 5.37。保色相，肉眼看不出差别。 */
+  --signal: #b14a3b;
   --signal-soft: #f8e9e5;
   --success: #245f4c;
   --success-soft: #e7f0eb;
@@ -1339,9 +1317,12 @@ body {
   --mx-canvas-bot: #fbfcfe;
   --mx-card: #ffffff;
   --mx-ink: #1a1a26;
-  /* 4.62:1，取自实拍副文字的观感但压到过 AA。实拍那个 #8a8a99 只有 3.4:1，
-     而这里要印的是复盘正文，不是时间戳 */
-  --mx-muted: #6f6f82;
+  /* **这个数是算出来的，不是估的**（2026-09-04 复核时发现原值写错了两次）。
+     它同时压在两种底上：白卡 5.37:1、渐变顶 #e8ecfb 4.56:1，两处都过 AA。
+     上一版是 #6f6f82，注释里写着 4.62:1——那个数是对着**白底**算的，
+     而 `.quiet`（「今日第 1 位客户」）恰恰印在渐变上，实测只有 4.17:1。
+     取值以**最差的那个底**为准，不是以最好的那个。 */
+  --mx-muted: #69697b;
   --mx-line: #e7eaf6;
   --mx-brand: #2b5ce6;
   /* logo 三叶的三个端点色，只用于品牌标记本身 */
@@ -1365,10 +1346,12 @@ body {
   --wx-green: #95ec69;     /* 自己发出的气泡 */
   --wx-brand: #07c160;
   --wx-text: #191919;
-  /* 真微信的时间戳灰是 #b2b2b2（白底 2.3:1）。这里压到 4.61:1——
-     同样是"退到背景里的小字"，肉眼在 13px 上分不出，但它过 AA。
-     **色相一格没动**，读起来仍然是微信那个灰。 */
-  --wx-sub: #8a8a8a;
+  /* 真微信的时间戳灰是 #b2b2b2（白底 2.3:1），这里压到过 AA。
+     **它实际印在哪，决定了拿哪个底去算**：`--wx-sub` 一处都不在聊天区里，
+     它印的是复盘揭晓的时间（`.row-time`）、逐轮那一列（`.round .no`）、
+     工作台时间（`.desk-time`）——全都在白卡上。白底实测 4.61:1。
+     （上一版取 #8a8a8a 并写着 4.61:1，那个数算错了，实际只有 3.45:1。） */
+  --wx-sub: #757575;
   --wx-gray: #7f7f7f;
   --wx-line: #e3e3e3;
   --wx-note: #6b6b6b;
@@ -2605,7 +2588,6 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 /* 妙想的卡：纯白、大圆角、柔阴影、**无描边**。
    实拍里卡片一条边框都没有——描边加阴影是"幽灵卡"，两者只留一个 */
 #home .ccard,
-#primer .keycard,
 .review .group,
 .review .card {
   border: 0;
@@ -2627,7 +2609,7 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
    四张功能卡浮在它下面。不是所有东西都进卡，进卡的是可以被读走的那部分。 */
 #opening .opening-record,
 #home .fact,
-#primer .keylist {
+#primer .primer-list {
   padding: 16px 18px;
   border: 0;
   border-radius: var(--mx-radius);
@@ -2638,9 +2620,7 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 /* 底部操作区浮在渐变上，不自带白条。
    原来那条 `border-top` + 纸底在渐变上会切出一块硬白，
    把"卡浮在底上"那个观感整个抵消掉 */
-#assignment .primary-foot,
 #opening .primary-foot,
-#home .primary-foot,
 #home .deskfoot,
 #primer .primary-foot,
 .review .primary-foot {
@@ -2652,9 +2632,7 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
    橙是东方财富的色，它只属于 `#transfer` 那一屏——玩家在东财 App 里
    按下的那一下。人被拦下来之后，接手的是妙想，按钮就该跟着换手。
    两个色在同一条流程里各自出现一次，交接看得见。 */
-#assignment .primary-action,
 #opening .primary-action,
-#home .primary-action,
 #home .deskcta,
 #primer .primary-action,
 .review .primary-action {
@@ -2663,8 +2641,6 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 }
 
 #opening .ghost-action,
-#home .ghost-action,
-#primer .ghost-action,
 .review .ghost-action {
   border: 0;
   background: rgba(255, 255, 255, .78);
@@ -2677,8 +2653,7 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 #opening .opening-rule { background: var(--mx-brand); }
 
 /* 顶栏那个头像方块：妙想的图标是渐变圆角方，不是纯色方 */
-#opening .brandmark,
-#home .brandmark {
+#opening .brandmark {
   border-radius: 9px;
   background: linear-gradient(135deg, var(--mx-violet), var(--mx-blue) 62%, var(--mx-mint));
   color: #fff;
@@ -2721,8 +2696,7 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
  * 色值照实拍单聊（2026-09-04）逐个取。
  */
 .chat-screen { background: var(--wx-bg) !important; }
-.chat-screen .osbar,
-.chat-screen .chat-head { background: var(--wx-bg); }
+.chat-screen .osbar { background: var(--wx-bg); }
 
 .bubble { background: var(--wx-white); box-shadow: none; }
 .msg.me .bubble { background: var(--wx-green); }
@@ -2747,7 +2721,12 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 }
 .chat-screen .composer button[type="submit"] {
   border-radius: 6px;
-  background: var(--wx-brand);
+  /* **不能直接用 --wx-brand。** 微信绿 #07c160 上压白字只有 2.38:1，
+     连大字号的 3:1 都不到——而这是全屏最常按的那个键。
+     压到 #048743（白字 4.61:1）：还是微信那支绿的色相，深一档，
+     读起来像"按下去的那一档"，不像换了个品牌。
+     **只动这个键**，`--wx-brand` 本身不改：它还印着别处的绿点与进度。 */
+  background: #048743;
 }
 .chat-screen .composer button[type="submit"]:disabled { opacity: .45; }
 /* 「钥匙」那个辅助键不是微信的东西，让它退到底色里，别跟发送键抢 */
@@ -2868,7 +2847,7 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 /* 中间档与最差档那两支色：**语义一格不动**（琥珀=没赢透、红=最差），
    只把色相往冷里挪一格。原来的 `--pending: #8a6529` 是纸世界的暖褐，
    压在蓝紫底上发闷，读起来像"这块脏了"而不是"这一档一般"。
-   对比度都重新量过：琥珀 5.02:1、红 5.31:1，白底正文级都过 AA。 */
+   对比度实测（白卡底）：琥珀 5.27:1、红 5.98:1、绿 5.86:1，正文级都过 AA。 */
 .review {
   --pending: #96601a;
   --danger: #b03b30;

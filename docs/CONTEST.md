@@ -359,7 +359,7 @@ AI 平台，是主动表明生态归属，不是蹭外部商标。
 ### 不用动的（demo 主角，两万局标定过）
 
 - 判分引擎 [`app/scoring.py`](../app/scoring.py)（685 行，纯函数，可离线重跑）
-- 六个场景 [`app/scenario.py`](../app/scenario.py)（2040 行，剧本/人格/台词/效力矩阵覆写全在一处）
+- 六个场景 [`app/scenario.py`](../app/scenario.py)（2041 行，剧本/人格/台词/效力矩阵覆写全在一处）
 - 28 个人格变体 [`app/persona.py`](../app/persona.py)（962 行）
 - 现有的对局流程、复盘、分享卡（分享卡内容本身另有问题，见
   POSITIONING-CONSISTENCY-AUDIT §三 P0-1，
