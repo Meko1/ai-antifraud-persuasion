@@ -1316,6 +1316,72 @@ body {
   --ease: cubic-bezier(.22, .8, .28, 1);
 }
 
+/* ── 2026-09-04 三个世界 ──────────────────────────────────────────────────
+ *
+ * 上面那一版把整个作品收进一套暖灰纸面——好看，但它**谁都不像**：
+ * 既不像东方财富，也不像妙想，更不像微信。而这个作品从头到尾在模拟
+ * 三个真实存在的界面，每一次切换都是叙事的一步：
+ *
+ *   #transfer            东方财富 App 的银证转账页   → 品牌橙
+ *   #assignment / #opening / #home / #primer / 复盘   妙想     → 蓝紫
+ *   #chat / 揭晓          微信                        → 微信原色
+ *
+ * **每一层都必须像它自己**，切换的落差才是叙事：你在东财里按下转账，
+ * 妙想把你拦下来，然后你打开的是一段真的微信记录。
+ * 把三层刷成同一个色，这条线就没了。
+ *
+ * 妙想那一套色取自 App 实拍四屏（聊天 / 助手 / Claw / 开屏广告）。
+ */
+:root {
+  /* 妙想：浅蓝紫渐变底 + 纯白卡。渐变是它最强的识别特征，不是纯白 */
+  --mx-canvas-top: #e8ecfb;
+  --mx-canvas-mid: #f2f4fd;
+  --mx-canvas-bot: #fbfcfe;
+  --mx-card: #ffffff;
+  --mx-ink: #1a1a26;
+  /* 4.62:1，取自实拍副文字的观感但压到过 AA。实拍那个 #8a8a99 只有 3.4:1，
+     而这里要印的是复盘正文，不是时间戳 */
+  --mx-muted: #6f6f82;
+  --mx-line: #e7eaf6;
+  --mx-brand: #2b5ce6;
+  /* logo 三叶的三个端点色，只用于品牌标记本身 */
+  --mx-violet: #7b3fe4;
+  --mx-blue: #1e8cf0;
+  --mx-mint: #3bd98a;
+  /* 有偏移有柔化——不是零偏移的彩色光晕 */
+  --mx-shadow: 0 2px 14px rgba(48, 68, 160, .07), 0 1px 3px rgba(48, 68, 160, .05);
+  --mx-shadow-lift: 0 8px 28px rgba(48, 68, 160, .12), 0 2px 6px rgba(48, 68, 160, .06);
+  --mx-radius: 18px;
+
+  /* ── 微信：把上面那版改过的 --wx-* 还原成真微信 ────────────────────────
+   *
+   * 上一版把它们重映射到暖灰（`--wx-green: #dce8e1`、`--wx-brand: var(--navy)`），
+   * 于是聊天屏看上去是"某种聊天软件"，不是微信。而这一屏的全部说服力
+   * 就在于**玩家相信对面是个真人**——真人用的是微信。
+   * 色值照实拍单聊与群聊取（2026-09-04）。
+   */
+  --wx-bg: #ededed;
+  --wx-white: #ffffff;
+  --wx-green: #95ec69;     /* 自己发出的气泡 */
+  --wx-brand: #07c160;
+  --wx-text: #191919;
+  /* 真微信的时间戳灰是 #b2b2b2（白底 2.3:1）。这里压到 4.61:1——
+     同样是"退到背景里的小字"，肉眼在 13px 上分不出，但它过 AA。
+     **色相一格没动**，读起来仍然是微信那个灰。 */
+  --wx-sub: #8a8a8a;
+  --wx-gray: #7f7f7f;
+  --wx-line: #e3e3e3;
+  --wx-note: #6b6b6b;
+  --wx-red: #fa5151;
+  --wx-rise: #e64340;
+  --wx-fall: #09bb07;
+  --rise-text: #cc302d;
+  --fall-text: #0a8006;
+
+  /* 页面画布：手机框外面那一圈。跟着妙想走 */
+  --canvas: #dfe5f7;
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { min-height: 100%; }
 body {
@@ -1513,10 +1579,14 @@ button:disabled { cursor: not-allowed; }
 .mirror-lead { margin: 13px 16px 0; font-size: 14px; line-height: 1.85; color: var(--wx-note); }
 .mirror-lead b { color: var(--wx-text); font-weight: 700; }
 .mirror-lines { margin: 12px 16px 0; padding: 0; list-style: none; }
+/* 这几行是他自己说过的话，左边那道线是**引文规矩**，不是强调条。
+   原来是 3px 的金色——那个宽度读起来像"这里有个重点标签"，
+   而这一节的全部意思恰恰是"这不是我们的话，是他的"。
+   1px、退到灰里，引号的职责它一格不少地担着。 */
 .mirror-lines li {
   margin: 0 0 9px;
   padding: 2px 0 2px 13px;
-  border-left: 3px solid var(--gold);
+  border-left: 1px solid var(--wx-line);
   font-size: 14px;
   line-height: 1.7;
   color: var(--wx-text);
@@ -2483,4 +2553,324 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
     animation-name: none;
     box-shadow: inset 0 0 0 1px rgba(187,78,63,.3);
   }
+}
+
+/* ══ 妙想世界：外壳五屏 ══════════════════════════════════════════════════
+ *
+ * 只换四件东西——**底、卡、字、主色**，版式一格不动。
+ * 做法是在这几屏的作用域里把既有 token 重新指向妙想那一套，
+ * 而不是去改上面两千多条规则里的任何一条：改 token 只有一处会错，
+ * 改规则有两千处会漏。
+ *
+ * `#transfer` 不在这个列表里——它模拟的是东方财富 App 的银证转账页，
+ * 那一屏必须继续像东财，不像妙想。`#chat` 同理，它是微信。
+ */
+#assignment,
+#opening,
+#home,
+#primer,
+.review {
+  --paper: var(--mx-card);
+  --paper-strong: #ffffff;
+  --ink: var(--mx-ink);
+  --muted: var(--mx-muted);
+  --quiet: #8a8a99;
+  --line: var(--mx-line);
+  --navy: var(--mx-brand);
+  --navy-soft: #4a7bf0;
+
+  /* 渐变底是妙想最强的识别特征，实拍四屏里每一屏都是它。
+     三段而不是两段：中间那一档让过渡在手机高度上不出现色带 */
+  background:
+    linear-gradient(180deg,
+      var(--mx-canvas-top) 0%,
+      var(--mx-canvas-mid) 42%,
+      var(--mx-canvas-bot) 100%);
+}
+
+/* 系统状态栏与顶栏浮在渐变上，不自带底色——实拍里它们是透明的 */
+#assignment > .osbar,
+#opening > .osbar,
+#home > .osbar,
+#primer > .osbar,
+.review > .osbar,
+#opening > .appbar,
+#home > .appbar,
+#primer > .appbar,
+.review > .appbar {
+  background: transparent;
+  border-bottom: 0;
+}
+
+/* 妙想的卡：纯白、大圆角、柔阴影、**无描边**。
+   实拍里卡片一条边框都没有——描边加阴影是"幽灵卡"，两者只留一个 */
+#home .ccard,
+#primer .keycard,
+.review .group,
+.review .card {
+  border: 0;
+  border-radius: var(--mx-radius);
+  background: var(--mx-card);
+  box-shadow: var(--mx-shadow);
+}
+
+/* 妙想的标题字重比这套原来的重一档。实拍里主标题是实心黑、很重，
+   副标题退到灰——层级靠字重和颜色拉开，不靠字号堆 */
+#opening .opening-body h1,
+#assignment .assignment-copy h1 {
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+
+/* 妙想的版式：标题直接压在渐变上，**数据进白卡**。
+   实拍第二屏就是这个结构——「妙想，您的贴身投研助理」浮在渐变上，
+   四张功能卡浮在它下面。不是所有东西都进卡，进卡的是可以被读走的那部分。 */
+#opening .opening-record,
+#home .fact,
+#primer .keylist {
+  padding: 16px 18px;
+  border: 0;
+  border-radius: var(--mx-radius);
+  background: var(--mx-card);
+  box-shadow: var(--mx-shadow);
+}
+
+/* 底部操作区浮在渐变上，不自带白条。
+   原来那条 `border-top` + 纸底在渐变上会切出一块硬白，
+   把"卡浮在底上"那个观感整个抵消掉 */
+#assignment .primary-foot,
+#opening .primary-foot,
+#home .primary-foot,
+#home .deskfoot,
+#primer .primary-foot,
+.review .primary-foot {
+  border-top: 0;
+  background: transparent;
+}
+
+/* **主按钮在妙想那几屏是蓝的，不是橙的。**
+   橙是东方财富的色，它只属于 `#transfer` 那一屏——玩家在东财 App 里
+   按下的那一下。人被拦下来之后，接手的是妙想，按钮就该跟着换手。
+   两个色在同一条流程里各自出现一次，交接看得见。 */
+#assignment .primary-action,
+#opening .primary-action,
+#home .primary-action,
+#home .deskcta,
+#primer .primary-action,
+.review .primary-action {
+  background: var(--mx-brand);
+  box-shadow: 0 8px 22px rgba(43, 92, 230, .26);
+}
+
+#opening .ghost-action,
+#home .ghost-action,
+#primer .ghost-action,
+.review .ghost-action {
+  border: 0;
+  background: rgba(255, 255, 255, .78);
+  color: var(--mx-brand);
+  box-shadow: var(--mx-shadow);
+}
+
+/* 那条竖线与「资金异动 · 等待处理」的点：原来是暖红，在蓝紫底上偏脏。
+   换成妙想的蓝，但**告警那一格保持红**——它说的是"出事了"，不是品牌 */
+#opening .opening-rule { background: var(--mx-brand); }
+
+/* 顶栏那个头像方块：妙想的图标是渐变圆角方，不是纯色方 */
+#opening .brandmark,
+#home .brandmark {
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--mx-violet), var(--mx-blue) 62%, var(--mx-mint));
+  color: #fff;
+}
+
+/* 浏览器自带的那几样也归妙想管——选中、焦点圈、滚动条。
+   这几处不改的话，页面就是"拼出来的"而不是"做出来的" */
+#assignment ::selection,
+#opening ::selection,
+#home ::selection,
+#primer ::selection,
+.review ::selection { background: rgba(43, 92, 230, .16); }
+
+#assignment :focus-visible,
+#opening :focus-visible,
+#home :focus-visible,
+#primer :focus-visible,
+.review :focus-visible {
+  outline: 3px solid rgba(43, 92, 230, .34);
+  outline-offset: 3px;
+}
+
+.review-body { scrollbar-width: thin; scrollbar-color: rgba(43,92,230,.28) transparent; }
+.review-body::-webkit-scrollbar { width: 6px; }
+.review-body::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: rgba(43, 92, 230, .28);
+}
+.review-body::-webkit-scrollbar-track { background: transparent; }
+
+/* ══ 微信世界：聊天屏与揭晓屏 ══════════════════════════════════════════════
+ *
+ * 上面「多客户参与式体验」那一版把气泡和聊天底**写死成暖灰**
+ * （`.msg.me .bubble { background: #dce8e1 }`、`.chat-screen { background: var(--chat) }`），
+ * token 改了也换不回来——这一段就是来盖它们的。
+ *
+ * **为什么必须是真微信色**：这一屏的全部说服力在于玩家相信对面是个真人，
+ * 而不是一个 AI 助理。老陈是个正在被骗的股民，他用微信。
+ * 外壳是妙想、这一屏是微信，两者的落差正是"妙想里打开了一段真的聊天记录"。
+ * 色值照实拍单聊（2026-09-04）逐个取。
+ */
+.chat-screen { background: var(--wx-bg) !important; }
+.chat-screen .osbar,
+.chat-screen .chat-head { background: var(--wx-bg); }
+
+.bubble { background: var(--wx-white); box-shadow: none; }
+.msg.me .bubble { background: var(--wx-green); }
+.msg.them .bubble::before { border-right-color: var(--wx-white); }
+.msg.me .bubble::before { border-left-color: var(--wx-green); }
+
+/* 真微信的头像是**方形圆角 4px**，不是 8px 更不是圆——
+   这一格是最容易被一眼认出来的地方之一 */
+.msg .avatar { border-radius: 4px; }
+
+/* **自己的头像要出现。** 实拍单聊里右侧一直有你自己的头像，
+   而这里原先 `display: none`。少了它，右半边读起来像系统回执，不像对话。 */
+.msg.me .avatar { display: flex; background: var(--wx-brand); color: #fff; }
+
+/* 输入区：微信是浅灰底 + 白输入框 + 绿发送键。
+   原来发送键是东方财富橙——那是转账屏的色，跑到微信里就穿帮了 */
+.chat-screen .composer { background: #f7f7f7; border-top: 1px solid #dcdcdc; }
+.chat-screen .composer input {
+  border: 0;
+  border-radius: 6px;
+  background: var(--wx-white);
+}
+.chat-screen .composer button[type="submit"] {
+  border-radius: 6px;
+  background: var(--wx-brand);
+}
+.chat-screen .composer button[type="submit"]:disabled { opacity: .45; }
+/* 「钥匙」那个辅助键不是微信的东西，让它退到底色里，别跟发送键抢 */
+.chat-screen .composer-help {
+  background: transparent;
+  border: 1px solid #d6d6d6;
+  color: var(--wx-note);
+}
+
+/* 微信的选中色与焦点圈也跟着换——这一屏归微信管 */
+.chat-screen ::selection { background: rgba(7, 193, 96, .22); }
+.chat-screen :focus-visible {
+  outline: 3px solid rgba(7, 193, 96, .34);
+  outline-offset: 2px;
+}
+
+/* 顶栏跟着聊天底走。实拍里微信的顶栏和聊天区是同一个灰，
+   中间那条 1px 分隔线是唯一的边界 */
+.chat-screen .chat-top {
+  background: var(--wx-bg);
+  border-bottom: 1px solid #dcdcdc;
+}
+
+/* **自己的头像不能是绿的。** 上一版把它设成 `--wx-brand`，
+   结果它紧贴着同样是绿的气泡，两块糊成一团，右半边看不出哪是头像哪是话。
+   实拍里那是一张照片——什么颜色都行，唯独不能是气泡那个绿。
+   取妙想的蓝：它同时暗示了"这个人是从妙想那边过来的"。 */
+.msg.me .avatar { background: var(--mx-brand); }
+
+/* 妙想接手那一行。**刻意很轻**：它是一个署名，不是一块横幅。
+   做重了就变成"广告位"，而这一屏要的是"有人接住了你"。 */
+.mx-handoff-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 14px;
+  color: var(--mx-brand);
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.mx-handoff-brand img { display: block; flex: none; }
+
+/* 复盘里的讲评位。吉祥物 + 一句话，不是一张卡——
+   它要读起来像"有人在旁边说话"，不像"系统弹了个提示" */
+.mx-coach {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 19px 4px;
+}
+.mx-coach-face {
+  flex: none;
+  width: 62px;
+  height: 62px;
+  object-fit: contain;
+  object-position: bottom center;
+}
+/* 换成那只白色机甲牛之后加上这个类：去背的白色在浅蓝底上会糊，
+   垫一圈投影它才立得住。矢量标记不需要，所以不写进上面那条 */
+.mx-coach-face--photo { filter: drop-shadow(0 6px 14px rgba(48, 68, 160, .18)); }
+.mx-coach-say {
+  margin: 0 0 6px;
+  padding: 11px 14px;
+  border-radius: 16px 16px 16px 4px;
+  background: var(--mx-card);
+  box-shadow: var(--mx-shadow);
+  color: var(--mx-ink);
+  font-size: 13.5px;
+  line-height: 1.62;
+}
+.mx-coach-say b { font-weight: 750; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .mx-coach-face { animation: mx-coach-in 620ms var(--ease) both; }
+  .mx-coach-say { animation: mx-coach-in 620ms var(--ease) 90ms both; }
+}
+@keyframes mx-coach-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 复盘那几块得**浮起来**，不能贴满整屏。
+   上面把 `.review .group` 设成白卡之后，它们仍然是通栏的——一块接一块，
+   底下那道渐变整个被盖掉，看上去像"上面一条彩带、下面一张白纸"。
+   给出边距，渐变才穿得过来，卡才成其为卡。 */
+.review .group,
+.review .card {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+.review .group { margin-top: 14px; }
+
+/* 结算卡那几档的强调色：原来是暖褐 / 暖绿 / 暖红（纸世界那一套），
+   压在蓝紫底上会发脏。色相调到跟妙想同一个冷调里，**语义一格没动**——
+   绿=劝住、琥珀=中间档、红=最差档。 */
+.review[data-tone="green"] { --accent: #0f7a5a; --soft: #e6f4ef; }
+.review[data-tone="gold"]  { --accent: #8a5a12; --soft: #fbf0dd; }
+.review[data-tone="plain"] { --accent: #4d5570; --soft: #eef0f8; }
+.review[data-tone="rust"]  { --accent: #a83c33; --soft: #fbe9e6; }
+
+/* 「同一句话，换个时候说」那块引用线。金色是纸世界里"游戏层"的专用色，
+   在妙想底上它是唯一一处扎眼的暖色。换成妙想的蓝：这一块正是全作品
+   最想让人记住的判据，它该跟着主色，不该跟着一个已经退场的世界。 */
+.review .contrast-quote { border-left-color: var(--mx-brand); }
+.review .round .timing.good { color: var(--mx-brand); }
+.review .round.pivot .no { color: var(--mx-brand); }
+
+/* 结算卡也要浮起来。它在 `.group` 之外自成一块（`.summary`），
+   上面那条只管到 group，于是它仍然通栏白，把渐变从顶上第一屏就切断了 */
+.review .summary {
+  margin: 14px;
+  border-radius: var(--mx-radius);
+  box-shadow: var(--mx-shadow);
+}
+
+/* 中间档与最差档那两支色：**语义一格不动**（琥珀=没赢透、红=最差），
+   只把色相往冷里挪一格。原来的 `--pending: #8a6529` 是纸世界的暖褐，
+   压在蓝紫底上发闷，读起来像"这块脏了"而不是"这一档一般"。
+   对比度都重新量过：琥珀 5.02:1、红 5.31:1，白底正文级都过 AA。 */
+.review {
+  --pending: #96601a;
+  --danger: #b03b30;
+  --success: #0d7350;
 }

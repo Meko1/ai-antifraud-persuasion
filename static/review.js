@@ -162,6 +162,24 @@ export function openReview() {
       <strong>本局复盘</strong>
       <span class="quiet" id="reviewScene"></span>
     </header>
+    <!-- 复盘这一屏是妙想在讲评——对局里那个人是老陈，讲评的不是他。
+         吉祥物只出现在这一处：它有真实职责（"这一局你差在哪"是 AI 该说的话），
+         **不进聊天屏**，进去老陈就变成机器人了。
+         默认用三叶标记（矢量，仓库自带）。要换成那只白色机甲牛，
+         把 PNG 放到 static/assets/miaoxiang-mascot.png，然后把下面这行的
+         src 改过去、class 加上 mx-coach-face--photo —— 只有这一处要改。
+
+         **不要写成"先请求 PNG，挂了再退回 SVG"**：素材不在时那是一次 404，
+         而 E2E 有一条"全程一条控制台报错都没有"，404 会让它当场红。
+         inline onerror 也不行——CSP 是 script-src 'self'，内联事件处理器被拦，
+         既不生效还多报一条安全错。两条都在 2026-09-04 实测栽过。
+
+         注意：这段注释在一个模板字符串里，**一个反引号都不能写**，
+         写了就把整个模板提前闭合，全站前端当场加载失败（同日栽过）。 -->
+    <div class="mx-coach">
+      <img class="mx-coach-face" src="static/assets/miaoxiang-mark.svg" alt="" width="62" height="62">
+      <p class="mx-coach-say">这一局我从头看到尾。<b>差的从来不是你说了什么，是什么时候说。</b></p>
+    </div>
     <div class="review-body">
       <!-- **第一屏只留五块，这是硬上限**（PIVOT-C-END §3.2）。
            它自己引用的那条研究就是这么说的：PUBG 后置屏 N=12 用户研究里，

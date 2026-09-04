@@ -1,0 +1,27 @@
+<!-- 妙想标记：三叶风车。
+     纯几何——三片同一个叶形绕中心 120° 各转一次，端点色取自 App 实拍
+     （紫 #7b3fe4 / 蓝 #1e8cf0 / 绿 #3bd98a）。
+     不是描摹位图，是可以逐个数值说清楚的形状，所以它进仓库。 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="妙想">
+  <defs>
+    <linearGradient id="mxA" x1="16" y1="16" x2="28" y2="4" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7b3fe4" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#7b3fe4"/>
+    </linearGradient>
+    <linearGradient id="mxB" x1="16" y1="16" x2="26.4" y2="26.4" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e8cf0" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#1e8cf0"/>
+    </linearGradient>
+    <linearGradient id="mxC" x1="16" y1="16" x2="4" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3bd98a" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#3bd98a"/>
+    </linearGradient>
+  </defs>
+  <!-- 一片叶：从中心出发，外缘走一段圆弧再收回中心 -->
+  <path d="M16 16 C16 8.8 21.8 3 29 3 C29 10.2 23.2 16 16 16 Z"
+        fill="url(#mxA)" transform="rotate(-15 16 16)"/>
+  <path d="M16 16 C16 8.8 21.8 3 29 3 C29 10.2 23.2 16 16 16 Z"
+        fill="url(#mxB)" transform="rotate(105 16 16)"/>
+  <path d="M16 16 C16 8.8 21.8 3 29 3 C29 10.2 23.2 16 16 16 Z"
+        fill="url(#mxC)" transform="rotate(225 16 16)"/>
+</svg>
