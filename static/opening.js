@@ -65,7 +65,22 @@ export function boot() {
   // location.reload()，每换一位就重演一遍签字，它就从"一次经历"退化成
   // "一段过场动画"——而过场动画是会被跳过的东西。
   transferAcked = Boolean(savedGame) || transferSeen();
-  showScreen(savedGame ? 'chat' : (transferAcked ? 'assignment' : 'transfer'));
+  // 入口卡：**只有带 `?from=miaoxiang` 才走这一屏**，而且只在真正的冷开场那一次。
+  //
+  // 默认流程一个像素不动是硬要求：冷开场必须是「按下确认前的最后一帧」那个
+  // 转账屏，前面加一屏技能网格会把整个钩子磨钝（这条在 8-31 拍板过）。
+  // 它是给参赛材料用的——评审问"这东西怎么接进真实业务"，那一屏一句话不用说
+  // 就答了；但它不该出现在任何一个真的要被拦下来的人面前。
+  //
+  // **不用 `URLSearchParams`**：前端单测跑在 `node:vm` 的极简沙箱里，
+  // 那里没有它（2026-09-04 实测挂了 39 项）。而那套沙箱的极简是有意的
+  // （harness.mjs 顶部三条约束），不该为一个装饰性入口去扩它。
+  // `location` 本身也要防：沙箱里同样可能没有。
+  const 查询 = typeof location === 'undefined' ? '' : (location.search || '');
+  const 走入口 = !savedGame && !transferAcked
+    && /[?&]from=miaoxiang(?:&|$)/.test(查询);
+  showScreen(走入口 ? 'entry'
+    : savedGame ? 'chat' : (transferAcked ? 'assignment' : 'transfer'));
   assignmentStartedAt = Date.now();
   ready = startSession();
   return ready;

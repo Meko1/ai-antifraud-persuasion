@@ -165,9 +165,14 @@ export function openReview() {
     <!-- 复盘这一屏是妙想在讲评——对局里那个人是老陈，讲评的不是他。
          吉祥物只出现在这一处：它有真实职责（"这一局你差在哪"是 AI 该说的话），
          **不进聊天屏**，进去老陈就变成机器人了。
-         默认用三叶标记（矢量，仓库自带）。要换成那只白色机甲牛，
-         把 PNG 放到 static/assets/miaoxiang-mascot.png，然后把下面这行的
-         src 改过去、class 加上 mx-coach-face--photo —— 只有这一处要改。
+         2026-09-04 换成了那只白色机甲牛（所有者提供的去背 PNG）。
+         原图 2000×2584 / 2.6MB，压到 232×300 / 85KB 再进仓库。
+
+         **槽位同日从 62 见方放到 68×88**：62 那个数是给三叶标记定的，
+         而这是一张**全身像**——塞进 62px 里脑袋只剩 28px，牛角完全看不出来，
+         那就只是一团白。68×88 是按 232:300 开的，不是方框：contain 在方框里
+         只会让它两侧各空 10px，白出来的那 20px 把它跟气泡推远，
+         看着不像"站在旁边说话"。底对齐之后牛脚正好踩在气泡下沿那条线上。
 
          **不要写成"先请求 PNG，挂了再退回 SVG"**：素材不在时那是一次 404，
          而 E2E 有一条"全程一条控制台报错都没有"，404 会让它当场红。
@@ -177,7 +182,8 @@ export function openReview() {
          注意：这段注释在一个模板字符串里，**一个反引号都不能写**，
          写了就把整个模板提前闭合，全站前端当场加载失败（同日栽过）。 -->
     <div class="mx-coach">
-      <img class="mx-coach-face" src="static/assets/miaoxiang-mark.svg" alt="" width="62" height="62">
+      <img class="mx-coach-face mx-coach-face--photo" src="static/assets/miaoxiang-mascot.png"
+           alt="" width="68" height="88">
       <p class="mx-coach-say">这一局我从头看到尾。<b>差的从来不是你说了什么，是什么时候说。</b></p>
     </div>
     <div class="review-body">
@@ -385,6 +391,15 @@ export function openReview() {
              想再打一遍某个场景不该靠反复重开去抽。 -->
         <button class="ghost-action wide" id="pickAnother" type="button"
                 aria-haspopup="dialog" hidden>换一位客户</button>
+        <!-- 收尾签名。**不放在 howscored 后面**：那一段在 details 里，
+             收起来的时候整块看不见，而署名恰恰是收起来也该在的东西。
+             用带字的竖版组合标，不是小三叶标——这是全局唯一一处
+             "从头到尾是谁在讲评"的落款，它值一个完整的标。
+             那句「设计为接入」的分寸不能松：写的是位置，不是妙想的现状。 -->
+        <p class="mx-sign mx-sign--foot">
+          <img src="static/assets/miaoxiang-lockup.png" alt="妙想" width="43" height="65">
+          <span>这一局的讲评由妙想生成<br>设计为接入妙想，非其现有功能</span>
+        </p>
       </div>
     </div>`;
 

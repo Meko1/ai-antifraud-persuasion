@@ -87,7 +87,7 @@
     </header>
     <div class="entry-body">
       <p class="entry-kicker">
-        <img src="static/assets/miaoxiang-mark.svg" alt="" width="18" height="18">
+        <img src="static/assets/miaoxiang-mark.png" alt="" width="18" height="18">
         <span>妙想</span>
       </p>
       <h1 id="entryTitle">账户安全</h1>
@@ -95,7 +95,7 @@
 
       <button class="entry-card" id="entryGo" type="button">
         <span class="entry-icon" aria-hidden="true">
-          <img src="static/assets/miaoxiang-mark.svg" alt="" width="26" height="26">
+          <img src="static/assets/miaoxiang-mark.png" alt="" width="26" height="26">
         </span>
         <span class="entry-card-main">
           <b>反诈演练</b>
@@ -164,7 +164,7 @@
            从这一行往下就不是它了——是妙想把这笔转账拦了下来。
            不写"妙想已上线这个功能"（它没有），只写是谁在说话。 -->
       <p class="mx-handoff-brand">
-        <img src="static/assets/miaoxiang-mark.svg" alt="" width="20" height="20">
+        <img src="static/assets/miaoxiang-mark.png" alt="" width="20" height="20">
         <span>妙想 · 账户安全</span>
       </p>
       <h1 id="handoffTitle" tabindex="-1">这笔转账没有提交。</h1>
@@ -240,6 +240,14 @@
         <div class="assignment-progress" id="assignmentProgress"><i></i></div>
         <button class="retry-start" id="retryStart" type="button" hidden>重新连接</button>
       </div>
+      <!-- 这一屏是妙想在干活的那一屏（正在接高风险队列），此前却一处署名都没有。
+           竖版组合标当签名——**它是署名，不是横幅**，跟 `.mx-handoff-brand`
+           那条是同一条规矩：做重了就成广告位，而这一屏要的是"有人在替你看着"。
+           宽高按 170:257 的原始比例给（43:65 差 0.01%），不许凑整——
+           凑整就是把所有者给的标压扁一点点。 -->
+      <p class="mx-sign">
+        <img src="static/assets/miaoxiang-lockup.png" alt="妙想" width="43" height="65">
+      </p>
     </div>
   </section>
 
@@ -336,7 +344,9 @@
       <button class="primary-action" id="primerGo" type="button">知道了，开始</button>
       <!-- 不许诺"打分"：复盘自己写着"它是画像，不是成绩单"（review.js 那句
            howscored）。这里先许一个分数，等于把复盘拉回成绩单。 -->
-      <p>复盘里会逐条告诉你，每一把用得是不是时候</p>
+      <!-- 这一句是妙想在许诺复盘会讲评，前面挂个标就是让"谁在许诺"看得见。
+           15px 不是随便定的：这行字 12px，标比字略大一档才不像标点。 -->
+      <p><img class="foot-mark" src="static/assets/miaoxiang-mark.png" alt="" width="15" height="15">复盘里会逐条告诉你，每一把用得是不是时候</p>
     </div>
   </section>
 

@@ -70,6 +70,9 @@ boot();
 
 // 转账确认那一屏的两步：签字 → 被拦下来 → 坐到对面。
 // 两步都在同一屏上完成，理由见 index.html 那一段注释。
+// 入口卡只在 `?from=miaoxiang` 时是首屏（opening.js `boot()`）。
+// 点它就落到正常冷开场，后面一步不差。
+$('entryGo')?.addEventListener('click', () => showScreen('transfer'));
 $('transferGo')?.addEventListener('click', confirmTransfer);
 $('handoffGo')?.addEventListener('click', ackTransfer);
 

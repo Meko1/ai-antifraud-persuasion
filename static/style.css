@@ -2779,10 +2779,14 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
   gap: 12px;
   padding: 14px 19px 4px;
 }
+/* 68×88，不是 62 见方（2026-09-04 放大）。62 那个数是给三叶标记定的，
+   换上那只全身机甲牛之后塞不下：脑袋只剩 28px，牛角完全看不出来。
+   槽位按素材的 232:300 开，contain 才不会在两侧各留 10px 白——
+   那 20px 会把它跟气泡推远，看着不像站在旁边说话。 */
 .mx-coach-face {
   flex: none;
-  width: 62px;
-  height: 62px;
+  width: 68px;
+  height: 88px;
   object-fit: contain;
   object-position: bottom center;
 }
@@ -2808,6 +2812,50 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 @keyframes mx-coach-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
+}
+
+/* ── 妙想落款 ─────────────────────────────────────────────────────────
+   带「妙想」二字的竖版组合标，只用在两处：等待屏底、复盘尾。
+   跟 `.mx-handoff-brand` 是同一条规矩的两种排法——那条是行内署名（进行时，
+   "现在是谁在跟你说话"），这条是落款（完成时，"这一屏是谁出的"）。
+
+   **它是落款，不是页脚横幅**：不给底色、不给分隔线、不居中放大。
+   一给底色就成了"合作方 logo 墙"，而这个作品从头到尾只有一个立场——
+   妙想是把你拦下来的那一方，不是赞助商。
+   透明度压到 .72：全彩的标在浅蓝渐变上比正文还抢眼，那就本末倒置了。
+
+   **`.72` 只给 img，绝不给整个 `.mx-sign`。** 写在容器上会连旁边那行字一起压：
+   `--mx-muted` 本来在渐变顶上是 4.56:1（刚过 AA），乘 .72 之后实际渲染成
+   `#9292a0`，只剩 **3.02:1** —— 11.5px 的字要 4.5:1，当场掉出去。
+   装饰性的标没有对比度门槛，字有，两者不能共用一个 opacity。 */
+.mx-sign {
+  margin: 22px 0 0;
+  display: flex;
+  justify-content: center;
+}
+.mx-sign img { display: block; flex: none; opacity: .72; }
+
+/* 复盘那一处多一行小字，改成横排：竖标 + 右边两行说明。
+   那句「设计为接入」是事实准确性要求（DESIGN.md 边界一节），
+   不是可选的装饰文案——删它之前先去读那一节。 */
+.mx-sign--foot {
+  margin: 22px 19px 20px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 11px;
+}
+.mx-sign--foot span {
+  color: var(--mx-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* 「知道了，开始」下面那行小字前面的标。15px 配 12px 的字：
+   标比字略大一档才读得出是个标，等大就成了标点。 */
+.foot-mark {
+  display: inline-block;
+  vertical-align: -3px;
+  margin-right: 5px;
 }
 
 /* 复盘那几块得**浮起来**，不能贴满整屏。

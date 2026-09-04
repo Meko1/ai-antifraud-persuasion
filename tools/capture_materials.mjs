@@ -69,6 +69,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function 存图(call, 文件名, 设备 = PHONE) {
   await call('Emulation.setDeviceMetricsOverride', 设备);
+  // **拍之前把焦点摘掉。** 复盘那一屏会把焦点送到标题上（为屏幕阅读器，
+  // 见 opening.js 里同一条做法），而无头环境下 Chrome 认为这是键盘导航，
+  // 于是标题外面套着一圈蓝色焦点框被拍进图里。
+  // 真人用鼠标点进来是看不到那圈的——素材要拍的是他看到的那一版。
+  // **只影响截图，不改产品行为**：焦点该送还是送，只是拍照前松开。
+  await evaluate(call, `document.activeElement && document.activeElement.blur()`);
   await sleep(250); // 让重排与过渡动画落定，否则会截到半途的透明度
   const { data } = await call('Page.captureScreenshot', { format: 'png' });
   const 路径 = path.join(OUT, 文件名);
@@ -256,6 +262,23 @@ async function main() {
     await sleep(600);
 
     console.log('\n手机版式原图：');
+
+    // 入口卡。**它不在默认流程里**（只有 `?from=miaoxiang` 才是首屏，
+    // 见 opening.js `boot()`），所以要单独跑一趟带参数的首屏来拍。
+    // 拍完再回到不带参数的正常流程，后面每一张都跟改动前一模一样。
+    //
+    // 它排在最前面是因为参赛评的是"这东西怎么接进真实业务"，
+    // 而这一张一句话不用说就答了那个问题。
+    await call('Page.navigate', { url: `${server.base}/?from=miaoxiang` });
+    await waitFor(call, `document.getElementById('entry')?.classList.contains('on')`,
+      '妙想入口卡', 25000);
+    await sleep(500);
+    await 存图(call, 'phone-00-妙想入口.png');
+    await 开局前钉住老陈(call, server.base);
+    await waitFor(call, `document.getElementById('transfer')?.classList.contains('on')`,
+      '转账确认屏（回到正常流程）', 25000);
+    await sleep(500);
+
     const 转账 = await 存图(call, 'phone-01-转账确认.png');
 
     await evaluate(call, `document.getElementById('transferGo').click()`);
