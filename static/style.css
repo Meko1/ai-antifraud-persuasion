@@ -1771,8 +1771,18 @@ button:disabled { cursor: not-allowed; }
 }
 
 /* 拦截那一面。同一屏，换一副面孔——转账被拦下来这件事要发生在
-   刚才那张单子上，切个屏就变成两件不相干的事了。 */
-.handoff-body { justify-content: center; }
+   刚才那张单子上，切个屏就变成两件不相干的事了。
+
+   **`justify-content: center` 改成压缩伪元素**（2026-09-05），跟
+   `.opening-body`（上面 1817 行那条注）同一条修法：这一面文字比
+   `.opening-body` 更长（品牌行+标题+两段+落款+角色说明），矮屏上必超，
+   而 `justify-content: center` 在 `overflow-y: auto` 的盒子里超出时会把
+   顶部裁到滚不回来——品牌行「妙想·账户安全」和标题「这笔转账没有提交」
+   正好是被裁的那两个，用户看到的第一屏直接空了个开头。伪元素撑不满时
+   自己塌成 0，内容退回顶部对齐、正常往下滚，不再赌"这一面文字够不够短"。 */
+.handoff-body::before,
+.handoff-body::after { content: ''; flex: 1 1 0; min-height: 0; }
+.handoff-body > * { flex: none; }
 .handoff-body h1 {
   margin: 0 0 18px;
   font-size: 26px;
