@@ -32,7 +32,7 @@ from .scenario import scenario_for
 from .gateway import ModelGateway
 from .llm import LLMError, llm_client
 from .offline import OfflineGateway
-from .outcome import OutcomeError, outcome_store, parse_report
+from .outcome import OutcomeError, RecordResult, outcome_store, parse_report
 from .provenance import versions
 from .scoring import MAX_ROUNDS, WIN_THRESHOLD, is_finished, mood_for
 from .state_token import (
@@ -649,9 +649,9 @@ async def api_stats(sid: str = "", source: str = "") -> JSONResponse:
     `source` 决定读哪个口径（演示态 / 真实接入）。同样是为了让那句话成立——
     比的必须是同一类对局，见 `stats.snapshot`。
 
-    `outcomes` 是 24 小时后回传的结果（app/outcome.py），按 arm 分组；
-    与其余字段是两个独立的数据源，**没有回传就是 `available: false`**，
-    不代表对局统计本身出了问题。
+    `outcomes` 是 24 小时后回传的结果（app/outcome.py），按 arm 分组，
+    `by_trigger` 再按 `trigger_type × arm` 分一层；与其余字段是两个独立的
+    数据源，**没有回传就是 `available: false`**，不代表对局统计本身出了问题。
     """
     body = await stats.snapshot(sid, source)
     body["outcomes"] = await outcome_store.snapshot()
@@ -780,8 +780,8 @@ async def outcome_report(request: Request, body: OutcomeReportBody) -> JSONRespo
             {"code": "invalid_report", "message": str(exc)}, status_code=400
         )
 
-    recorded = await outcome_store.record(report)
-    if not recorded:
+    result = await outcome_store.record(report)
+    if result is RecordResult.UNAVAILABLE:
         # 这份数据没有第二个来源：Redis 不可用时要让宿主 App 知道重试，
         # 而不是回一个 200 假装记下来了（那样这条回传就永久丢了）
         return JSONResponse(
@@ -791,7 +791,24 @@ async def outcome_report(request: Request, body: OutcomeReportBody) -> JSONRespo
             },
             status_code=503,
         )
-    return JSONResponse({"ok": True, "arm": report.arm.value})
+    if result is RecordResult.CONFLICT:
+        # 同一条异动已经记过一个不同的结果——静默覆盖比丢一笔更糟：
+        # 会把两个互相矛盾的状态里的一个悄悄抹掉，而调用方毫无察觉
+        return JSONResponse(
+            {
+                "code": "outcome_conflict",
+                "message": "这条异动已记过一个不同的结果，本次回传被拒绝、不会覆盖",
+            },
+            status_code=409,
+        )
+    # DUPLICATE 与 STORED 对宿主来说都是"这份回传已经落地"——
+    # 重试不该收到跟第一次不一样的响应，否则宿主没法把重试逻辑写简单。
+    # `duplicate` 只是告诉它这次没有产生新计数，供排查用，不影响 `ok`。
+    return JSONResponse({
+        "ok": True,
+        "arm": report.arm.value,
+        "duplicate": result is RecordResult.DUPLICATE,
+    })
 
 
 @app.get("/api/demo/stream")

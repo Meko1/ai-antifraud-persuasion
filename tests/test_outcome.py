@@ -7,14 +7,23 @@
    `subject_ref` 报多少次结果，都必须落进同一个 arm。
 """
 
+import asyncio
 import dataclasses
+from typing import Any, Dict, List
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings as real_settings
 from app.main import app
-from app.outcome import OutcomeError, OutcomeReport, OutcomeStatus, OutcomeStore, parse_report
+from app.outcome import (
+    OutcomeError,
+    OutcomeReport,
+    OutcomeStatus,
+    OutcomeStore,
+    RecordResult,
+    parse_report,
+)
 from app.trigger import Arm, assign_arm
 
 
@@ -98,13 +107,13 @@ class TestRedis不可用时安全:
     `False`，而不是像统计那样悄悄吞掉——见 `OutcomeStore.record` 的文档字符串。
     """
 
-    async def test_未配置时record返回False(self) -> None:
+    async def test_未配置时record返回不可用(self) -> None:
         store = OutcomeStore("")
         report = OutcomeReport(
             anomaly_id="A", subject_ref="u_1",
             status=OutcomeStatus.ABANDONED, observed_at=0,
         )
-        assert await store.record(report) is False
+        assert await store.record(report) is RecordResult.UNAVAILABLE
 
     async def test_未配置时snapshot返回不可用(self) -> None:
         store = OutcomeStore("")
@@ -122,15 +131,15 @@ def _with_secret(secret: str):
 
 
 class _FakeStore:
-    """端点鉴权/校验测试不需要真的碰 Redis，只需要一个能控制成败的替身。"""
+    """端点鉴权/校验测试不需要真的碰 Redis，只需要一个能控制结果的替身。"""
 
-    def __init__(self, *, ok: bool) -> None:
-        self._ok = ok
+    def __init__(self, *, result: RecordResult) -> None:
+        self._result = result
         self.recorded: list = []
 
-    async def record(self, report: OutcomeReport) -> bool:
+    async def record(self, report: OutcomeReport) -> RecordResult:
         self.recorded.append(report)
-        return self._ok
+        return self._result
 
 
 class Test端点鉴权与校验:
@@ -171,7 +180,7 @@ class Test端点鉴权与校验:
 
     def test_合法回传返回arm(self, monkeypatch) -> None:
         monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
-        fake = _FakeStore(ok=True)
+        fake = _FakeStore(result=RecordResult.STORED)
         monkeypatch.setattr("app.main.outcome_store", fake)
         client = TestClient(app)
         resp = client.post(
@@ -185,14 +194,51 @@ class Test端点鉴权与校验:
         body = resp.json()
         assert body["ok"] is True
         assert body["arm"] == assign_arm("u_8f3a91").value
+        assert body["duplicate"] is False
         assert len(fake.recorded) == 1
+
+    def test_重复回传返回200且标记duplicate(self, monkeypatch) -> None:
+        """P0-1：宿主重试同一条结果，不该收到跟第一次不一样的响应——
+        `ok` 照样是 True，只是 `duplicate` 告诉它这次没有产生新计数。
+        """
+        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr(
+            "app.main.outcome_store", _FakeStore(result=RecordResult.DUPLICATE)
+        )
+        client = TestClient(app)
+        resp = client.post(
+            "/api/outcome/report",
+            json={"anomaly_id": "A", "subject_ref": "u_1", "status": "abandoned"},
+            headers={"X-Outcome-Secret": "right-secret"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["duplicate"] is True
+
+    def test_冲突回传返回409且不假装成功(self, monkeypatch) -> None:
+        """同一条异动此前已经记过一个不同的状态——拒绝，不静默覆盖。"""
+        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr(
+            "app.main.outcome_store", _FakeStore(result=RecordResult.CONFLICT)
+        )
+        client = TestClient(app)
+        resp = client.post(
+            "/api/outcome/report",
+            json={"anomaly_id": "A", "subject_ref": "u_1", "status": "completed"},
+            headers={"X-Outcome-Secret": "right-secret"},
+        )
+        assert resp.status_code == 409
+        assert resp.json()["code"] == "outcome_conflict"
 
     def test_存储不可用时返回503且不假装成功(self, monkeypatch) -> None:
         """这份数据没有第二个来源，不能悄悄吞掉失败——与 stats 的旁路哲学不同,
         见 `app.outcome.OutcomeStore.record` 的文档字符串。
         """
         monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
-        monkeypatch.setattr("app.main.outcome_store", _FakeStore(ok=False))
+        monkeypatch.setattr(
+            "app.main.outcome_store", _FakeStore(result=RecordResult.UNAVAILABLE)
+        )
         client = TestClient(app)
         resp = client.post(
             "/api/outcome/report",
@@ -201,3 +247,151 @@ class Test端点鉴权与校验:
         )
         assert resp.status_code == 503
         assert resp.json()["code"] == "storage_unavailable"
+
+
+class FakePipeline:
+    """够用就好：只实现 outcome.py 真正用到的两个命令。与
+    tests/test_stats.py 的同名类同一个套路，两边不共用是因为
+    存的语义不同（这里的 store 还混着 dedup 键的裸字符串）。
+    """
+
+    def __init__(self, store: Dict[str, Any]) -> None:
+        self._store = store
+        self._ops: List[Any] = []
+
+    def hincrby(self, key: str, field: str, amount: int) -> "FakePipeline":
+        def run() -> None:
+            bucket = self._store.setdefault(key, {})
+            bucket[field] = bucket.get(field, 0) + amount
+
+        self._ops.append(run)
+        return self
+
+    def hgetall(self, key: str) -> "FakePipeline":
+        self._ops.append(lambda: dict(self._store.get(key, {})))
+        return self
+
+    async def execute(self) -> List[Any]:
+        return [op() for op in self._ops]
+
+
+class FakeRedis:
+    """`decode_responses=True` 的真实客户端返回 str；这个替身也一律存/取
+    str，好让 `record()` 里 `previous == report.status.value` 的比较成立。
+    """
+
+    def __init__(self) -> None:
+        self.store: Dict[str, Any] = {}
+
+    def pipeline(self) -> FakePipeline:
+        return FakePipeline(self.store)
+
+    async def set(self, key: str, value: str, nx: bool = False, ex: int = 0) -> bool | None:
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        return True
+
+    async def get(self, key: str) -> Any:
+        return self.store.get(key)
+
+
+def _wired(client: object) -> OutcomeStore:
+    s = OutcomeStore("redis://fake/0")
+    s._client = client
+    return s
+
+
+class TestRecord幂等与分层:
+    """P0-1：同一条结果重复上报只计一次，冲突不覆盖，
+    `by_trigger` 能按 `trigger_type × arm` 读出来。
+    """
+
+    def _report(self, **over: Any) -> OutcomeReport:
+        base: Dict[str, Any] = dict(
+            anomaly_id="AN-1", subject_ref="u_8f3a91",
+            status=OutcomeStatus.ABANDONED, observed_at=0,
+            trigger_type="fund_redemption",
+        )
+        base.update(over)
+        return OutcomeReport(**base)
+
+    def test_首次上报计入对应arm与trigger(self) -> None:
+        async def scenario() -> tuple:
+            store = _wired(FakeRedis())
+            result = await store.record(self._report())
+            return result, await store.snapshot()
+
+        result, snap = asyncio.run(scenario())
+        assert result is RecordResult.STORED
+        arm = assign_arm("u_8f3a91").value
+        assert snap[arm] == {"abandoned": 1}
+        assert snap["by_trigger"]["fund_redemption"][arm] == {"abandoned": 1}
+
+    def test_相同状态重复上报不重复计数(self) -> None:
+        """验收标准：同一回传重复 N 次只计一条。"""
+
+        async def scenario() -> tuple:
+            store = _wired(FakeRedis())
+            results = [await store.record(self._report()) for _ in range(10)]
+            return results, await store.snapshot()
+
+        results, snap = asyncio.run(scenario())
+        assert results[0] is RecordResult.STORED
+        assert all(r is RecordResult.DUPLICATE for r in results[1:])
+        arm = assign_arm("u_8f3a91").value
+        assert snap[arm] == {"abandoned": 1}
+
+    def test_同一条异动报出两个不同状态判冲突不覆盖(self) -> None:
+        async def scenario() -> tuple:
+            store = _wired(FakeRedis())
+            first = await store.record(self._report(status=OutcomeStatus.ABANDONED))
+            second = await store.record(self._report(status=OutcomeStatus.COMPLETED))
+            return first, second, await store.snapshot()
+
+        first, second, snap = asyncio.run(scenario())
+        assert first is RecordResult.STORED
+        assert second is RecordResult.CONFLICT
+        arm = assign_arm("u_8f3a91").value
+        assert snap[arm] == {"abandoned": 1}, "冲突的那次不落地，原状态不能被悄悄覆盖"
+
+    def test_不同观测窗口各自独立计数(self) -> None:
+        """24 小时放弃率和 48 小时撤单率是两件事，不该共用一个去重键。"""
+
+        async def scenario() -> tuple:
+            store = _wired(FakeRedis())
+            first = await store.record(self._report(window_hours=24))
+            second = await store.record(self._report(window_hours=48))
+            return first, second
+
+        first, second = asyncio.run(scenario())
+        assert first is RecordResult.STORED
+        assert second is RecordResult.STORED
+
+    def test_snapshot按trigger乘arm分层且跳过空组合(self) -> None:
+        async def scenario() -> Dict[str, Any]:
+            store = _wired(FakeRedis())
+            await store.record(self._report(
+                anomaly_id="AN-1", trigger_type="fund_redemption",
+                status=OutcomeStatus.ABANDONED,
+            ))
+            await store.record(self._report(
+                anomaly_id="AN-2", trigger_type="large_transfer_out",
+                status=OutcomeStatus.COMPLETED,
+            ))
+            return await store.snapshot()
+
+        snap = asyncio.run(scenario())
+        assert set(snap["by_trigger"]) == {"fund_redemption", "large_transfer_out"}
+        arm = assign_arm("u_8f3a91").value
+        assert snap["by_trigger"]["fund_redemption"] == {arm: {"abandoned": 1}}
+        assert snap["by_trigger"]["large_transfer_out"] == {arm: {"completed": 1}}
+
+    def test_没有trigger_type时不写by_trigger(self) -> None:
+        async def scenario() -> Dict[str, Any]:
+            store = _wired(FakeRedis())
+            await store.record(self._report(anomaly_id="AN-3", trigger_type=""))
+            return await store.snapshot()
+
+        snap = asyncio.run(scenario())
+        assert snap["by_trigger"] == {}
