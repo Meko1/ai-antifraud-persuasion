@@ -1370,10 +1370,16 @@ html, body { min-height: 100%; }
 body {
   margin: 0;
   display: grid;
-  place-items: center;
+  /* `safe center`,不是 `center`:手机框比视口还高的边界情况下（字号被用户调大、
+     dvh 在个别浏览器里算得比实际可视区大、或者被平台用 iframe 嵌小了），
+     纯 `center` 会把手机框的顶部推到负坐标——那一段从此进不了任何滚动容器的
+     可视范围，`overflow:auto` 也救不回来，因为它已经不在滚动起点以内了。
+     `safe` 在放不下的时候退回起始对齐，顶部永远钉在 (0,0)，超出的部分留在
+     底下让 body 自己的滚动条去够。 */
+  place-items: safe center;
   min-height: 100dvh;
   padding: 24px;
-  overflow: hidden;
+  overflow-y: auto;
   background: var(--canvas);
   color: var(--ink);
   font: 16px/1.6 var(--sans);
@@ -2043,7 +2049,14 @@ button:disabled { cursor: not-allowed; }
 /* 字号 22 → 24px：白字落在品牌橙上是 3.64:1，够不到 4.5。非粗体要 24px 才算
    WCAG 大字号（阈值降到 3:1），推过去即可，品牌橙一个字节没动——
    与 `.primary-action` 那次是同一条思路。 */
-.composer button { width: 46px; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 24px; line-height: 1; font-weight: 500; }
+/* `.composer button` 在 755 行还有一条更早的定义（36px 高、0 16px 内边距、
+   flex:none），这一条只重写了颜色与字号。两条选择器特指度相同，没重写的属性
+   全从那一条漏下来——发送键因此实际是 46 宽 × 36 高，比同排的输入框（47 高）
+   矮一截，而 24px 的「↑」在 36 高、上下 0 内边距的盒子里只按行盒起点对齐，
+   视觉上贴着顶边，不是居中。这里把用得到的属性重新声明齐全，不再依赖那条
+   旧规则漏下来的值——`button.composer-help`（2335 行）与 `.composer input`
+   （2045 行）当初都是这么处理的，只有这一条漏了。 */
+.composer button { width: 46px; height: 47px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: var(--brand-orange); color: #fff; font-size: 24px; line-height: 1; font-weight: 500; cursor: pointer; }
 .composer button:disabled { opacity: .45; }
 /* 12px，不是 10px。这一行写的是「不要提供密码、验证码或要求客户提供敏感信息」——
    它是这个作品的安全约束，不是版权声明。小到看不见的安全提示等于没有。 */
@@ -2770,8 +2783,13 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 .msg .avatar { border-radius: 4px; }
 
 /* **自己的头像要出现。** 实拍单聊里右侧一直有你自己的头像，
-   而这里原先 `display: none`。少了它，右半边读起来像系统回执，不像对话。 */
-.msg.me .avatar { display: flex; background: var(--wx-brand); color: #fff; }
+   而这里原先 `display: none`。少了它，右半边读起来像系统回执，不像对话。
+   **`display: flex` 必须带上居中，不能只写 display。** 基础 `.avatar`
+   （1884 行）是 `display:grid; place-items:center`，这一条把 `display`
+   改成 `flex` 却没跟着重写对齐方式，flex 的默认值是
+   `align-items:stretch; justify-content:flex-start`——"我"字因此贴在
+   左上角，不是居中。与发送键那处（`.composer button`，2052 行）同一条坑。 */
+.msg.me .avatar { display: flex; align-items: center; justify-content: center; background: var(--wx-brand); color: #fff; }
 
 /* 输入区：微信是浅灰底 + 白输入框 + 绿发送键。
    原来发送键是东方财富橙——那是转账屏的色，跑到微信里就穿帮了 */
@@ -2832,49 +2850,12 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 }
 .mx-handoff-brand img { display: block; flex: none; }
 
-/* 复盘里的讲评位。吉祥物 + 一句话，不是一张卡——
-   它要读起来像"有人在旁边说话"，不像"系统弹了个提示" */
-.mx-coach {
-  flex: none;
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 14px 19px 4px;
-}
-/* 68×88，不是 62 见方（2026-09-04 放大）。62 那个数是给三叶标记定的，
-   换上那只全身机甲牛之后塞不下：脑袋只剩 28px，牛角完全看不出来。
-   槽位按素材的 232:300 开，contain 才不会在两侧各留 10px 白——
-   那 20px 会把它跟气泡推远，看着不像站在旁边说话。 */
-.mx-coach-face {
-  flex: none;
-  width: 68px;
-  height: 88px;
-  object-fit: contain;
-  object-position: bottom center;
-}
-/* 换成那只白色机甲牛之后加上这个类：去背的白色在浅蓝底上会糊，
-   垫一圈投影它才立得住。矢量标记不需要，所以不写进上面那条 */
-.mx-coach-face--photo { filter: drop-shadow(0 6px 14px rgba(48, 68, 160, .18)); }
-.mx-coach-say {
-  margin: 0 0 6px;
-  padding: 11px 14px;
-  border-radius: 16px 16px 16px 4px;
-  background: var(--mx-card);
-  box-shadow: var(--mx-shadow);
-  color: var(--mx-ink);
-  font-size: 13.5px;
-  line-height: 1.62;
-}
-.mx-coach-say b { font-weight: 750; }
-
-@media (prefers-reduced-motion: no-preference) {
-  .mx-coach-face { animation: mx-coach-in 620ms var(--ease) both; }
-  .mx-coach-say { animation: mx-coach-in 620ms var(--ease) 90ms both; }
-}
-@keyframes mx-coach-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: none; }
-}
+/* 复盘头像键：吉祥物图片装进「复」原来那颗返回键里（2026-09-05）。
+   `.brandmark` 本来就是 `display:grid; place-items:center`，图片按原图
+   232:300 比例给 20×26，往 28×28 的槽位里一放自动居中，不用另写对齐。
+   `.review-mark` 的底色是深藏青（`--navy`），白色机甲牛在深底上够清楚，
+   不需要再垫 `.mx-coach-face--photo` 那层投影——那层是给浅蓝底配的。 */
+.review-mark img { display: block; }
 
 /* ── 妙想落款 ─────────────────────────────────────────────────────────
    带「妙想」二字的竖版组合标，只用在两处：等待屏底、复盘尾。

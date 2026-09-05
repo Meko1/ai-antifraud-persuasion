@@ -161,35 +161,22 @@ export function openReview() {
   view.setAttribute('aria-label', '复盘');
   view.innerHTML = `
     <div class="osbar"><span>14:56</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
+    <!-- 吉祥物 2026-09-05 从「复」旁边那一整块讲评（图+气泡）收进这颗返回键——
+         气泡文案删掉，只留形象，**不再单独占一行**。它仍然只出现在复盘这一处
+         （不进聊天屏，进去老陈就变成机器人了），只是从"讲评"降级成"署名"。
+
+         **PNG 不退回 SVG，不用 inline onerror**：素材不在时前者是一次 404，
+         E2E 有一条"全程零控制台报错"会因此变红；后者撞 CSP 的
+         script-src 'self'，内联事件处理器被拦，两条 2026-09-04 都栽过。
+
+         注意：这段注释在模板字符串里，一个反引号都不能写（同日栽过一次）。 -->
     <header class="appbar">
-      <button class="brandmark review-mark" id="reviewBack" type="button" aria-label="返回对话">复</button>
+      <button class="brandmark review-mark" id="reviewBack" type="button" aria-label="返回对话">
+        <img src="static/assets/miaoxiang-mascot.png" alt="" width="20" height="26">
+      </button>
       <strong>本局复盘</strong>
       <span class="quiet" id="reviewScene"></span>
     </header>
-    <!-- 复盘这一屏是妙想在讲评——对局里那个人是老陈，讲评的不是他。
-         吉祥物只出现在这一处：它有真实职责（"这一局你差在哪"是 AI 该说的话），
-         **不进聊天屏**，进去老陈就变成机器人了。
-         2026-09-04 换成了那只白色机甲牛（所有者提供的去背 PNG）。
-         原图 2000×2584 / 2.6MB，压到 232×300 / 85KB 再进仓库。
-
-         **槽位同日从 62 见方放到 68×88**：62 那个数是给三叶标记定的，
-         而这是一张**全身像**——塞进 62px 里脑袋只剩 28px，牛角完全看不出来，
-         那就只是一团白。68×88 是按 232:300 开的，不是方框：contain 在方框里
-         只会让它两侧各空 10px，白出来的那 20px 把它跟气泡推远，
-         看着不像"站在旁边说话"。底对齐之后牛脚正好踩在气泡下沿那条线上。
-
-         **不要写成"先请求 PNG，挂了再退回 SVG"**：素材不在时那是一次 404，
-         而 E2E 有一条"全程一条控制台报错都没有"，404 会让它当场红。
-         inline onerror 也不行——CSP 是 script-src 'self'，内联事件处理器被拦，
-         既不生效还多报一条安全错。两条都在 2026-09-04 实测栽过。
-
-         注意：这段注释在一个模板字符串里，**一个反引号都不能写**，
-         写了就把整个模板提前闭合，全站前端当场加载失败（同日栽过）。 -->
-    <div class="mx-coach">
-      <img class="mx-coach-face mx-coach-face--photo" src="static/assets/miaoxiang-mascot.png"
-           alt="" width="68" height="88">
-      <p class="mx-coach-say">这一局我从头看到尾。<b>差的从来不是你说了什么，是什么时候说。</b></p>
-    </div>
     <div class="review-body">
       <!-- **第一屏只留五块，这是硬上限**（PIVOT-C-END §3.2）。
            它自己引用的那条研究就是这么说的：PUBG 后置屏 N=12 用户研究里，
@@ -279,8 +266,8 @@ export function openReview() {
           <ol class="mirror-lines" id="mirrorLines"></ol>
           <p class="mirror-turn">这几件事，<b>不用等任何人来劝，你自己就能做</b>：</p>
           <ol class="disposal">
-            <li><b>先不按那个确认</b><span>真的机会不会因为你多等一天就没了。<b>催你现在就按</b>的，本身就是最该起疑的那句话。</span></li>
-            <li><b>找一个人，把这件事从头讲一遍</b><span>家人、朋友、同事都行。你刚才做的就是这件事——只不过坐在另一边。</span></li>
+            <li><b>先不按那个确认</b><span><b>催你现在就按</b>的，本身就是最该起疑的那句话。</span></li>
+            <li><b>找一个人，把这件事从头讲一遍</b><span>你刚才做的就是这件事——只不过坐在另一边。</span></li>
             <li><b>拨 96110</b><span>国家反诈专线。不确定算不算被骗，也可以打过去问。</span></li>
             <li><b>打你券商 App 里的人工客服</b><span>账户异常、资金去向，他们查得到你查不到的那一半。</span></li>
           </ol>
@@ -953,7 +940,7 @@ export function paintMirror(view) {
   // "你那一笔还没提交"在演示态是假的（他压根没有那一笔），
   // "你可能也在被骗"是判断不是事实——两个都越了线。
   const opener = transferSeen()
-    ? '刚才你自己也在一笔转出上按了确认。那一笔是模拟的，这一局里的人、机构与金额也都是虚构的。'
+    ? '刚才你也按过一次「确认转出」——那一笔和这一局里的人、机构、金额，全是模拟的。'
     : '这一局里的人、机构与金额都是虚构的。';
   const TA = peerPronoun();
   const q = own.length

@@ -85,7 +85,6 @@ $('openChen').addEventListener('click', enterGame);
   const el = $(id);
   if (el) el.addEventListener('click', () => { markPrimerSeen(); enterGame(); });
 });
-$('backHome')?.addEventListener('click', () => showScreen('home'));
 $('openProfile').addEventListener('click', () => showScreen('home'));
 $('backOpening').addEventListener('click', () => showScreen('opening'));
 // `startNewClient` 现在收一个可选的 sid，而事件回调的第一个参数是 Event——
