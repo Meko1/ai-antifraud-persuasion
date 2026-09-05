@@ -2207,6 +2207,12 @@ button:disabled { cursor: not-allowed; }
    上面那条注释自己写着"主动退出不是失败……用红色标它，等于一边给退出按钮、
    一边惩罚按下去的人"——字号原先在做和颜色相反的事。 */
 .summary.unfinished .savedamt { font-size: 25px; letter-spacing: -.03em; }
+/* 标题跟着降一档（2026-09-05）：这一档的标题是一句平铺直叙的事实
+   （「第 2 轮，你结束了对话」），不是别的结局那种一句话定性（「他还是
+   转走了」）。29px 是给后者用的分量，这里用了字号比内容更响，
+   在窄屏上还容易把这句话挤成两行——文案已经缩到句首带轮次，
+   字号也退到跟 `.savedamt` 同一挡，两处一起降，不是各降各的。 */
+.summary.unfinished .result-title { font-size: 24px; letter-spacing: -.03em; }
 /* 复盘出现时焦点落在标题上（review.js 有解释）。它 tabindex=-1、进不了 Tab 序，
    画环只会像一处渲染错误。 */
 .result-title:focus { outline: none; }
