@@ -24,6 +24,45 @@ import { game, saveGame, withTa } from './state.js';
 // 直接关闭率、中断率是判断这个干预有没有伤到用户的第一组数。
 
 
+/** 抬头上那颗「看复盘」从第几轮起出现（2026-09-04）。
+ *
+ *  **为什么要把它从抽屉里提出来。** 「就到这儿，看复盘」这条出路机制上早就
+ *  齐了——已打的轮次照常判分、复盘照常、只是不编造一个资金结局——但它是
+ *  退出抽屉的第二项，玩家得先想到"我要退出"才碰得到。而这条出路要接的人
+ *  恰恰不想退出：他是**说不下去了**。这两件事不是一回事，入口也就不该是
+ *  同一个。中途走掉的局在这之前一个字的复盘都没有，而这个作品全部的教学
+ *  价值都在复盘里。
+ *
+ *  **为什么是 4 而不是 1。** 更早出现等于在人还没打进去的时候先递一个出口；
+ *  而且一两轮的复盘没有内容可讲，点开只会让人觉得这东西没什么可看的。
+ *  取 `MAX_ROUNDS` 的四成上下：十轮的局第 4 轮起，后面六轮一直在。
+ *
+ *  **写成常数不写成 `maxRounds * 0.4`**：轮次上限刚从 12 改到 10（一次），
+ *  比例式会让"第几轮出现"跟着悄悄浮动，而这是个体验判断，该由人定。
+ */
+export const EARLY_REVIEW_FROM = 4;
+
+/** 抬头那颗「看复盘」的显隐。**只有这一处决定它**（同 `syncSend` 的理由）。
+ *
+ *  打完的局不显示：那时候聊天窗口末尾已经有一颗「看复盘」了（`finish()`），
+ *  同一屏上两颗同名按钮，玩家会以为它们不是一件事。
+ *
+ *  **判据是"抬头显示的那个轮次"，不是 `game.turns.length`。** 两者差一——
+ *  `game.turns.length` 是**打完**的轮数，而 `turnCurrent` 显示的是
+ *  `chat.js`/`opening.js` 里那套"下一轮"算法算出来的、玩家正在看的那个数
+ *  （抬头写着「第 4 轮 / 10」时，`game.turns.length` 其实是 3）。
+ *  `EARLY_REVIEW_FROM` 这个名字对应的是玩家读到的那个数，写成
+ *  `game.turns.length < EARLY_REVIEW_FROM` 的话，实测按钮要等到玩家已经
+ *  在打第 5 轮才出现——晚了一整轮，注释与实际行为对不上。
+ */
+export function syncEarlyReview() {
+  const btn = $('earlyReview');
+  if (!btn) return;
+  const 抬头显示的轮次 = game.turns.length + 1;
+  btn.hidden = !!game.ending || !!game.exited
+    || 抬头显示的轮次 < EARLY_REVIEW_FROM;
+}
+
 export function openExitSheet() {
   const played = game.turns.length;
   openSheet({
@@ -65,6 +104,7 @@ export function endEarly() {
   game.busy = false;
   reportExit(game.token, 'finished_early');
   $('composer').hidden = true;
+  syncEarlyReview();   // 抬头那颗要收起来：复盘页自己有出口，这里不能再有一个
   const tip = document.createElement('p');
   // `exit-tip` 单独标一下：复盘页「回去接着打」要把它从聊天记录里摘掉——
   // 撤销这个决定之后，这句「你结束了」就成了一句不实的记录。

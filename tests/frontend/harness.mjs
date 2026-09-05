@@ -56,9 +56,13 @@ export const STATIC = path.join(HERE, '..', '..', 'static');
  *  「声明顺序」那一组，它现在钉的就是这份拼接结果）。 */
 export const MODULES = [
   'dom.js', 'keys.js', 'state.js', 'api.js', 'stats.js', 'chart.js', 'qr.js',
-  'contrast.js', 'sheet.js', 'chat.js', 'review.js', 'history.js', 'opening.js',
-  'control.js', 'app.js',
+  'contrast.js', 'sheet.js', 'chat.js', 'hints.js', 'review.js', 'history.js',
+  'opening.js', 'control.js', 'app.js',
 ];
+// **`hints.js` 与 `chat.js` 互相 import**（`syncStuckHints` 调 `chat.js` 的
+// `syncSend`，`chat.js`/`opening.js`/`review.js` 调它的 `syncStuckHints`）——
+// 与下面 `control.js`/`review.js` 那对环同一个理由：两边导出的都是函数声明，
+// 会被提升到这份拼接脚本的顶部，谁排在前面不影响谁能不能引用到谁。
 
 /** 入口模块。留着这个名字是因为它仍然是浏览器唯一加载的那个文件。 */
 export const APP_JS = path.join(STATIC, 'app.js');

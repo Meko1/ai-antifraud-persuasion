@@ -103,7 +103,7 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
        一定挑得出一把钥匙来。 */
     await evaluate(call, `localStorage.setItem('af_history_v1', JSON.stringify([{
       ts: Date.now() - 864e5, sid: 'chen', clientName: '陈国栋',
-      kind: 'stalled', trust: 42, rounds: 12, uses: {}, gains: {},
+      kind: 'stalled', trust: 42, rounds: 10, uses: {}, gains: {},
     }]))`);
   });
 
@@ -177,6 +177,32 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
     assert.ok(开场[1][1].length > 4, '他的开场白是空的');
   });
 
+  test('卡住时的兜底句：一轮都没打过就先给三句，点一句只填不发', async () => {
+    const 兜底 = await evaluate(call, `({
+      hidden: document.getElementById('stuckHints').hidden,
+      count: document.querySelectorAll('.stuck-hint-chip').length,
+    })`);
+    assert.equal(兜底.hidden, false, '一轮都没打过，正是最该给兜底句的时候');
+    assert.equal(兜底.count, 3, '三把本能钥匙（锚定用途/苏格拉底提问/拆矛盾）各给一句');
+
+    await evaluate(call, `document.querySelector('.stuck-hint-chip').click()`);
+    const 填完 = await evaluate(call, `({
+      value: document.getElementById('say').value,
+      them: document.querySelectorAll('#thread .msg.them').length,
+      hidden: document.getElementById('stuckHints').hidden,
+    })`);
+    assert.ok(填完.value.length > 0, '点一句要把它填进输入框');
+    assert.equal(填完.them, 1, '只填不发——这一局判的是玩家自己挑的话，聊天记录里不该凭空多一条');
+    assert.equal(填完.hidden, true, '选完先收起来，别跟正在编辑的输入框抢注意力');
+
+    // 清空重打，别让这句没发过的话留在框里影响后面几轮
+    await evaluate(call, `(() => {
+      const el = document.getElementById('say');
+      el.value = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+  });
+
   test('空输入时发送键是灰的，敲了字才亮', async () => {
     assert.equal(await evaluate(call, `document.getElementById('send').disabled`), true,
       '一个按下去什么都不发生的按钮，比一个明确禁用的按钮更难懂');
@@ -212,12 +238,17 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
       `剩余轮次没往下走：${之前.remaining} → ${之后.remaining}`);
     /* 抬头那个数说的是**下一轮**，不是刚打完那一轮。打完第 1 轮之后
        他正在想第 2 句，那个数就该是 2——旁边的格子这时候是 11，
-       「第 1 轮 / 12」配「剩 11」是同一行自相矛盾（chat.js 里那段注释）。 */
+       「第 1 轮 / 10」配「剩 9」是同一行自相矛盾（chat.js 里那段注释）。 */
     assert.equal(之后.当前轮, '2',
       '打完第 1 轮之后抬头没往前走 —— 玩家看这个数是为了知道还能说几次');
     // 判分卡不在对局中出现——边打边给答案等于把攻略印在屏幕上。
     // 这一句在沙箱里验不了：那边 `innerHTML` 不解析成节点
     assert.equal(之后.判分卡, 0, '对局中冒出了判分卡，标签与分数一律该留到复盘');
+
+    // 抬头那颗「看复盘」第 4 轮才该出现（EARLY_REVIEW_FROM），这里才打完
+    // 第 1 轮——早出现等于在人还没打进去的时候先递一个出口
+    assert.equal(await evaluate(call, `document.getElementById('earlyReview').hidden`), true,
+      '第 4 轮之前就露出来了');
   });
 
   test('退出那一层：三条出路，不设挽留', async () => {

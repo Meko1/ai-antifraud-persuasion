@@ -127,6 +127,25 @@ export function palette() {
   };
 }
 
+// 同一张图只解码一次：分享卡每次重画都会调这里，不用每次都重新拉一遍网络。
+const _imageCache = new Map();
+
+/** 加载一张图片供 `ctx.drawImage()` 用。**失败也 resolve（给 null），不 reject**——
+ *  调用方据此跳过这一笔绘制，而不是让一张分享卡因为一张图标加载失败就整个
+ *  生成不出来。同一个理由见 `review.js` 里吉祥物那处注释：这类资源缺失
+ *  该退化成"少画一笔"，不该是一次没接住的 rejection。 */
+export function loadImage(src) {
+  if (!_imageCache.has(src)) {
+    _imageCache.set(src, new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    }));
+  }
+  return _imageCache.get(src);
+}
+
 export function fitCanvas(canvas, cssW, cssH) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(cssW * dpr);

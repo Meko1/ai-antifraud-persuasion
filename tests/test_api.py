@@ -12,6 +12,7 @@ from typing import AsyncIterator, List, Tuple
 from fastapi.testclient import TestClient
 
 from app.main import app, get_gateway
+from app.scoring import MAX_ROUNDS
 
 
 class FakeGateway:
@@ -50,7 +51,9 @@ def test_开局返回预生成开场白与初始签名状态() -> None:
     body = resp.json()
     assert body["opening"], "开场白不能为空"
     assert body["token"], "必须带回初始签名状态"
-    assert body["remaining"] == 12
+    # 跟着 MAX_ROUNDS 走，不写死：轮次上限改过一次（12→10，2026-09-04），
+    # 写死的那个数只会让"改常量"变成"改常量再改一串测试"
+    assert body["remaining"] == MAX_ROUNDS
     incident = body["scenario"]["incident"]
     assert body["scenario"]["client"]["name"] in incident["title"]
     assert incident["lead"]

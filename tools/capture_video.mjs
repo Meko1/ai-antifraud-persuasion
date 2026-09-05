@@ -73,19 +73,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  *
  *  前 `慢放轮数` 轮一轮一轮看清楚，其余几轮快进带过（`剧本` 里的
  *  `fast` 那一章）——十二轮全按原速，一分钟根本装不下。 */
+/** **前三句是故意的失误**：责骂、说教、空口断言——正是判分表要抓的
+ *  三类反面动作（app/offline.py `_PENALTY_RULES`）。留着这三句不是图省事，
+ *  是这支片子要展示的东西之一：开局失分之后，后面七句正规钥匙全部命中，
+ *  但十轮打完仍然没能翻过劝住线。片子要给的不是一份"照抄就赢"的话术单，
+ *  是"劝阻这件事哪里最容易栽跟头、栽了之后代价有多大"。 */
 const 台词 = [
-  '陈叔，这三十万本来是打算做什么用的？',
-  '我听得出来您这两天挺着急的。',
-  '您刚才说是内部消息，可之前您说群里谁都能进，这两句怎么放在一起？',
-  '转不转由您决定，我不替您做主，只想请您先回答两个问题。',
-  '王老师让您做的这几步，您能自己讲一遍给我听吗？',
-  '那笔钱原本是不是给女儿准备的？',
-  '他为什么一定要今天三点前？',
-  '您刚才说他保本，可他又说不承诺收益，这两句能同时成立吗？',
-  '我知道您不容易，这些年攒下来不容易。',
-  '这笔钱转过去之后，您打算怎么把它取回来？',
-  '正规机构从来不会这么做，这是个局。',
-  '最后一件事由您定：今天先不转，明天我陪您一起核一遍，行吗？',
+  '邵叔，这就是个骗局，您千万别再交钱了。',
+  '投资有风险，入市需谨慎，您得为自己负责。',
+  '您怎么这么糊涂，人家一天看几十个号能有多准？',
+  '这四十五万本来是留着做什么用的？',
+  '那个疗程具体怎么把病灶清掉的，您说说看？',
+  '医院说观察半年，那边说等不得，这不是矛盾吗？',
+  '交不交由您决定，我不替您做主。',
+  '我知道您这段日子不容易。',
+  '这钱交过去万一没效果，您怎么往回要？',
+  '您再想想吧，这钱真的不是小数目。',
 ];
 
 /** 前几轮按原速演，之后的快进带过。 */
@@ -103,7 +106,7 @@ const 慢放轮数 = 6;
  *  到的动效，拉慢了一眼看得出。那一章的时长与 `台词` 的条数是一起定的。 */
 const 剧本 = [
   { id: 'transfer', 秒: 5, 眉: '这是一个真实存在的时刻',
-    题: '你正要转出 10 万', 注: '钱转到自己卡上，合规、正常、不需要理由' },
+    题: '你正要转出 45 万', 注: '钱转到自己卡上，合规、正常、不需要理由' },
   { id: 'handoff', 秒: 7, 眉: '而这也是券商能看见的最后一帧',
     题: '接下来十二轮，请你坐到对面', 注: '角色对调：被劝的人，去劝一个和他处境一样的人' },
   { id: 'desk', 秒: 6, 眉: '你手上只有账户那一侧的一条预警',
@@ -162,16 +165,16 @@ async function 开录(cdp, call) {
   };
 }
 
-/** 开局**之前**就钉住老陈。
+/** 开局**之前**就钉住老邵。
  *
- *  下面那个 `钉住老陈()` 只能在工作台那一屏用（「换一位客户」在那儿），
+ *  下面那个 `钉住老邵()` 只能在工作台那一屏用（「换一位客户」在那儿），
  *  而**转账屏与拦截屏在它之前**——不提前钉，片子前 12 秒的拦截屏印着
- *  「你是**她**的投资顾问」，第 20 秒起聊天窗口里却坐着老陈。实测第一版
+ *  「你是**她**的投资顾问」，第 20 秒起聊天窗口里却坐着老邵。实测第一版
  *  就是这样，一支片子里换了个人。
  *
  *  用的仍然是界面自己的那把钥匙：`aap.pick.sid` 正是「换一位客户」写下的
  *  那个键，这里只是提前到首屏之前写。**没有为出素材改任何产品行为**。 */
-async function 开局前钉住老陈(call, base) {
+async function 开局前钉住老邵(call, base) {
   await call('Page.navigate', { url: `${base}/` });
   await waitFor(call, `document.readyState === 'complete'`, '首屏');
   // **打个记号再重载，然后等记号消失。** `Page.reload` 是发出去就返回的，
@@ -186,20 +189,20 @@ async function 开局前钉住老陈(call, base) {
   // （`state.js` 的 `startNewClient`：先 clearSaved，再写 PICK_KEY，再 reload）。
   await evaluate(call, `sessionStorage.removeItem('aap.game.v1');
     sessionStorage.removeItem('aap.transfer.seen');
-    sessionStorage.setItem('aap.pick.sid', 'chen')`);
+    sessionStorage.setItem('aap.pick.sid', 'shao')`);
   await call('Page.reload');
   await waitFor(call, `!window.__钉 && document.readyState === 'complete'`, '重载后的新文档', 25000);
 }
 
-/** 工作台上那把补救钥匙。台词里写着"陈叔""王老师"，不钉住就会出现拿老陈的
+/** 工作台上那把补救钥匙。台词里写着"邵叔""那个疗程"，不钉住就会出现拿老邵的
  *  台词去劝周淑琴的画面。开局前那一手生效时这里直接返回——留着它是兜底：
  *  `aap.pick.sid` 万一读不到（隐私模式），这一步仍然把人换回来。 */
-async function 钉住老陈(call) {
+async function 钉住老邵(call) {
   if (await evaluate(call, `!!document.getElementById('pickClient')?.hidden`)) return;
   await evaluate(call, `document.getElementById('pickClient').click()`);
   await waitFor(call, `!document.getElementById('sheetHost').hidden`, '客户列表');
   const 换了 = await evaluate(call, `(() => {
-    const it = [...document.querySelectorAll('.sheet-item')].find(b => /陈/.test(b.textContent));
+    const it = [...document.querySelectorAll('.sheet-item')].find(b => /邵/.test(b.textContent));
     if (!it) return false;
     it.click();
     return true;
@@ -249,7 +252,7 @@ async function 走一遍(call, 录像) {
   await waitFor(call, `document.querySelector('.screen.on')?.id !== 'transfer'`, '离开转账屏', 25000);
   await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
     '工作台', 25000);
-  await 钉住老陈(call);
+  await 钉住老邵(call);
   录像.录('desk');
   await sleep(2800);
 
@@ -561,7 +564,7 @@ async function main() {
     const { call } = await newPage(cdp);
     await call('Emulation.setDeviceMetricsOverride', PHONE);
     // 首屏之前就钉住，否则拦截屏那句身份行说的是另一位客户
-    await 开局前钉住老陈(call, server.base);
+    await 开局前钉住老邵(call, server.base);
     await waitFor(call,
       `!document.getElementById('transferGo')?.disabled`, '转账屏就绪', 25000);
     await sleep(600);

@@ -4,6 +4,7 @@ import { startGame } from './api.js';
 import { openSheet } from './sheet.js';
 import { loadHistory } from './history.js';
 import { divider, paintMood, resumeGame, say } from './chat.js';
+import { syncStuckHints } from './hints.js';
 import {
   PICK_KEY, PING, SCENE, TOTAL, clearSaved, game, loadSaved, peerPronoun,
   saveGame, setScene, startNewClient, wholeMoney, withTa,
@@ -490,6 +491,7 @@ export function paintPrimer() {
 export async function enterGame() {
   if (game.entered) {
     showScreen('chat');
+    syncStuckHints();
     $('say').focus();
     return;
   }
@@ -518,6 +520,9 @@ export async function enterGame() {
   divider('下午 2:47');
   say('me', PING());
   say('them', game.opening);
+  // 第一次进聊天，一轮都还没打——正是 `syncStuckHints()` 要露头的那一刻：
+  // 空白的输入框加上一屏还没读熟的规则，对新手是"不知道说什么"最重的时候
+  syncStuckHints();
   $('say').focus();
   // **存档要在这儿落，不能在 loadGame() 里。** 请求一回来就存的话，
   // 玩家还没点开聊天——甚至还在转账确认屏上——sessionStorage 里已经有一份

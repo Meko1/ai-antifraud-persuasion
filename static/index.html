@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="系统随机接入一位高风险客户。十二轮对话，你能不能让客户停下来。">
+  <meta name="description" content="系统随机接入一位高风险客户。十轮对话，你能不能让客户停下来。">
   <!-- 分享卡上那个二维码指向哪里。**留空就是当前访问地址**（`location.origin`），
        本地跑、内网跑、部署到哪台机器都不用改一个字。
        只有一种情况要填：作品被别人的页面代理或嵌套之后，浏览器看到的地址
@@ -99,7 +99,7 @@
         </span>
         <span class="entry-card-main">
           <b>反诈演练</b>
-          <i>异动触发 · 十二轮角色对调</i>
+          <i>异动触发 · 十轮角色对调</i>
         </span>
         <span class="entry-arrow" aria-hidden="true">↗</span>
       </button>
@@ -137,8 +137,9 @@
       <p class="transfer-rule">仅支持转入本人同名银行卡</p>
       <p class="transfer-moves" id="transferMoves">近三个月 47 笔交易，此前年均只有 3 笔</p>
       <!-- 悬念行（2026-09-01 加）：文案不是新写的，是把 <head> 里那句
-           meta description（"系统随机接入一位高风险客户。十二轮对话，你能不能
-           让客户停下来。"）后半句搬到访客真正看得见的地方——它原本只喂给
+           meta description（"系统随机接入一位高风险客户。十轮对话，你能不能
+           让客户停下来。"——2026-09-04 随轮次上限从十二轮改成十轮）后半句
+           搬到访客真正看得见的地方——它原本只喂给
            搜索引擎摘要，从大赛页点进来的人从没读过。免责声明本身不动，
            这一行是它的延伸，不是替换。 -->
       <!-- 第三行是**线索不是承诺**：复盘页那两样东西都已经存在——「生成分享卡」
@@ -157,7 +158,7 @@
            （被拦下那一屏）的页脚仍然带着完整那句**，标记一处都没少。
            用「对调」不用「互换」「互调」：全仓 40 处都是对调，而中文里
            位置互换的标准搭配也是对调（互调多指人事调动）。 -->
-      <p class="transfer-sim">AI 反诈劝阻 · 角色对调 · 模拟界面<span class="transfer-hook">十二轮对话，你能不能让客户停下来</span><span class="transfer-tease">结束后能生成分享卡，看看你比多少人拦得更久</span></p>
+      <p class="transfer-sim">AI 反诈劝阻 · 角色对调 · 模拟界面<span class="transfer-hook">十轮对话，你能不能让客户停下来</span><span class="transfer-tease">结束后能生成分享卡，看看你比多少人拦得更久</span></p>
     </div>
     <div class="primary-foot" id="transferFoot">
       <button class="primary-action" id="transferGo" type="button">确认转出</button>
@@ -213,8 +214,12 @@
            说老年人劝阻方 5.5 个来回花了 5.5 分钟——按那个速率，本作品 12 个
            来回是十来分钟，不是三分钟。
            **承诺要挂在自己控制得住的那个量上**：轮次由这个作品说了算，
-           时长由用户说了算。 -->
-      <p class="handoff-turn">接下来十二轮，请你坐到对面——<br>
+           时长由用户说了算。
+
+           **2026-09-04：十二轮改十轮。** 轮次上限本身改了（novice 中途
+           被拉黑的那两轮几乎不含胜负，见 app/scoring.py 的 MAX_ROUNDS
+           注释），这里只是跟着常量走，不是重新决定过一次时长承诺。 -->
+      <p class="handoff-turn">接下来十轮，请你坐到对面——<br>
         <b>有人正要做同样的事，而这一次，肯开口的是你。</b></p>
       <p class="handoff-role" id="handoffRole">你是{ta}的投资顾问：看得见{ta}的账户，看不见{ta}的生活。你可以问，<b>但不能替{ta}做决定，也不能向{ta}推荐任何产品</b>——那是执业红线。</p>
     </div>
@@ -230,7 +235,7 @@
            转出路径上加摩擦，而经纪条线正在做的恰恰相反（docs/EVIDENCE.md §三）。
            **按钮文案也不动**：「坐到对面」是角色对调唯一被演出来的那一下，
            换成任何解释性说法都是退回 8-25 换血之前那个"被解释出来的"版本。 -->
-      <p>最多 12 轮 · 随时可以退出 · 模拟对话，不会产生任何真实交易</p>
+      <p>最多 10 轮 · 随时可以退出 · 模拟对话，不会产生任何真实交易</p>
     </div>
   </section>
 
@@ -290,7 +295,7 @@
            演示态没有"他自己那笔异动"这回事，挑一个反而是对的：
            想再看一遍某个场景，不该靠反复重开去抽。 -->
       <button class="ghost-action" id="pickClient" type="button" aria-haspopup="dialog" hidden>换一位客户</button>
-      <p>最多 12 轮 · 随时可以退出</p>
+      <p>最多 10 轮 · 随时可以退出</p>
     </div>
   </section>
 
@@ -376,10 +381,23 @@
         <button class="chat-exit" id="chatExit" type="button" aria-haspopup="dialog">退出</button>
       </div>
       <div class="turn-line">
-        <span>第 <b class="num" id="turnCurrent">1</b> 轮 / <span class="num" id="turnTotal">12</span></span>
+        <span>第 <b class="num" id="turnCurrent">1</b> 轮 / <span class="num" id="turnTotal">10</span></span>
         <span class="round-meter" aria-hidden="true"><i id="roundFill"></i></span>
         <!-- 隐藏，但**不是死的**：E2E 拿它读当前剩余轮次（tests/e2e/browser.test.mjs）。 -->
-        <span id="remaining" hidden>12</span>
+        <span id="remaining" hidden>10</span>
+        <!-- 「不必打完整局」的那条出路，2026-09-04 从退出抽屉里提到这儿。
+
+             机制早就有了（`control.js` 的 `endEarly()`：已打的轮次照常判分、
+             复盘照常、只是不编造一个资金结局），但它埋在退出抽屉的第二项，
+             要先想到"我要退出"才找得到——而这条出路要接的人恰恰不想退出，
+             他是**说不下去了**。两者不是一回事，入口也就不该是同一个。
+
+             它接的是"很多对局没有结束"：中途走掉的局本来一个字的复盘都没有，
+             而这个作品全部的教学价值都在复盘里。
+
+             第 4 轮才出现：更早出现等于在人还没打进去的时候先递一个出口。
+             阈值与理由都在 `control.js` 的 `EARLY_REVIEW_FROM`。 -->
+        <button class="turn-review" id="earlyReview" type="button" hidden>看复盘</button>
       </div>
       <!-- 时机线索。**它说的是"他现在什么状态、这意味着什么"，不是"该用哪一把"**——
            后者是答案，印在屏幕上任何会读字的玩家两轮就滑向 expert，
@@ -395,6 +413,16 @@
       <p class="strangertip">对方是虚构客户，机构与人物均为虚构。本内容不构成投资建议；你输入的内容会发送至大模型用于生成回复。</p>
     </main>
     <form class="composer" id="composer" autocomplete="off">
+      <!-- 卡住时的兜底句（2026-09-04）。**只在一轮都没打过、或连续两轮
+           一把钥匙都没命中时出现**——不是全程给答案，触发条件天然把
+           读得懂人的玩家排除在外，理由与判据都在 static/hints.js。
+
+           点一句只是把它填进输入框，**不直接发送**：这一局判的是玩家自己
+           挑的话，兜底句只兜"想不出词"，发不发仍然是他的选择。 -->
+      <div class="stuck-hints" id="stuckHints" hidden>
+        <p class="stuck-hints-label">不知道说什么？可以试试：</p>
+        <div class="stuck-hints-row" id="stuckHintsRow"></div>
+      </div>
       <div class="inputrow">
         <!-- 「七把钥匙」在对局中要能随时翻回来看。
              **这是识别优于回忆**：开打前那一屏（primer）只出现一次，

@@ -7,6 +7,8 @@ import {
   pressureNote, saveGame, setScene, startNewClient, withTa,
 } from './state.js';
 import { paintClientPicker, paintDesk, paintOpening } from './opening.js';
+import { syncEarlyReview } from './control.js';
+import { syncStuckHints } from './hints.js';
 
 // ── 对话 ────────────────────────────────────────────────────
 
@@ -326,6 +328,11 @@ export async function playTurn(utterance) {
   game.busy = false;
   $('say').disabled = false;
   syncSend();
+  // 抬头那颗「看复盘」够轮数就露出来——判据是 game.turns.length，
+  // 每一轮真正记进 game.turns 之后都要重算一次
+  syncEarlyReview();
+  // 卡住时的兜底句同理：这一轮命中没命中钥匙，直接决定它下一轮出不出现
+  syncStuckHints();
   $('say').focus();
 }
 
@@ -394,6 +401,12 @@ export function photo(node) {
 export async function finish() {
   const kind = game.ending.kind;
   $('composer').hidden = true;
+  // `playTurn` 早退到这里之前从没走到过下面那两句（`if (game.ending)
+  // return finish()` 挡在它们前面），所以抬头那颗「看复盘」与兜底句
+  // 都要在这儿自己收一次——否则打满整局的最后一轮，它们会带着上一轮的
+  // 状态留在已经隐藏的输入框里。
+  syncEarlyReview();
+  syncStuckHints();
 
   // 最后几句和前面十二轮一样，一句一个气泡。结局不该是"突然弹出一整段"
   for (const [i, line] of (game.ending.lines || []).entries()) {
@@ -456,6 +469,10 @@ export function resumeGame(saved) {
   $('roundFill').style.width = `${(当前轮 / game.maxRounds) * 100}%`;
   $('remaining').textContent = String(game.remaining);
   paintMood(game.mood);
+  // 续局回来抬头那颗「看复盘」与兜底句都要按存档里的状态重算——不写在
+  // 这儿的话，打到第 6 轮存的档，刷新回来会先按"0 轮"画一次再等下一轮才补上
+  syncEarlyReview();
+  syncStuckHints();
 
   divider('下午 2:47');
   say('me', PING());

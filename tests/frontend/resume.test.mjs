@@ -53,8 +53,8 @@ function 打到一半(app, 轮数 = 2) {
     trust: 44,
     mood: 'irritated',
     threshold: 80,
-    maxRounds: 12,
-    remaining: 12 - 轮数,
+    maxRounds: 10,
+    remaining: 10 - 轮数,
     notice: '对方是虚构客户……',
     turns: Array.from({ length: 轮数 }, (_, i) =>
       turn({ round: i + 1, utterance: `第 ${i + 1} 句`, reply: `回第 ${i + 1} 句` })),
@@ -72,7 +72,7 @@ describe('存下来的那一局要能原样读回来', () => {
     assert.ok(saved, '存了却读不回来');
     assert.equal(saved.game.token, 'signed.token.value');
     assert.equal(saved.game.turns.length, 3);
-    assert.equal(saved.game.remaining, 9);
+    assert.equal(saved.game.remaining, 7);
     assert.equal(saved.scene.id, 'chen');
   });
 

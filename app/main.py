@@ -267,7 +267,7 @@ async def game_start(
 
     gid = uuid.uuid4().hex
     scene = scenario_for(ctx.sid)
-    # 开场白与人格变体同源：开场自称什么，后面十二轮就得是什么
+    # 开场白与人格变体同源：开场自称什么，后面每一轮就得是什么
     line = opening_for(gid, scene.personas)
     # 开场白必须进 session：它是第 1 轮唯一可供"扎根"的对话内容
     session = new_session(
@@ -340,7 +340,8 @@ def get_gateway() -> ModelGateway:
 # 给到 200 是留出前端限制之外的余量，不是放宽玩法。
 MAX_UTTERANCE_CHARS = 200
 
-# 令牌上限。它随 history 增长（12 轮的发言与台词都在里面），实测满局约 7 KB。
+# 令牌上限。它随 history 增长（满局的发言与台词都在里面），12 轮口径实测满局约 7 KB，
+# 收到 10 轮之后只会更小——这个上限留着不动，它是护栏不是预算。
 MAX_TOKEN_CHARS = 32768
 
 

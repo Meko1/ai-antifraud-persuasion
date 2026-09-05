@@ -1,5 +1,5 @@
 import { KEYS, MOODS } from './keys.js';
-import { fitCanvas, paintKline, palette, roundRect } from './chart.js';
+import { fitCanvas, loadImage, paintKline, palette, roundRect } from './chart.js';
 import { contrastFacts, timingClause } from './contrast.js';
 import { drawQR } from './qr.js';
 import { percentileHeadline, percentileTier } from './stats.js';
@@ -308,44 +308,82 @@ export function wrapText(ctx, text, maxWidth, maxLines) {
  * 上一版分享卡是他说过的一句话（聊天气泡截图），现在这一块换成了复盘正文
  * 本身的内容——两者不再是两套东西：卡上有什么，正文往上翻就看得到。
  * K 线直接复用 `paintKline`，画法与屏幕上那张一模一样，不用另起一套逻辑。
+ *
+ * **2026-09-05 重排版式，理由不是"差 N 倍"这个钩子错了——它是 2026-08-29
+ * 按 Berger & Milkman（转发靠唤醒度不靠好坏）刻意选的，CONTEST.md §6.3 S1
+ * 有案可查。理由是这张卡此前假设看的人已经懂这个作品**：卡上没有一个字说
+ * 这是什么、和谁有关，只有一堆对老玩家才有意义的档位名与倍数。而分享卡的
+ * 真实观众恰恰是最不懂这些的那批人——CONTEST.md §6.2 那张漏斗图写得很清楚，
+ * 转发出去的每一张卡都在造"新观众"，不是发给已经打过的人自己看。
+ *
+ * 三处改动：
+ *   1. 加妙想品牌条（顶部与卡尾各一次）——陌生人第一件事是确认"这是什么，
+ *      谁在做"，此前这张卡一处品牌痕迹都没有。
+ *   2. 卡面主角换成结局标题本身（`meta.title`，如"她还是转走了"）——
+ *      一句人话，不需要先懂这个作品的任何机制就能看懂，而且天然是叙事性的
+ *      高唤醒内容，不比一个抽象倍数弱。
+ *   3. "差 N 倍"降级成主角下方一块有边框的"洞察卡"，内容一个字没删——
+ *      仍然是这个作品唯一竞品没有的判据，只是不再要求陌生人一上来就看懂它。
+ *
+ * `cardHero()` 的返回契约没有变（仍然是"拿不到效力矩阵就 null"），
+ * 变的只是 `makeCard` 怎么用它：主角不再依赖 `hero`，`hero` 只决定
+ * 要不要画那块洞察卡。
  */
-export function makeCard(view) {
+export async function makeCard(view) {
   const W = 640;
   const pad = 40;
   const contentW = W - pad * 2;
   const c = palette();
   const kind = reviewKind();
   const meta = endingMeta(kind);
-  const best = game.turns.reduce(
-    (a, b) => (b.delta > (a ? a.delta : -Infinity) ? b : a), null);
   // 分享卡生成时百分位可能还没算出来（`/api/stats` 是异步旁路）：没有就不画，
   // 跟正文里 `#percentileLine` 的 hidden 处理是同一条原则，不硬凑一个数。
   const pct = typeof game._percentile === 'number' ? game._percentile : null;
+
+  // 妙想小图标（真实资产，`static/assets/miaoxiang-mark.png`，与入口卡、
+  // 拦截交接屏同一份文件）。`loadImage` 从不 reject——加载失败也不该让
+  // 一张分享卡因为一个图标生成不出来，那时只是少画这一笔，"妙想 · 账户
+  // 安全"那半句文字照常画，品牌关联不能全押在一张图标能不能加载上。
+  const mark = await loadImage('static/assets/miaoxiang-mark.png');
 
   const wrap = view.querySelector('#cardWrap');
   wrap.innerHTML = '<canvas id="card"></canvas>';
   const canvas = view.querySelector('#card');
 
-  // 卡面主角（2026-08-29 换）：`cardHero()` 给的那三行。理由在 `cardHero`
-  // 的注释里——低唤醒的沮丧是最不会被转发的一种，而这一局手上恰好有一句
-  // 高唤醒的。拿不到效力矩阵时 `hero` 是 null，整张卡退回旧版式（金额当主角）。
+  // 卡面配角：`cardHero()` 给的那三行（差 N 倍那块洞察卡的内容）。
+  // 拿不到效力矩阵时是 null——此前整张卡的版式都押在它上面，现在只影响
+  // 要不要画那一块，主角（结局标题）不依赖它。
   const hero = cardHero();
 
-  // 版式仍然是固定的：唯一要先量的是玩家那句原话占一行还是两行，
-  // 那一句最长 120 字，不量就定不了卡片多高。
+  // 版式仍然是固定的：主角标题、玩家原话、洞察卡里的说明，三处都可能
+  // 换行，不先量一遍就定不了卡片多高。
   const probe = fitCanvas(document.createElement('canvas'), 1, 1);
+  probe.font = `700 28px ${c.sans}`;
+  const headlineLines = wrapText(probe, meta.title, contentW, 2);
   probe.font = `400 17px ${c.sans}`;
   const quoteLines = hero && hero.quote
     ? wrapText(probe, `「${hero.quote}」`, contentW - 14, 2) : [];
+  probe.font = `400 13px ${c.sans}`;
+  const noteLines = hero ? wrapText(probe, hero.note, contentW - 28, 3) : [];
 
-  const TIER_TOP = pad + 34;
-  const EYEBROW_TOP = TIER_TOP + 50;
-  const QUOTE_TOP = EYEBROW_TOP + 26;
-  const QUOTE_H = quoteLines.length * 26 + (quoteLines.length ? 12 : 0);
-  const AMT_TOP = hero ? QUOTE_TOP + QUOTE_H : TIER_TOP + 58;
-  const CAP_TOP = AMT_TOP + 54;
-  const SAVED_TOP = CAP_TOP + 22;
-  const DIV1 = SAVED_TOP + 34;
+  const BRAND_TOP = pad;
+  const TIER_TOP = BRAND_TOP + 22 + 16;
+  const HEADLINE_TOP = TIER_TOP + 44;
+  const HEADLINE_LINE_H = 36;
+  const HEADLINE_H = headlineLines.length * HEADLINE_LINE_H;
+  const CONCEPT_TOP = HEADLINE_TOP + HEADLINE_H + 6;
+  const QUOTE_TOP = CONCEPT_TOP + 30;
+  const QUOTE_H = quoteLines.length ? quoteLines.length * 26 + 12 : 0;
+  // 洞察卡（"差 N 倍"降级之后的落点）：一块带底色的圆角矩形，
+  // 内容自上而下是——第几轮用了哪把钥匙（小字）／差 N 倍（加粗）／
+  // 完整说明（小字，可能两三行）。没有 hero 时高度为 0，整块不画。
+  const BOX_TOP = QUOTE_TOP + QUOTE_H + (quoteLines.length ? 10 : 0);
+  const BOX_PAD = 16;
+  const BOX_H = hero
+    ? BOX_PAD * 2 + 18 + 32 + Math.max(1, noteLines.length) * 19
+    : 0;
+  const AFTER_HERO = hero ? BOX_TOP + BOX_H : CONCEPT_TOP + 30;
+  const DIV1 = AFTER_HERO + 22;
   const STAT_TOP = DIV1 + 26;
   const STAT_H = 74;
   const DIV2 = STAT_TOP + STAT_H + 18;
@@ -355,7 +393,7 @@ export function makeCard(view) {
   const PCT_TOP = LEGEND_TOP + 30;
   const PCT_H = pct != null ? 68 : 0;
   // 卡尾那一块（2026-08-29 加）：**一张传出去的图片如果不能把人带回作品，
-  // 它就只是一张图片**（就绪度审计 P1-9）。这一块就是那条路：作品名 +
+  // 它就只是一张图片**（就绪度审计 P1-9）。这一块就是那条路：品牌 + 作品名 +
   // 一句让人想扫的话 + 二维码 + 给人读的地址。
   //
   // 它属于「让人看懂」，不属于「让人多打几局」——POSITIONING「不做什么」
@@ -373,13 +411,28 @@ export function makeCard(view) {
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
 
+  // 品牌条：图标 + 「妙想 · 账户安全」——这是这张卡此前完全没有的东西。
+  // 分享卡是"新观众"唯一会看到的一屏（CONTEST.md §6.2 的漏斗图），
+  // 陌生人第一件事是确认"这是什么、谁在做"，而不是先看懂一个游戏机制。
+  // 「账户安全」不是随手写的——CONTEST.md 创意思路末句就是「设计为妙想的
+  // 账户安全技能」，这里原样借用同一个措辞，不新造一个说法。
+  ctx.textBaseline = 'middle';
+  if (mark) ctx.drawImage(mark, pad, BRAND_TOP + 1, 20, 20);
+  ctx.fillStyle = c.text;
+  ctx.font = `600 14px ${c.sans}`;
+  ctx.fillText('妙想 · 账户安全', pad + (mark ? 28 : 0), BRAND_TOP + 11);
+  // 产品名仍在卡上（CONTEST.md：分享卡水印是产品名固定出现的三处之一），
+  // 只是从"标题"退成右上角的署名——品牌那半句才是陌生人该先读到的
   ctx.fillStyle = c.sub;
-  ctx.font = `500 15px ${c.sans}`;
-  ctx.fillText('AI 反诈劝阻', pad, pad);
+  ctx.font = `500 13px ${c.sans}`;
+  ctx.textAlign = 'right';
+  ctx.fillText('AI 反诈劝阻', W - pad, BRAND_TOP + 11);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
 
   // 结局徽章：三色沿用复盘正文 .summary 的用法（劝住/拦下=品牌色，
   // 拖住=灰，转账/拉黑=红），卡片和正文不会看着像两个不同的产品
-  const pill = `${meta.tier} · ${meta.title}`;
+  const pill = `${meta.tier}`;
   ctx.font = `600 15px ${c.sans}`;
   const pillW = ctx.measureText(pill).width + 24;
   ctx.fillStyle = tierColor(kind, c);
@@ -392,11 +445,19 @@ export function makeCard(view) {
   ctx.fillText(pill, pad + 12, TIER_TOP + 16);
   ctx.textBaseline = 'top';
 
-  if (hero) {
-    ctx.fillStyle = c.note;
-    ctx.font = `500 13px ${c.sans}`;
-    ctx.fillText(hero.eyebrow, pad, EYEBROW_TOP);
+  // 卡面主角：结局标题本身，一句人话，不需要先懂任何机制。
+  // 颜色跟徽章同一套（tierColor），好坏在一眼的色块上已经写明白了。
+  ctx.fillStyle = tierColor(kind, c);
+  ctx.font = `700 28px ${c.sans}`;
+  headlineLines.forEach((line, i) => ctx.fillText(line, pad, HEADLINE_TOP + i * HEADLINE_LINE_H));
 
+  // 一句概念说明——补的正是这张卡此前缺的那句话：这到底是什么。
+  // 原样借用入口卡 / meta description 已经验证过的钩子，不新写一套说法。
+  ctx.fillStyle = c.gray;
+  ctx.font = `400 14px ${c.sans}`;
+  ctx.fillText(withTa('十轮角色对调，你能不能劝住正在被骗的{ta}'), pad, CONCEPT_TOP);
+
+  if (hero) {
     // 玩家自己那句原话。**它是这张卡最像"截图"的一处**——人转发的是
     // 一句话，不是一份成绩（HANDOFF「分享卡是一张聊天截图」那条原则还在）
     if (quoteLines.length) {
@@ -407,30 +468,32 @@ export function makeCard(view) {
       quoteLines.forEach((line, i) => ctx.fillText(line, pad + 14, QUOTE_TOP + i * 26));
     }
 
+    // 洞察卡："差 N 倍"降级之后的落点——内容一个字没少，只是不再是
+    // 46px 的巨大数字，而是一块带边框的说明区，陌生人可以跳过它，
+    // 玩过的人细读能读懂"时机"这条判据到底在说什么。
+    ctx.fillStyle = c.bg === c.white ? c.line : 'rgba(0, 0, 0, 0.035)';
+    roundRect(ctx, pad, BOX_TOP, contentW, BOX_H, 12);
+    ctx.fill();
+    ctx.strokeStyle = c.goalText;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    roundRect(ctx, pad + 0.5, BOX_TOP + 0.5, contentW - 1, BOX_H - 1, 12);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = c.note;
+    ctx.font = `500 12px ${c.sans}`;
+    ctx.fillText(hero.eyebrow, pad + BOX_PAD, BOX_TOP + BOX_PAD);
+
     ctx.fillStyle = c.goalText;
-    ctx.font = `600 46px ${c.sans}`;
-    ctx.fillText(hero.hero, pad, AMT_TOP);
+    ctx.font = `700 24px ${c.sans}`;
+    ctx.fillText(hero.hero, pad + BOX_PAD, BOX_TOP + BOX_PAD + 20);
 
     ctx.fillStyle = c.gray;
-    ctx.font = `400 15px ${c.sans}`;
-    ctx.fillText(hero.note, pad, CAP_TOP + 2);
-
-    ctx.fillStyle = c.note;
     ctx.font = `400 13px ${c.sans}`;
-    ctx.fillText('这一局判的不是你说得标不标准，是你用得是不是时候', pad, SAVED_TOP + 4);
-  } else {
-    // 旧版式：拿不到效力矩阵时金额仍然当主角，总比一块空白强
-    ctx.fillStyle = c.text;
-    ctx.font = `600 46px ${c.sans}`;
-    ctx.fillText(wholeMoney(savedAmount(kind)), pad, AMT_TOP);
-
-    ctx.fillStyle = c.note;
-    ctx.font = `400 13px ${c.sans}`;
-    ctx.fillText('守住的钱', pad, CAP_TOP);
-
-    ctx.fillStyle = c.gray;
-    ctx.font = `400 16px ${c.sans}`;
-    ctx.fillText(meta.savedCopy, pad, SAVED_TOP);
+    noteLines.forEach((line, i) => ctx.fillText(
+      line, pad + BOX_PAD, BOX_TOP + BOX_PAD + 52 + i * 19,
+    ));
   }
 
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
@@ -440,21 +503,14 @@ export function makeCard(view) {
   ctx.lineTo(W - pad, DIV1);
   ctx.stroke();
 
-  // 三栏统计，排法照抄正文的 statstrip
-  // 主角换人之后，金额退到这一栏。**它没有被藏起来**——徽章在卡头写着
-  // 这一局的结局，金额在这里写着数目。换的是主角，不是事实
-  const stats = hero
-    ? [
-      [wholeMoney(savedAmount(kind)), '守住的钱'],
-      [String(game.trust), '最终信任度'],
-      [String(game.turns.length), '用了几轮'],
-    ]
-    : [
-      [String(game.trust), '最终信任度'],
-      [String(game.turns.length), '用了几轮'],
-      [best && best.delta > 0 ? `+${best.delta}` : '—',
-        best && best.delta > 0 ? `第 ${best.round} 轮最有力` : `没有一句推动${peerPronoun()}`],
-    ];
+  // 三栏统计，排法照抄正文的 statstrip。**不再按 hero 分两套**——
+  // 主角换成结局标题之后，这三个数对任何一局都是同样有意义的三件事：
+  // 守住多少钱、最后信任度多少、打了几轮，不需要再分"有没有效力矩阵"。
+  const stats = [
+    [wholeMoney(savedAmount(kind)), '守住的钱'],
+    [String(game.trust), '最终信任度'],
+    [String(game.turns.length), '用了几轮'],
+  ];
   const colW = contentW / 3;
   ctx.textAlign = 'center';
   stats.forEach(([num, label], i) => {
@@ -528,7 +584,7 @@ export function makeCard(view) {
     x: qrX, y: FOOT_TOP, size: QR_BOX, dark: c.text, light: '#ffffff',
   });
 
-  // 左栏与二维码垂直居中对齐。
+  // 左栏与二维码垂直居中对齐。**这里多加了一行**（品牌条），块高跟着 +26。
   //
   // **2026-08-30：二维码画得出来时不再印地址。** 原先一律印，理由是
   // "画得出来时它是给不方便扫码的人看的"——而作品上线到大赛平台之后，
@@ -538,17 +594,26 @@ export function makeCard(view) {
   //
   // **但二维码画不出来时它仍然是唯一那条路**，那一支照旧印，不许一起删掉。
   const lines = hasQR ? 2 : 3;
-  const lineTop = FOOT_TOP + (QR_BOX - (lines === 2 ? 48 : 74)) / 2;
+  const blockH = (lines === 2 ? 48 : 74) + 26;
+  const lineTop = FOOT_TOP + (QR_BOX - blockH) / 2 + 26;
+
+  // 卡尾再露一次品牌——扫码/CTA 这个"要不要行动"的瞬间，比开头那一眼
+  // 更值得把"这是妙想的技能"钉一遍
+  if (mark) ctx.drawImage(mark, pad, lineTop - 26, 14, 14);
+  ctx.fillStyle = c.note;
+  ctx.font = `500 12px ${c.sans}`;
+  ctx.fillText('妙想 · 账户安全', pad + (mark ? 18 : 0), lineTop - 25);
+
   ctx.fillStyle = c.text;
   ctx.font = `600 18px ${c.sans}`;
   ctx.fillText(hasQR ? '扫码，换你去劝一次' : '换你去劝一次', pad, lineTop);
 
   ctx.fillStyle = c.gray;
   ctx.font = `400 14px ${c.sans}`;
-  // **口径跟着界面走**（2026-09-03）：`index.html` 的交接屏已经从
-  // 「接下来三分钟」改成「接下来十二轮」，而这一行是**被截图传出去的那一行**——
-  // 两处不一致时，外面看到的是这一行。轮次是这个作品说了算的量，分钟不是。
-  ctx.fillText('AI 反诈劝阻 · 十二轮角色对调', pad, lineTop + 30);
+  // **口径跟着界面走**（2026-09-05 从 12 改到 10，随 `MAX_ROUNDS` 一起）：
+  // 这一行是**被截图传出去的那一行**——`index.html` 的交接屏与这里若不一致，
+  // 外面看到的是这一行。轮次是这个作品说了算的量，分钟不是。
+  ctx.fillText('AI 反诈劝阻 · 十轮角色对调', pad, lineTop + 30);
 
   if (url && !hasQR) {
     ctx.fillStyle = c.note;

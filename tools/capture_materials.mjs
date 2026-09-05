@@ -50,19 +50,22 @@ const COVER = { width: 1920, height: 1200, deviceScaleFactor: 1, mobile: false }
  *  不是模型。这里要的是"七把钥匙都被演到"，不是"打出最高分"：素材要展示
  *  的是这套判分在判什么，不是作者自己有多会玩。
  */
+/** **前三句是故意的失误**：责骂、说教、空口断言——正是判分表要抓的
+ *  三类反面动作（app/offline.py `_PENALTY_RULES`）。留着这三句不是图省事，
+ *  是这份素材要展示的东西之一：开局失分之后，后面七句正规钥匙全部命中，
+ *  但十轮打完仍然没能翻过劝住线。素材要给的不是一份"照抄就赢"的话术单，
+ *  是"劝阻这件事哪里最容易栽跟头、栽了之后代价有多大"。 */
 const 台词 = [
-  '陈叔，这三十万本来是打算做什么用的？',
-  '我听得出来您这两天挺着急的。',
-  '您刚才说是内部消息，可之前您说群里谁都能进，这两句怎么放在一起？',
-  '转不转由您决定，我不替您做主，只想请您先回答两个问题。',
-  '王老师让您做的这几步，您能自己讲一遍给我听吗？',
-  '正规机构从来不会这么做，这是个局。',
-  '那笔钱原本是不是给女儿准备的？',
-  '他为什么一定要今天三点前？',
-  '您刚才说他保本，可他又说不承诺收益，这两句能同时成立吗？',
-  '我知道您不容易，这些年攒下来不容易。',
-  '这笔钱转过去之后，您打算怎么把它取回来？',
-  '最后一件事由您定：今天先不转，明天我陪您一起核一遍，行吗？',
+  '邵叔，这就是个骗局，您千万别再交钱了。',
+  '投资有风险，入市需谨慎，您得为自己负责。',
+  '您怎么这么糊涂，人家一天看几十个号能有多准？',
+  '这四十五万本来是留着做什么用的？',
+  '那个疗程具体怎么把病灶清掉的，您说说看？',
+  '医院说观察半年，那边说等不得，这不是矛盾吗？',
+  '交不交由您决定，我不替您做主。',
+  '我知道您这段日子不容易。',
+  '这钱交过去万一没效果，您怎么往回要？',
+  '您再想想吧，这钱真的不是小数目。',
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -100,18 +103,18 @@ async function 打一轮(call, 说) {
   await sleep(150);
 }
 
-/** 开局**之前**就把这一局钉在老陈那一场。
+/** 开局**之前**就把这一局钉在老邵那一场。
  *
- *  `钉住老陈()` 是补救——它只能在工作台那一屏用（「换一位客户」在那儿），
+ *  `钉住老邵()` 是补救——它只能在工作台那一屏用（「换一位客户」在那儿），
  *  而**转账确认屏与拦截屏在它之前**。于是 2026-08-30 之前出的素材里
- *  `phone-01` / `phone-02` 是随机某位客户，`phone-03` 起才是老陈：
- *  实测那一批的拦截屏印着「你是**她**的投资顾问」，紧挨着的下一张是老陈。
+ *  `phone-01` / `phone-02` 是随机某位客户，`phone-03` 起才是本局那位：
+ *  实测那一批的拦截屏印着「你是**她**的投资顾问」，紧挨着的下一张是位大爷。
  *  图集里这两张是相邻的。
  *
  *  用的仍然是**界面自己的那把钥匙**：`aap.pick.sid` 正是「换一位客户」
  *  写下的那个键（`state.js` 的 `startNewClient`），这里只是提前到首屏之前写。
  *  **没有为出素材改任何产品行为**。 */
-async function 开局前钉住老陈(call, base) {
+async function 开局前钉住老邵(call, base) {
   await call('Page.navigate', { url: `${base}/` });
   await waitFor(call, `document.readyState === 'complete'`, '首屏');
   // **打个记号再重载，然后等记号消失。** `Page.reload` 是发出去就返回的，
@@ -126,26 +129,26 @@ async function 开局前钉住老陈(call, base) {
   // （`state.js` 的 `startNewClient`：先 clearSaved，再写 PICK_KEY，再 reload）。
   await evaluate(call, `sessionStorage.removeItem('aap.game.v1');
     sessionStorage.removeItem('aap.transfer.seen');
-    sessionStorage.setItem('aap.pick.sid', 'chen')`);
+    sessionStorage.setItem('aap.pick.sid', 'shao')`);
   await call('Page.reload');
   await waitFor(call, `!window.__钉 && document.readyState === 'complete'`, '重载后的新文档', 25000);
 }
 
-/** 把这一局钉在老陈那一场（工作台上那把补救钥匙）。
+/** 把这一局钉在老邵那一场（工作台上那把补救钥匙）。
  *
  *  **场景默认是随机分配的**（POSITIONING「主张边界」最后一条），而上面那
- *  十二句台词里写着"陈叔""王老师"——不钉住，素材里就会出现拿着老陈的台词
+ *  十二句台词里写着"邵叔""那个疗程"——不钉住，素材里就会出现拿着老邵的台词
  *  去劝周淑琴的画面。用的是界面自己的「换一位客户」，**没有为出素材改任何
- *  产品行为**；列表里找不到姓陈的，说明当前这一局本来就是他。
+ *  产品行为**；列表里找不到姓邵的，说明当前这一局本来就是他。
  *
- *  开局前那一手（`开局前钉住老陈`）生效时这里会直接返回——留着它是兜底：
+ *  开局前那一手（`开局前钉住老邵`）生效时这里会直接返回——留着它是兜底：
  *  `aap.pick.sid` 万一读不到（隐私模式），这一步仍然把人换回来。 */
-async function 钉住老陈(call) {
+async function 钉住老邵(call) {
   if (await evaluate(call, `!!document.getElementById('pickClient')?.hidden`)) return;
   await evaluate(call, `document.getElementById('pickClient').click()`);
   await waitFor(call, `!document.getElementById('sheetHost').hidden`, '客户列表');
   const 换了 = await evaluate(call, `(() => {
-    const it = [...document.querySelectorAll('.sheet-item')].find(b => /陈/.test(b.textContent));
+    const it = [...document.querySelectorAll('.sheet-item')].find(b => /邵/.test(b.textContent));
     if (!it) return false;
     it.click();
     return true;
@@ -255,8 +258,8 @@ async function main() {
 
   try {
     await call('Emulation.setDeviceMetricsOverride', PHONE);
-    // 首屏之前就钉住，否则 phone-01/02 会是随机某位客户，而 phone-03 起是老陈
-    await 开局前钉住老陈(call, server.base);
+    // 首屏之前就钉住，否则 phone-01/02 会是随机某位客户，而 phone-03 起是老邵
+    await 开局前钉住老邵(call, server.base);
     await waitFor(call, `document.getElementById('transfer')?.classList.contains('on')`,
       '转账确认屏', 25000);
     await sleep(600);
@@ -274,7 +277,7 @@ async function main() {
       '妙想入口卡', 25000);
     await sleep(500);
     await 存图(call, 'phone-00-妙想入口.png');
-    await 开局前钉住老陈(call, server.base);
+    await 开局前钉住老邵(call, server.base);
     await waitFor(call, `document.getElementById('transfer')?.classList.contains('on')`,
       '转账确认屏（回到正常流程）', 25000);
     await sleep(500);
@@ -294,7 +297,7 @@ async function main() {
     await waitFor(call, `document.querySelector('.screen.on')?.id !== 'transfer'`, '离开转账屏', 25000);
     await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
       '工作台铺好', 25000);
-    await 钉住老陈(call);
+    await 钉住老邵(call);
     await sleep(400);
     await 存图(call, 'phone-03-异动预警.png');
 

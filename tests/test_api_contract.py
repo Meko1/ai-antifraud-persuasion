@@ -108,7 +108,7 @@ class Test隐藏线索不在开局下发:
         )
         resp = client.post("/api/game/turn", json={"token": token, "utterance": "最后一句"})
         ending = dict(_events(resp.text)).get("ending")
-        assert ending is not None, "第 12 轮该出结局"
+        assert ending is not None, "最后一轮该出结局"
         assert ending["phone"], "揭晓清单要在这一刻下发"
         assert ending["phone"][0]["clue"]
 

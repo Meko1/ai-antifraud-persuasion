@@ -18,7 +18,7 @@ export const game = {
   mood: 'irritated',
   threshold: 80,
   maxRounds: 12,
-  remaining: 12,
+  remaining: 10,
   turns: [],      // {round, utterance, reply, lines, hits, grounded, delta, trust, before, pool}
   ending: null,   // {kind, trust, lines}
   quote: null,    // 分享卡上那句话 {round, text}

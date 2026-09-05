@@ -9,6 +9,10 @@ import { makeCard, paintHistory, tierRankNote } from './history.js';
 import { openClientSheet, transferSeen } from './opening.js';
 import { $, thread } from './dom.js';
 import { syncSend } from './chat.js';
+// control.js 也 import 了本文件的 openReview。这条环在 ESM 下是安全的：
+// 两边都只在运行时调对方的函数，模块顶层谁都不碰对方的导出。
+import { syncEarlyReview } from './control.js';
+import { syncStuckHints } from './hints.js';
 import {
   RESULT_BASIS, SCENE, TONES, breachTurns, endingMeta, game, peerPronoun,
   pressureNote, resultAmount, reviewKind, saveGame, scoredTurns, startNewClient,
@@ -519,7 +523,7 @@ export function openReview() {
 
   paintContrast(view);
   paintMirror(view);
-  paintKeyBars(view);
+  paintKeyBars(view, kind);
 
   if (usedPenalties.length) {
     view.querySelector('#penaltyWrap').hidden = false;
@@ -564,6 +568,9 @@ function resumeUnfinished(view) {
   saveGame();
   view.remove();
   syncSend();
+  // 抬头那颗「看复盘」跟着回来：他撤回了"就到这儿"，这一局又在打了
+  syncEarlyReview();
+  syncStuckHints();
   $('say').focus();
 }
 
@@ -1141,7 +1148,33 @@ function paintContrastExplorer(view, timeline) {
   show(timeline[idx], buttons[idx]);
 }
 
-export function paintKeyBars(view) {
+/** 七把钥匙这一局各挣了多少。
+ *
+ *  **`kind === 'unfinished'` 时不给没用过那几把的 `tip`**（2026-09-04）。
+ *  `tip` 写的是时机——"这一招得等{ta}晃起来"、"他还硬着的时候让他复述他会
+ *  敷衍你"——那是答案，`control.js` 顶上那条分界（词汇是课程，时机是答案）
+ *  一直把它留在打完之后。
+ *
+ *  在此之前这一条只靠"入口藏得深"守着：`endEarly()` 埋在退出抽屉第二项，
+ *  点它的人本来就打算走了。把它提到抬头上之后，藏不住了，于是出现一条
+ *  合法的泄题路径——第 3 轮点开复盘 → 读完七把钥匙各自该在哪一档用 →
+ *  「回去接着打」。这正是 `tools/balance_sim.py` 顶部警告的那件事
+ *  （屏幕上有答案，会读字的玩家两轮滑向 expert，§9.1 人群分布当场作废），
+ *  只是绕了一圈进来。
+ *
+ *  **修的是复盘，不是那个「回去接着打」按钮。** 撤回主动结束是无损的
+ *  （服务端从没消费过那张令牌），而一个显眼的不可逆按钮比一个藏起来的更糟：
+ *  误触一次就丢掉半局。
+ *
+ *  已经用过的那几把照常给完整反馈——那是他自己打出来的，不是答案。
+ *
+ *  **`paintContrast` 那张四档对照表刻意没跟着关。** 它确实也露时机（一把
+ *  钥匙在四个档位上各值多少），但它只对**你真用过的那把**展开，而这一条
+ *  就是这个作品最想教的东西。想靠它把七把钥匙的答案凑齐，得先花七轮各用
+ *  一把——十轮的局打到那时候已经结束了，不构成一条走得通的捷径。
+ */
+export function paintKeyBars(view, kind) {
+  const 泄题 = kind === 'unfinished';
   const box = view.querySelector('#keyBars');
   const scored = scoredTurns();
   const rows = Object.keys(KEYS).map((k) => {
@@ -1187,7 +1220,8 @@ export function paintKeyBars(view) {
     const note = document.createElement('div');
     note.className = 'keynote';
     if (!r.used) {
-      note.textContent = withTa(meta.tip);
+      // 提前结束的那一档只说"这一局没动过它"，不说它该什么时候用
+      note.textContent = 泄题 ? '这一局没动过它' : withTa(meta.tip);
     } else {
       const parts = [`第 ${r.rounds.join('、')} 轮用了 ${r.used} 次`];
       if (r.eff != null) {

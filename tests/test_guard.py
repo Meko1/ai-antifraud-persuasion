@@ -95,7 +95,7 @@ class Test限流:
 
 class Test键名:
     def test_重放键只取签名部分(self) -> None:
-        """令牌正文可能有几 KB（含十二轮对话），不必也不该存进来。"""
+        """令牌正文可能有几 KB（含整局对话），不必也不该存进来。"""
         assert replay_key("payload.SIGNATURE") == "replay:SIGNATURE"
 
     def test_业务幂等键按局与轮(self) -> None:

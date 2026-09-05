@@ -292,7 +292,7 @@ class ModelGateway:
     ) -> str:
         """结局生成。
 
-        这一步不能省：台词落后一轮，若无独立结局生成，第 12 轮说中要害的玩家
+        这一步不能省：台词落后一轮，若无独立结局生成，最后一轮说中要害的玩家
         会看到"他还在嘴硬 → 突然弹出劝住了"的断裂。
 
         **`history` 必须是含最后一轮的完整历史。** 这个参数曾经存在但调用方
@@ -305,7 +305,7 @@ class ModelGateway:
         scene = scene or DEFAULT
         instruction = scene.endings[ending]
         messages = [
-            # 结局台词也得是同一个老陈：前十二轮说着一口"咋整"，
+            # 结局台词也得是同一个老陈：前面十轮说着一口"咋整"，
             # 最后一句忽然字正腔圆，人设在最后一屏上碎掉
             {"role": "system", "content": _act_prompt(gid, instruction, opening, scene)},
             *_history_messages(history),
@@ -356,7 +356,7 @@ def _history_messages(history: Sequence[Any]) -> List[Dict[str, str]]:
     return messages
 
 
-# 早前轮次的证据池给到几轮。给全 12 轮会把分类请求撑成一个长上下文任务——
+# 早前轮次的证据池给到几轮。给全 10 轮会把分类请求撑成一个长上下文任务——
 # 分类的耗时靠"短"来掩在台词流式输出后面，那是整个并行架构的前提。
 # 6 轮是实测的落点：跨轮引用几乎都发生在最近几轮，再往前的内容玩家自己也不记得了。
 EVIDENCE_TURNS = 6
@@ -384,7 +384,7 @@ def _classify_payload(
 
     ## 为什么"上一轮"仍然单独占一段
 
-    它是主锚点，消歧规则和标注集都是照着它写的。把 12 轮平摊成一锅，
+    它是主锚点，消歧规则和标注集都是照着它写的。把 10 轮平摊成一锅，
     模型会开始拿三轮前的词去凑扎根，判据反而变松。所以结构是
     **一个主锚点 + 一个背景池**，不是一个大上下文。
 

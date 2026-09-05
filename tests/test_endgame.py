@@ -57,7 +57,7 @@ class Test判据只有一份:
     def test_没打完的局不算结束(self) -> None:
         assert is_finished(_state(round=5, trust=50)) is False
 
-    def test_打满十二轮算结束(self) -> None:
+    def test_打满全场算结束(self) -> None:
         assert is_finished(_state(round=MAX_ROUNDS, trust=50)) is True
 
     def test_过了劝住线算结束(self) -> None:

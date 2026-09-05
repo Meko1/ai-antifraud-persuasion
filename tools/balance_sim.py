@@ -261,7 +261,7 @@ def play_game(
     persona: Persona, rng: random.Random, *, grounding_gate: bool = True,
     scene: Scenario = SCENARIOS[0],
 ) -> GameResult:
-    """跑完一局。evaluate_turn 保证第 12 轮必定出结局，循环不会不终止。"""
+    """跑完一局。evaluate_turn 保证第 MAX_ROUNDS 轮必定出结局，循环不会不终止。"""
     state = new_game()
     while True:
         hits, grounded = persona.act(state, rng, scene)
@@ -344,10 +344,16 @@ def _weighted_choice(
 #     ≤90%          28.2%          99.2%     14.7%
 #
 # 原因是结构性的，不是参数没调好：average 与 expert 每轮产出差 2.5 倍，
-# 而"12 轮累加过一条线"是个 S 形判据，会把 2.5 倍放大成十几倍的胜率差。
+# 而"累加过一条线"是个 S 形判据，会把 2.5 倍放大成十几倍的胜率差。
 # 要总体上 25%，expert 必须放回 77–88%——那正是这次重设计要消灭的东西。
 # 于是取前沿上保 expert 的那一端，区间跟着实测值走。
-WIN_RATE_BAND = (0.12, 0.22)
+#
+# **2026-09-04 下沿从 0.12 放到 0.11**，随 MAX_ROUNDS 12→10 一起重标。
+# 少两轮之后六个场景的加权总体胜率整体下移 0.2–0.5 个百分点，shao 落到
+# 11.9%（换两个种子是 12.0% / 12.0%）——正好贴在原下沿上，会因为种子噪声
+# 时红时绿。这条区间本来就是"跟着实测值走"的拟合值，不是从别处推出来的判据，
+# 所以该跟着轮次一起重标，而不是拿它去拦轮次。
+WIN_RATE_BAND = (0.11, 0.22)
 EXPERT_WIN_CEILING = 0.60
 SPEEDRUN_WIN_CEILING = 0.85
 PARROT_WIN_CEILING = 0.15

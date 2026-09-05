@@ -38,7 +38,7 @@ def 台词(route: str, run: int, round_: int, *sentences: str, said: str = "随�
 # ── 回放路线本身 ──────────────────────────────────────────────────────────
 
 
-def test_每条路线都是完整的十二轮() -> None:
+def test_每条路线的轮数都等于MAX_ROUNDS() -> None:
     """少一轮，最后几轮的样本量就和前面对不齐，跨轮的数字不可比。"""
     for route in load_routes():
         assert len(route.utterances) == MAX_ROUNDS, f"{route.sid}/{route.id}"

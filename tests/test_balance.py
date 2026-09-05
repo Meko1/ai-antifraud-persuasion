@@ -89,9 +89,13 @@ def test_扎根门控是必需品而非优化项() -> None:
 
 
 def test_没有人会在第六轮就被踢出局() -> None:
-    """novice 也要能平均玩到 11 轮——这直接保护投票转化率。
+    """novice 也要能平均玩到全场的九成——这直接保护投票转化率。
 
     作品要奖励方法论，不是刁难玩家；中途出局的人不会回来投票。
+
+    **判据按 `MAX_ROUNDS` 的比例写，不写死轮数**（2026-09-04，随 12→10 改）。
+    写死 10.0 的话，轮次上限一动这条就红，而它要守的从来不是"玩到第 11 轮"，
+    是"绝大多数人能把这一局打完"。10 轮下实测 novice 平均 9.9 轮。
 
     ### 这个数一路在涨，下一个人请盯着它
 
@@ -112,7 +116,7 @@ def test_没有人会在第六轮就被踢出局() -> None:
     """
     results = run_all(GAMES, SEED)
 
-    assert results["novice"].mean_rounds > 10.0
+    assert results["novice"].mean_rounds > scoring.MAX_ROUNDS * 0.9
     assert weighted(results, "blacklist_rate") < BLACKLIST_CEILING
 
 

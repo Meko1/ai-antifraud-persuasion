@@ -61,7 +61,7 @@ import { playTurn, syncSend } from './chat.js';
 import {
   ackTransfer, boot, confirmTransfer, enterGame, markPrimerSeen, openClientSheet,
 } from './opening.js';
-import { openExitSheet, openMethodsSheet } from './control.js';
+import { endEarly, openExitSheet, openMethodsSheet } from './control.js';
 import { game, startNewClient } from './state.js';
 
 // 点火。放在挂监听之前，与拆分前的顺序一致：开局请求要尽早发出去，
@@ -96,6 +96,10 @@ $('pickClient')?.addEventListener('click', openClientSheet);
 // 用户控制那三个入口
 $('chatExit').addEventListener('click', openExitSheet);
 $('openMethods').addEventListener('click', openMethodsSheet);
+// 抬头那颗「看复盘」——从退出抽屉里提出来的那条出路，直接调 `endEarly()`，
+// 不经过 `openExitSheet()`：那个抽屉问的是"你想怎么走"，这颗按钮已经替他
+// 答过了（不设二次确认，理由与三条退出路径一致——不在退路上放障碍）。
+$('earlyReview')?.addEventListener('click', endEarly);
 
 $('composer').addEventListener('submit', (e) => {
   e.preventDefault();

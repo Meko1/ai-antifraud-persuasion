@@ -207,7 +207,7 @@ describe('转账这一档：戒备与烦躁不是同一件事', () => {
   // 2026-08-25 评估过把烦躁档划进「拖住」，被否掉了（他还烦躁着就说
   // "你争到了时间"，是拿一句不成立的话去换一个好看的分布）。
   function transferred(mood) {
-    const app = fresh([turn({ round: 12, trust: mood === 'guarded' ? 18 : 36 })], SCENE_CHEN);
+    const app = fresh([turn({ round: 10, trust: mood === 'guarded' ? 18 : 36 })], SCENE_CHEN);
     app.game.ending = { kind: 'transferred' };
     app.game.mood = mood;
     return app;

@@ -91,7 +91,7 @@ def test_钥匙钝化随使用次数递减(已用次数: int, 预期得分: int)
     """第 1/2/3/4+ 次命中权重 1.0 / 0.55 / 0.3 / 0.16。
 
     尾巴不归零：效力矩阵已经在管"别复读一招"，钝化再一刀切到 0，
-    12 轮里可用的分数总量就低于过线所需，谁都赢不了。
+    一局里可用的分数总量就低于过线所需，谁都赢不了。
 
     **8-17 从 0.7/0.45/0.25 收紧。** 钥匙从三把变七把之后，按钥匙记的钝化
     基本失效——12 轮里每把只用得上一两次，全停在头两档。实测 expert 胜率
@@ -122,7 +122,7 @@ def test_未扎根的命中效力大打折扣(钥匙: str, 预期得分: int) ->
 
 
 def test_单轮判分被钳制在上限() -> None:
-    """一轮内三把钥匙全中也不能一击制胜，否则 12 轮的节奏就没了。"""
+    """一轮内三把钥匙全中也不能一击制胜，否则一局的节奏就没了。"""
     outcome = evaluate_turn(
         对局中(),
         hit_keys=["anchor_real_purpose", "socratic_question", "expose_contradiction"],
@@ -155,7 +155,7 @@ def test_说教与空口断言够不到拉黑线() -> None:
     不该被这两项一路扣到出局。
 
     病灶是量出来的：蒙特卡洛 6000 局/人设，novice **被拉黑 41.8%**，
-    而它的 penalty_rate 是 0.63，十二轮里光这两项就能扣掉九点上下。
+    而它的 penalty_rate 是 0.63，一局里光这两项就能扣掉七八点。
     加地板之后 19.3%，expert 与 speedrun 的胜率一格没动（§9.4 门槛全过）。
     """
     outcome = evaluate_turn(
@@ -306,7 +306,7 @@ def test_非施压轮只吃常规流失() -> None:
     [(15, 14), (14, 14), (10, 10)],
 )
 def test_信任流失不会把人压到地板以下(初始信任: int, 预期信任: int) -> None:
-    """光靠时间流逝不该把玩家踢出局——只会骂人的玩家也要能玩满 12 轮。"""
+    """光靠时间流逝不该把玩家踢出局——只会骂人的玩家也要能把这一局打完。"""
     outcome = evaluate_turn(对局中(trust=初始信任), hit_keys=[], grounded=False)
 
     assert outcome.state.trust == 预期信任
@@ -479,9 +479,10 @@ def test_信任度始终落在合法区间(
         (4, 78, ["expose_contradiction"], Ending.PERSUADED),
         # 归零即被拉黑，对局提前终止
         (5, 2, ["scold"], Ending.BLACKLISTED),
-        # 第 12 轮结束仍未达标：落哪一档看他最后停在哪个档位
-        (11, 40, [], Ending.TRANSFERRED),
-        (11, 70, [], Ending.INTERCEPTED),
+        # 最后一轮结束仍未达标：落哪一档看他最后停在哪个档位。
+        # 轮次写 MAX_ROUNDS - 1，不写死——这一格 12→10 改过一次
+        (MAX_ROUNDS - 1, 40, [], Ending.TRANSFERRED),
+        (MAX_ROUNDS - 1, 70, [], Ending.INTERCEPTED),
         # 对局仍在进行
         (5, 40, [], None),
     ],
@@ -504,7 +505,7 @@ def test_结局判定(
         (65, Ending.INTERCEPTED),
         (64, Ending.STALLED),       # 动摇：他不急着现在转，但也没被说服
         (45, Ending.STALLED),
-        (44, Ending.TRANSFERRED),   # 烦躁：开局就在这一档，十二轮什么也没发生
+        (44, Ending.TRANSFERRED),   # 烦躁：开局就在这一档，一局下来什么也没发生
         (1, Ending.TRANSFERRED),
     ],
 )

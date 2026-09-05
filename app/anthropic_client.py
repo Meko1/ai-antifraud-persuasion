@@ -78,7 +78,7 @@ class AnthropicClient:
         碰不到；但 TestClient 每个请求换一个循环，第二轮必炸——
         旧的 LLMClient 每次调用现建 httpx 客户端，本来没有这个约束。
 
-        连接留着不是省事，是省一次 TLS 握手：一局十二轮，每轮两个请求。
+        连接留着不是省事，是省一次 TLS 握手：一局十轮，每轮两个请求。
         """
         import asyncio
 
