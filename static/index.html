@@ -120,7 +120,10 @@
     <span class="transfer-alarm" aria-hidden="true"></span>
     <div class="osbar"><span>14:46</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
     <header class="appbar appbar-centered">
-      <strong id="transferBar">银证转账</strong>
+      <span class="transfer-brand">
+        <img src="static/assets/eastmoney-mark.png" alt="" width="20" height="20">
+        <strong id="transferBar">银证转账</strong>
+      </span>
     </header>
 
     <div class="transfer-body" id="transferForm">
@@ -179,8 +182,11 @@
         <span>妙想 · 账户安全</span>
       </p>
       <h1 id="handoffTitle" tabindex="-1">这笔转账没有提交。</h1>
-      <p>钱转到你自己的卡上，合规、正常、不需要理由——<b>这也是券商能看见的最后一帧</b>。它下一秒去哪儿，账户上再也看不到。</p>
-      <p>每天都有人在这一帧之后，把一辈子的积蓄转进一个并不存在的「安全账户」。拦下他们的那句话，往往就差一个人肯说。</p>
+      <!-- 2026-09-05 交底两段各砍掉三分之一：「不需要理由」「的那句话」
+           这类补足语删掉后意思一个字没变，只是读起来快一拍。加粗那句
+           论据原样保留——它是整个作品的论据，一个字都不能动。 -->
+      <p>钱转到自己卡上，合规、正常——<b>这也是券商能看见的最后一帧</b>：下一秒它去哪儿，账户再也看不到。</p>
+      <p>每天都有人在这一帧之后，把一辈子积蓄转进一个并不存在的「安全账户」——拦下他们，往往就差一个人肯开口。</p>
       <!-- ── 这两行 2026-08-30 改过，理由值得留着 ────────────────────────
            原文是「有人正要做同样的事，而**你是他的投资顾问**。」，
            整屏的重音落在一个**职称**上。两个问题：
@@ -286,6 +292,11 @@
         <dd class="num" id="openingMoney"></dd>
         <dd class="opening-hint" id="openingHint"></dd>
       </dl>
+      <!-- 这一屏是妙想把异动递到你手上的那一刻，此前跟 #home 一样一处
+           署名都没有——三屏里 #assignment 有、这两屏没有。补的是同一个
+           `.mx-sign`，不新起一套：落款只表明"是谁递来的"，不重复文案，
+           带字的完整落款已经在复盘那一处用过（review.js 那句注）。 -->
+      <p class="mx-sign"><img src="static/assets/miaoxiang-lockup.png" alt="妙想" width="43" height="65"></p>
     </div>
     <div class="primary-foot">
       <button class="primary-action" id="openProfile" type="button">查看异常记录</button>
@@ -320,6 +331,13 @@
           <span id="factsMoreLabel"></span>
         </button>
       </div>
+      <!-- 这一屏内容比 #opening 密（多一张事实清单），装不下整支竖版落款——
+           改成小三叶 + 一行字，仍是完成时的落款（`.mx-sign` 那套语义），
+           只是排成一行省下的高度，换来一句"是谁标记的"能不靠滚动看见。 -->
+      <p class="mx-sign mx-sign--compact">
+        <img src="static/assets/miaoxiang-mark.png" alt="" width="18" height="18">
+        <span>妙想 · 已标记该异动</span>
+      </p>
     </div>
     <div class="deskfoot">
       <button class="deskcta" id="openChen" type="button"><b id="ctaLabel">联系客户</b></button>

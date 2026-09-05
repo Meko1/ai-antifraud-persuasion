@@ -1601,6 +1601,12 @@ button:disabled { cursor: not-allowed; }
  * 版式照的是券商 App 的转账确认页：金额独占一行做主角，其余三项是
  * 「左标签右值」的核对表。**它必须看着像真的**，那一下"我刚签了字"
  * 才成立——但底下那行「模拟界面」不能省，理由见 index.html 那段注。 */
+/* 标题栏挂东财的标：真机截图里它就站在返回箭头旁边，一眼认出是哪个 App。
+   不铺满一条横幅、不带「东方财富」四个字——那样才是落款，不是广告位，
+   跟 `.mx-handoff-brand` 同一条克制的规矩。 */
+.transfer-brand { display: flex; align-items: center; gap: 6px; }
+.transfer-brand img { display: block; flex: none; border-radius: 5px; }
+
 .transfer-body {
   flex: 1;
   min-height: 0;
@@ -1823,6 +1829,17 @@ button:disabled { cursor: not-allowed; }
   color: var(--brand-orange-text);
 }
 
+/* 「坐到对面」要是妙想蓝，不是东财橙——2026-09-05 补。
+ * `#transfer` 整屏被排除在下面「妙想世界」那组作用域外（表单那一面必须
+ * 留东财色，见那段注），但拦截面（`#handoffFoot`）是同一屏后半段的
+ * 妙想地盘，排除条款把它一起误伤了：交接那一刻本该"看得见"的换色
+ * 从没发生过，`#handoffGo` 实测跟 `#transferGo` 是同一个橙。
+ * 只搬这一个按钮，`#transferFoot` 一个字不动。 */
+#handoffFoot .primary-action {
+  background: var(--mx-brand);
+  box-shadow: 0 8px 22px rgba(43, 92, 230, .26);
+}
+
 /* 异常事件 */
 /* 内容块在可用空间里**光学居中**，而不是顶在上面（8-22）。
  *
@@ -1869,6 +1886,12 @@ button:disabled { cursor: not-allowed; }
   box-shadow: 0 8px 20px rgba(25,35,31,.12);
 }
 .primary-action:active, .deskcta:active { transform: translateY(1px); }
+/* 「坐到对面」上锁的那 450ms（`HANDOFF_ARM_MS`，防手滑连击）此前一个
+ * 视觉信号都没有——`button:disabled` 全局只给了 `cursor:not-allowed`，
+ * 鼠标不动的人（触屏、无鼠标）完全看不出这一下按了没用。
+ * 其余按钮组（`.composer button` / `.actions button`）disabled 时都会变浅，
+ * 这两个漏了，补齐同一条规矩。 */
+.primary-action:disabled, .deskcta:disabled { opacity: .55; cursor: not-allowed; }
 /* 呼吸光晕只挂在这一屏的「确认转出」上，不挂进共用的 `.primary-action`——
    后面「坐到对面」「知道了，开始」「联系客户」用的是同一个类，那几屏
    已经进入对话情境，一个持续呼吸的按钮和那时候的语气不搭。
@@ -2887,6 +2910,11 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
   justify-content: center;
 }
 .mx-sign img { display: block; flex: none; opacity: .72; }
+
+/* #home 那处落款：内容比 #opening 密，整支竖标装不下——
+   小三叶 + 一行字，横排，同一句"落款"改一种排法。 */
+.mx-sign--compact { align-items: center; gap: 7px; }
+.mx-sign--compact span { color: var(--mx-muted); font-size: 12px; font-weight: 600; }
 
 /* 复盘那一处多一行小字，改成横排：竖标 + 右边两行说明。
    那句「设计为接入」是事实准确性要求（DESIGN.md 边界一节），
