@@ -5,8 +5,12 @@
  * ## 为什么是脚本，不是手工截图
  *
  * 提交材料要重做的次数比想象中多（改一句文案、换一个结局、审核驳回重交）。
- * 手工截图每次都要重新走一遍十二轮、重新对齐、重新裁剪，而且**没人记得住
+ * 手工截图每次都要重新走一遍全场、重新对齐、重新裁剪，而且**没人记得住
  * 上一次是在哪个尺寸下截的**。写成脚本之后，改完代码跑一次就全套重出。
+ *
+ * **但"跑一次就全套重出"只保得住画面，保不住这个文件自己写的文案**——
+ * 封面标题、标签那几句是写在这里的常量，代码改了它们不会跟着改。
+ * 轮次上限就这么错过一次（见 tools/rounds.mjs），所以那个数现在现读。
  *
  * 复用 tests/e2e 那套东西（真 Chrome、真服务、零 npm 依赖），理由与那边
  * 一样，见 tests/e2e/cdp.mjs 顶部。
@@ -37,6 +41,7 @@ import {
   connect, evaluate, findChrome, launchChrome, newPage, waitFor,
 } from '../tests/e2e/cdp.mjs';
 import { startServer } from '../tests/e2e/server.mjs';
+import { MAX_ROUNDS, 轮数汉字 } from './rounds.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, '..', 'dist', 'materials');
@@ -44,7 +49,7 @@ const OUT = path.join(HERE, '..', 'dist', 'materials');
 const PHONE = { width: 390, height: 844, deviceScaleFactor: 2, mobile: true };
 const COVER = { width: 1920, height: 1200, deviceScaleFactor: 1, mobile: false };
 
-/** 十二轮说什么。
+/** 一局里说什么。**条数必须等于轮次上限**（tools/rounds.mjs 现读的那个数）。
  *
  *  **每一句都对着 app/offline.py 的关键词表写**——离线态的分类是正则，
  *  不是模型。这里要的是"七把钥匙都被演到"，不是"打出最高分"：素材要展示
@@ -137,7 +142,7 @@ async function 开局前钉住老邵(call, base) {
 /** 把这一局钉在老邵那一场（工作台上那把补救钥匙）。
  *
  *  **场景默认是随机分配的**（POSITIONING「主张边界」最后一条），而上面那
- *  十二句台词里写着"邵叔""那个疗程"——不钉住，素材里就会出现拿着老邵的台词
+ *  一串台词里写着"邵叔""那个疗程"——不钉住，素材里就会出现拿着老邵的台词
  *  去劝周淑琴的画面。用的是界面自己的「换一位客户」，**没有为出素材改任何
  *  产品行为**；列表里找不到姓邵的，说明当前这一局本来就是他。
  *
@@ -222,6 +227,110 @@ function 封面HTML({ 图, 眉, 标题, 说明, 标签 }) {
     <div class="tags">${标签.map((t) => `<span>${t}</span>`).join('')}</div>
   </div>
   <div class="right"><img src="data:image/png;base64,${图}"></div>`;
+}
+
+/** 「它怎么接进真实业务流程」那一张。
+ *
+ *  ## 为什么要单独有这一张
+ *
+ *  官方的作品方向建议写的是"将 AI 能力融入真实业务或日常工作场景"，
+ *  奖励的是**接进去的形态**，不只是 demo 好不好玩。而图集里原先只有
+ *  `phone-00-妙想入口` 一张答这个问题，它答的是"长什么样"，
+ *  答不了"它站在整条处置链的哪一格、旁边那几格谁做"。
+ *
+ *  ## 这一张的全部风险在诚实上
+ *
+ *  Tier 0 / Tier 1 与处置闭环那三个动作**目前不存在**（CONTEST 第四节、
+ *  POSITIONING「路线」第 8/9 步）。一张画着四格的图天然让人读成"四格都有"，
+ *  所以状态徽章不是装饰：**「设计中」那三格必须和「已实现」那一格在
+ *  同一眼里分得开**，底部还要再用一句话说死。
+ *
+ *  含糊比说"没有"更掉分——这是 CONTEST 第八节那三条硬边界的同一条道理。 */
+function 接入图HTML() {
+  const 层 = [
+    { 名: 'Tier 0', 触发: '低风险异动', 动作: '静默记录 + 一句话提醒，不打断', 态: '设计中' },
+    { 名: 'Tier 1', 触发: '中风险异动', 动作: '60–90 秒快速核验', 态: '设计中' },
+    {
+      名: 'Tier 2', 触发: '高风险异动', 高亮: true,
+      动作: `${轮数汉字}轮角色对调对话 · 6 场景 / 28 人格 / 两万局蒙特卡洛标定`,
+      态: '已实现',
+    },
+    { 名: '处置闭环', 触发: '任意层级结束后', 动作: '核验收款方 / 转人工 / 安全返回交易', 态: '设计中' },
+  ];
+  const 行 = 层.map((t) => `<div class="row${t.高亮 ? ' on' : ''}">
+      <div class="tier">${t.名}</div>
+      <div class="mid"><div class="trig">${t.触发}</div><div class="act">${t.动作}</div></div>
+      <div class="badge ${t.态 === '已实现' ? 'done' : 'todo'}">${t.态}</div>
+    </div>`).join('');
+  return `<!doctype html><meta charset="utf-8"><style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* 弹幕跑道与另外两张封面同一套，理由见 封面HTML 顶部那段。
+     （这一段里不许出现反引号：整块 HTML 是模板串，反引号会把它截断。） */
+  body {
+    --danmu: 210px;
+    width: ${COVER.width}px; height: ${COVER.height}px; overflow: hidden;
+    padding: var(--danmu) 110px 0;
+    background: radial-gradient(120% 120% at 12% 0%, #22252c 0%, #131417 58%, #0d0e11 100%);
+    color: #fff;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, sans-serif;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0 0 auto 0; height: var(--danmu);
+    background: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 100%);
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 12px;
+    font-size: 26px; letter-spacing: .22em; color: #c9a227; margin-bottom: 26px;
+  }
+  .eyebrow::before { content: ''; width: 46px; height: 2px; background: #c9a227; }
+  h1 { font-size: 62px; line-height: 1.24; font-weight: 700; margin-bottom: 40px; }
+  h1 em { font-style: normal; color: #c9a227; }
+  .row {
+    display: flex; align-items: center; gap: 40px;
+    padding: 26px 34px; margin-bottom: 16px; border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.11); background: rgba(255,255,255,.03);
+  }
+  /* 已实现那一格自己亮起来：读者扫一眼就该知道四格里哪一格是真的 */
+  .row.on {
+    border-color: rgba(201,162,39,.55); background: rgba(201,162,39,.09);
+  }
+  .tier { flex: 0 0 210px; font-size: 34px; font-weight: 700; letter-spacing: .01em; }
+  .row.on .tier { color: #c9a227; }
+  .mid { flex: 1 1 auto; min-width: 0; }
+  .trig { font-size: 21px; color: #8b909a; margin-bottom: 7px; letter-spacing: .04em; }
+  .act { font-size: 27px; color: #dfe2e8; line-height: 1.45; }
+  .badge {
+    flex: 0 0 auto; font-size: 21px; padding: 10px 22px; border-radius: 999px;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .badge.done { color: #0d0e11; background: #c9a227; font-weight: 700; }
+  .badge.todo { color: #9aa0aa; border-color: rgba(255,255,255,.18); }
+  .foot {
+    margin-top: 30px; font-size: 23px; line-height: 1.7; color: #8b909a; max-width: 60em;
+  }
+  .foot b { color: #d6d9e0; font-weight: 600; }
+  </style>
+  <div class="eyebrow">它怎么接进真实业务流程</div>
+  <h1>现在这一局，是三层里的<em>最高一层</em>。</h1>
+  ${行}
+  <div class="foot"><b>「设计中」= 目前不存在，不是已实现功能。</b>
+  触发信号（清仓 / 大额转出 / 行为背离）已按异动类型确定性映射到场景，
+  缺的是那条真实异动流水本身；核心效果指标「24h 内转出放弃率」需接入真实流水才能测，
+  <b>至今一次未测量</b>。</div>`;
+}
+
+async function 出接入图(cdp, 文件名) {
+  const { call } = await newPage(cdp);
+  await call('Emulation.setDeviceMetricsOverride', COVER);
+  const { frameTree } = await call('Page.getFrameTree');
+  await call('Page.setDocumentContent', {
+    frameId: frameTree.frame.id, html: 接入图HTML(),
+  });
+  await waitFor(call, `document.fonts.ready.then(() => true)`, '接入图的字体', 20000);
+  await sleep(300);
+  const { data } = await call('Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync(path.join(OUT, 文件名), Buffer.from(data, 'base64'));
+  console.log(`  ✓ ${文件名}  ${Math.round(fs.statSync(path.join(OUT, 文件名)).size / 1024)} KB`);
 }
 
 async function 出封面(cdp, 文件名, 参数) {
@@ -318,7 +427,7 @@ async function main() {
     await waitFor(call, `document.querySelectorAll('#thread .msg').length >= 2`, '开场两条', 30000);
     await sleep(400);
 
-    console.log('\n打一局（离线态，十二轮）：');
+    console.log(`\n打一局（离线态，${轮数汉字}轮）：`);
     let 对局图 = null;
     for (let i = 0; i < 台词.length; i += 1) {
       if (await evaluate(call, `!!document.querySelector('.review')`)) break;
@@ -384,10 +493,10 @@ async function main() {
     await 出封面(cdp, 'cover-01-对局中.png', {
       图: 对局图 || 转账,
       眉: 'AI 反诈劝阻',
-      标题: '他正要按下确认。<br>你有十二轮，<em>去劝另一个他。</em>',
+      标题: `他正要按下确认。<br>你有${轮数汉字}轮，<em>去劝另一个他。</em>`,
       说明: '风险提示要人先承认自己被骗——正在转账的人恰恰最不肯承认。'
         + '角色对调不要求他承认任何事：他只需要去劝一个和他处境一模一样的人。',
-      标签: ['6 个诈骗场景', '28 个人格变体', '12 轮对局', '判分由程序算，不由模型打'],
+      标签: ['6 个诈骗场景', '28 个人格变体', `${MAX_ROUNDS} 轮对局`, '判分由程序算，不由模型打'],
     });
     await 出封面(cdp, 'cover-02-异动触发.png', {
       图: 转账,
@@ -395,8 +504,10 @@ async function main() {
       标题: '清仓、大额转出——<br><em>按下确认之前的最后一帧。</em>',
       说明: '证券资金只能在本人同名账户之间实时划转。这一帧是券商能看见的最后一帧，'
         + '下一秒钱去哪儿账户上再也看不到——所以干预只能发生在按下之前。',
-      标签: ['账户异动触发', '不打断交易主链路', '十二轮', '对照组可比'],
+      标签: ['账户异动触发', '不打断交易主链路', `${轮数汉字}轮`, '对照组可比'],
     });
+    // 「怎么接进去」那一张：四格里只有一格是真的，徽章与底注一起说死
+    await 出接入图(cdp, 'cover-03-怎么接进去.png');
   } finally {
     cdp.close();
     chrome.kill();
@@ -404,6 +515,70 @@ async function main() {
   }
 
   console.log(`\n全部落在 ${path.relative(process.cwd(), OUT)}/`);
+  排上传盘();
+}
+
+/** 平台只收 **12 张图 + 1 个视频**，而这个脚本出 15 张。
+ *
+ *  ## 为什么要有这一步
+ *
+ *  少哪三张、剩下的按什么顺序排，是**每次交卷都要重做一遍的判断**，
+ *  而它此前只存在于 CONTEST 那张表的措辞里。轮数那次已经证明了：
+ *  写在文档里的东西不会跟着代码走（tools/rounds.mjs 顶部记着那次）。
+ *  所以把它变成一个目录——`dist/materials/上传/`，拖进去就是那 12 张，
+ *  文件名自带 01…12，平台的文件选择器按名排序，**顺序不用再靠人记**。
+ *
+ *  ## 顺序的依据（CONTEST §6.2 的漏斗）
+ *
+ *  第一张承担全部点击转化，所以是封面（16:10，弹幕跑道已经让出来了）。
+ *  紧跟着两张回答评审真正奖励的那个问题——"它怎么接进真实业务流程"：
+ *  一张画接入形态，一张画它在整条处置链的哪一格。之后才是叙事：
+ *  你自己那一笔 → 被拦下 → 坐到对面 → 打 → 结果 → 复盘 → 回到你自己那一笔。
+ *
+ *  ## 砍掉的三张，以及为什么是它们
+ *
+ *  · `phone-06-对局中` —— **和封面重复**。封面里嵌的就是这一屏，
+ *    而且带着标题和标签，比单张信息量大。12 格里不该有一格是复读。
+ *  · `phone-04-客户档案` —— `phone-03-异动预警` 已经说清"你手上只有账户
+ *    那一侧"，档案页是同一件事的细节页。
+ *  · `card-分享卡` —— 卡面主角（差 2 倍）`phone-09` 讲得更大更清楚；
+ *    卡上那个二维码指向展示页，而看图的人**已经在展示页上了**。
+ *
+ *  三张都还在 `dist/materials/` 里，随时能换回来——改的是这张清单，
+ *  不是重跑截图。 */
+function 排上传盘() {
+  //: 平台上限。写成常量是为了让下面那句断言有个名字可指。
+  const 上限 = 12;
+  const 上传 = [
+    'cover-01-对局中.png',            // 封面：唯一有辨识度的画面 + 主钩子
+    'phone-00-妙想入口.png',          // 接入形态：它作为一张技能卡长什么样
+    'cover-03-怎么接进去.png',        // 它在整条处置链的哪一格（四格只有一格是真的）
+    'cover-02-异动触发.png',          // 什么时候弹出来
+    'phone-01-转账确认.png',          // 冷开场：这一笔是你自己的
+    'phone-02-被拦下.png',            // 角色对调那一刻
+    'phone-03-异动预警.png',          // 你手上只有账户那一侧
+    'phone-05-七把钥匙.png',          // 开局只给词汇，不给时机与分值
+    'phone-07-结局.png',              // 结局不另起一块界面
+    'phone-08-复盘首屏.png',          // 他最后按没按下确认
+    'phone-09-同一句话换个时候说.png', // 全作品唯一竞品没有的判据
+    'phone-10-回到你自己那一笔.png',   // 冷开场那个环在这儿合上
+  ];
+  if (上传.length !== 上限) {
+    // 静默出 13 张 = 交卷当天在平台上被拒一次，而那时候没人记得该砍哪张
+    throw new Error(`上传清单是 ${上传.length} 张，平台只收 ${上限} 张`);
+  }
+  const 盘 = path.join(OUT, '上传');
+  fs.rmSync(盘, { recursive: true, force: true });  // 换过清单之后不留旧编号
+  fs.mkdirSync(盘, { recursive: true });
+  console.log(`\n上传盘（${上限} 张，按图集顺序编号）：`);
+  上传.forEach((名, i) => {
+    const 源 = path.join(OUT, 名);
+    if (!fs.existsSync(源)) throw new Error(`上传清单里的 ${名} 没有出图`);
+    const 新 = `${String(i + 1).padStart(2, '0')}-${名.replace(/^(cover|phone|card)-\d*-?/, '')}`;
+    fs.copyFileSync(源, path.join(盘, 新));
+    console.log(`  ${新}`);
+  });
+  console.log(`  → ${path.relative(process.cwd(), 盘)}/  （视频另传 demo-51s.mp4）`);
 }
 
 main().catch((e) => {
