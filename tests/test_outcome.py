@@ -147,7 +147,7 @@ class Test端点鉴权与校验:
     鉴权换成共享密钥。"""
 
     def test_未配置密钥直接503(self, monkeypatch) -> None:
-        monkeypatch.setattr("app.main.settings", _with_secret(""))
+        monkeypatch.setattr("app.routes.outcome.settings", _with_secret(""))
         client = TestClient(app)
         resp = client.post(
             "/api/outcome/report",
@@ -157,7 +157,7 @@ class Test端点鉴权与校验:
         assert resp.json()["code"] == "not_configured"
 
     def test_密钥不对返回401(self, monkeypatch) -> None:
-        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr("app.routes.outcome.settings", _with_secret("right-secret"))
         client = TestClient(app)
         resp = client.post(
             "/api/outcome/report",
@@ -167,7 +167,7 @@ class Test端点鉴权与校验:
         assert resp.status_code == 401
 
     def test_密钥对但字段非法返回400(self, monkeypatch) -> None:
-        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr("app.routes.outcome.settings", _with_secret("right-secret"))
         client = TestClient(app)
         resp = client.post(
             "/api/outcome/report",
@@ -179,9 +179,9 @@ class Test端点鉴权与校验:
         assert resp.status_code == 400
 
     def test_合法回传返回arm(self, monkeypatch) -> None:
-        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr("app.routes.outcome.settings", _with_secret("right-secret"))
         fake = _FakeStore(result=RecordResult.STORED)
-        monkeypatch.setattr("app.main.outcome_store", fake)
+        monkeypatch.setattr("app.routes.outcome.outcome_store", fake)
         client = TestClient(app)
         resp = client.post(
             "/api/outcome/report",
@@ -201,9 +201,9 @@ class Test端点鉴权与校验:
         """P0-1：宿主重试同一条结果，不该收到跟第一次不一样的响应——
         `ok` 照样是 True，只是 `duplicate` 告诉它这次没有产生新计数。
         """
-        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr("app.routes.outcome.settings", _with_secret("right-secret"))
         monkeypatch.setattr(
-            "app.main.outcome_store", _FakeStore(result=RecordResult.DUPLICATE)
+            "app.routes.outcome.outcome_store", _FakeStore(result=RecordResult.DUPLICATE)
         )
         client = TestClient(app)
         resp = client.post(
@@ -218,9 +218,9 @@ class Test端点鉴权与校验:
 
     def test_冲突回传返回409且不假装成功(self, monkeypatch) -> None:
         """同一条异动此前已经记过一个不同的状态——拒绝，不静默覆盖。"""
-        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr("app.routes.outcome.settings", _with_secret("right-secret"))
         monkeypatch.setattr(
-            "app.main.outcome_store", _FakeStore(result=RecordResult.CONFLICT)
+            "app.routes.outcome.outcome_store", _FakeStore(result=RecordResult.CONFLICT)
         )
         client = TestClient(app)
         resp = client.post(
@@ -235,9 +235,9 @@ class Test端点鉴权与校验:
         """这份数据没有第二个来源，不能悄悄吞掉失败——与 stats 的旁路哲学不同,
         见 `app.outcome.OutcomeStore.record` 的文档字符串。
         """
-        monkeypatch.setattr("app.main.settings", _with_secret("right-secret"))
+        monkeypatch.setattr("app.routes.outcome.settings", _with_secret("right-secret"))
         monkeypatch.setattr(
-            "app.main.outcome_store", _FakeStore(result=RecordResult.UNAVAILABLE)
+            "app.routes.outcome.outcome_store", _FakeStore(result=RecordResult.UNAVAILABLE)
         )
         client = TestClient(app)
         resp = client.post(

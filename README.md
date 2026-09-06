@@ -144,7 +144,8 @@ node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 np
 │   └── adr/            七条不可轻易反转的决策及其理由
 ├── app/
 │   ├── scoring.py      判分引擎（纯函数，可蒙特卡洛离线重跑）
-│   ├── scenario.py     场景：剧本 / 人格 / 台词 / 界面素材 / 效力矩阵覆写
+│   ├── scenario.py     场景门面：类型再导出 + 注册表 + 按 id 取
+│   ├── scenarios/      六个场景一人一个文件；model.py 是它们共同的形状
 │   ├── gateway.py      三个模型操作与全部提示词
 │   ├── persona.py      28 个人格变体（六个场景各一组）
 │   ├── safety.py       输出安全层（模型说给玩家听的那一侧）+ 真实人身安全信号识别
@@ -153,10 +154,13 @@ node --test tests/e2e/*.test.mjs        # 真浏览器 E2E，要 Chrome，零 np
 │   ├── trigger.py      异动类型 → 候选场景的映射，upstream/demo 来源标记，实验分组
 │   ├── outcome.py      结局回传契约：24 小时后这笔到底完成没有，宿主 App 怎么报回来
 │   ├── offline.py      离线演示模式
-│   └── main.py         FastAPI 入口
+│   ├── http.py         安全响应头 / 限流分桶 / SSE 编码 / 请求上限
+│   ├── routes/         按面分的三组路由：game（对局）/ ops（运维）/ outcome（回传）
+│   └── main.py         FastAPI 入口 · 只做装配
 ├── static/             首页工作台 / 聊天页 / 复盘（原生三件，零构建）
 │   └── qr.js           二维码编码器（分享卡上那个码；自带，不引 CDN）
 ├── tools/
+│   ├── rounds.mjs      轮次上限现读（素材文案不许写死，见 docs/CONTEST.md 六）
 │   └── capture_materials.mjs  一条命令重出全套提交素材 → dist/materials/
 └── tests/frontend/     前端测试（node:vm 沙箱，零 npm 依赖）
 ```

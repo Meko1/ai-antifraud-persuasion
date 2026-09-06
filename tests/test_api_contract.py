@@ -46,8 +46,13 @@ def _settings(*, offline: bool, configured: bool):
 
     **`Settings` 是 frozen dataclass，monkeypatch 改不动它的字段**
     （`FrozenInstanceError`，而且连 undo 都做不了）。所以整份换掉：
-    `dataclasses.replace` 产出一个新实例，再把 `app.main.settings`
-    这个模块全局指过去——那是个普通的名字绑定，改得动也还得回来。
+    `dataclasses.replace` 产出一个新实例，再把**用它的那个路由模块**里的
+    `settings` 指过去（`app.routes.ops` / `app.routes.game` / `app.routes.outcome`）——
+    那是个普通的名字绑定，改得动也还得回来。
+
+    **盯的是路由模块，不是 `app.main`。** 2026-09-05 路由从 `main.py` 拆出去之后，
+    改 `app.main.settings` 已经影响不到任何一个处理函数了——它会静默通过，
+    然后测出一个"改了没生效"的假绿灯。
     """
     import dataclasses
 
@@ -166,10 +171,10 @@ class Test断流重试不重复记账:
 
     def test_同一轮重复请求只记一次账(self, client: TestClient, monkeypatch) -> None:
         recorded: List[tuple] = []
-        from app import main
+        from app.routes import game
 
         monkeypatch.setattr(
-            main.stats, "record_turn",
+            game.stats, "record_turn",
             lambda hits, **kw: recorded.append(("turn", tuple(hits))),
         )
 
@@ -195,10 +200,10 @@ class Test断流重试不重复记账:
         （L1 兜底台词 + L2 中性判分），那一轮仍然算走完了，令牌该消费。
         要模拟的是"整轮没走完"——编排层自己炸了、或者客户端在中途断开。
         """
-        from app import main
+        from app.routes import game
 
         boom = {"on": True}
-        real = main.play_turn
+        real = game.play_turn
 
         def fake_play_turn(*a, **kw):
             async def gen():
@@ -208,7 +213,7 @@ class Test断流重试不重复记账:
                     yield e
             return gen()
 
-        monkeypatch.setattr(main, "play_turn", fake_play_turn)
+        monkeypatch.setattr(game, "play_turn", fake_play_turn)
 
         token = client.post("/api/game/start").json()["token"]
         first = client.post("/api/game/turn", json={"token": token, "utterance": "会失败的一句"})
@@ -264,7 +269,7 @@ class Test存活与就绪分开:
         assert "api_key" not in json.dumps(body)
 
     def test_模型没配时readyz是503(self, client: TestClient, monkeypatch) -> None:
-        monkeypatch.setattr("app.main.settings", _settings(offline=False, configured=False))
+        monkeypatch.setattr("app.routes.ops.settings", _settings(offline=False, configured=False))
         resp = client.get("/readyz")
         assert resp.status_code == 503
         assert resp.json()["ready"] is False
@@ -272,7 +277,7 @@ class Test存活与就绪分开:
 
     def test_离线演示模式下是就绪的(self, client: TestClient, monkeypatch) -> None:
         """它压根不调网关，而且判分是纯函数（ADR-0001），一格都不打折。"""
-        monkeypatch.setattr("app.main.settings", _settings(offline=True, configured=False))
+        monkeypatch.setattr("app.routes.ops.settings", _settings(offline=True, configured=False))
         assert client.get("/readyz").status_code == 200
 
     def test_healthz报出是否已自动切到公网(self, client: TestClient) -> None:
@@ -330,12 +335,12 @@ class Test探测不对公网开放:
     def test_本机可以探测(self, monkeypatch) -> None:
         """运维 ssh 上去 `curl localhost` 那条路必须留着——
         那是拿到服务器当天最先要跑的一件事。"""
-        from app import main
+        from app.routes import ops
 
         async def _probe():
             return {"ok": True, "provider": "internal"}
 
-        monkeypatch.setattr(main.llm_client, "probe", _probe)
+        monkeypatch.setattr(ops.llm_client, "probe", _probe)
         # TestClient 默认的 client host 是 "testclient"，不是 127.0.0.1，
         # 不显式指定的话这条用例测的是"陌生来源"，跟下一条就重复了
         with TestClient(app, client=("127.0.0.1", 51234)) as c:
@@ -343,7 +348,7 @@ class Test探测不对公网开放:
         assert body["llm_probe"]["ok"] is True
 
     def test_非本机且没令牌时拒绝(self, monkeypatch) -> None:
-        from app import main
+        from app.routes import ops
 
         called = []
 
@@ -351,7 +356,7 @@ class Test探测不对公网开放:
             called.append(1)
             return {"ok": True}
 
-        monkeypatch.setattr(main.llm_client, "probe", _probe)
+        monkeypatch.setattr(ops.llm_client, "probe", _probe)
         monkeypatch.delenv("HEALTH_PROBE_TOKEN", raising=False)
 
         app.dependency_overrides[get_gateway] = lambda: FakeGateway()
@@ -363,12 +368,12 @@ class Test探测不对公网开放:
         assert called == [], "拒绝之后不该真的去打网关"
 
     def test_带对得上的令牌可以探测(self, monkeypatch) -> None:
-        from app import main
+        from app.routes import ops
 
         async def _probe():
             return {"ok": True}
 
-        monkeypatch.setattr(main.llm_client, "probe", _probe)
+        monkeypatch.setattr(ops.llm_client, "probe", _probe)
         monkeypatch.setenv("HEALTH_PROBE_TOKEN", "s3cret")
 
         with TestClient(app, client=("203.0.113.9", 51234)) as c:
@@ -382,11 +387,11 @@ class Test退出留痕:
     """
 
     def test_退出会被记一笔(self, client: TestClient, monkeypatch) -> None:
-        from app import main
+        from app.routes import game
 
         seen = []
         monkeypatch.setattr(
-            main.stats, "record_exit",
+            game.stats, "record_exit",
             lambda reason, **kw: seen.append((reason, kw.get("rounds"))),
         )
         token = client.post("/api/game/start").json()["token"]
@@ -396,10 +401,10 @@ class Test退出留痕:
 
     def test_一局只记一次(self, client: TestClient, monkeypatch) -> None:
         """用户可能连点两下，或者退出后回来又退出。"""
-        from app import main
+        from app.routes import game
 
         seen = []
-        monkeypatch.setattr(main.stats, "record_exit", lambda r, **k: seen.append(r))
+        monkeypatch.setattr(game.stats, "record_exit", lambda r, **k: seen.append(r))
         token = client.post("/api/game/start").json()["token"]
         client.post("/api/game/exit", json={"token": token, "reason": "abandoned"})
         second = client.post("/api/game/exit", json={"token": token, "reason": "abandoned"})
@@ -414,10 +419,10 @@ class Test退出留痕:
         assert resp.json()["recorded"] is False
 
     def test_未知理由归到中断而不是报错(self, client: TestClient, monkeypatch) -> None:
-        from app import main
+        from app.routes import game
 
         seen = []
-        monkeypatch.setattr(main.stats, "record_exit", lambda r, **k: seen.append(r))
+        monkeypatch.setattr(game.stats, "record_exit", lambda r, **k: seen.append(r))
         token = client.post("/api/game/start").json()["token"]
         client.post("/api/game/exit", json={"token": token, "reason": "whatever"})
         assert seen == ["abandoned"]
@@ -429,11 +434,11 @@ class Test连续故障时停止发放新干预:
     def test_熔断时开局返回503(self, client: TestClient, monkeypatch) -> None:
         from app.guard import Breaker
 
-        monkeypatch.setattr("app.main.breaker", Breaker(threshold=1))
-        monkeypatch.setattr("app.main.settings", _settings(offline=False, configured=True))
-        from app import main
+        monkeypatch.setattr("app.routes.game.breaker", Breaker(threshold=1))
+        monkeypatch.setattr("app.routes.game.settings", _settings(offline=False, configured=True))
+        from app.routes import game
 
-        main.breaker.record(ok=False)
+        game.breaker.record(ok=False)
         resp = client.post("/api/game/start")
         assert resp.status_code == 503
         assert resp.json()["code"] == "unavailable"
@@ -445,8 +450,8 @@ class Test连续故障时停止发放新干预:
 
         b = Breaker(threshold=1)
         b.record(ok=False)
-        monkeypatch.setattr("app.main.breaker", b)
-        monkeypatch.setattr("app.main.settings", _settings(offline=True, configured=False))
+        monkeypatch.setattr("app.routes.game.breaker", b)
+        monkeypatch.setattr("app.routes.game.settings", _settings(offline=True, configured=False))
         assert client.post("/api/game/start").status_code == 200
 
     def test_没熔断时照常开局(self, client: TestClient) -> None:
