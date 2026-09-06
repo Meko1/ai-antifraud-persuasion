@@ -7,7 +7,7 @@ import {
 } from './stats.js';
 import { makeCard, paintHistory, tierRankNote } from './history.js';
 import { openClientSheet, transferSeen } from './opening.js';
-import { $, thread } from './dom.js';
+import { $, showScreen, thread } from './dom.js';
 import { syncSend } from './chat.js';
 // control.js 也 import 了本文件的 openReview。这条环在 ESM 下是安全的：
 // 两边都只在运行时调对方的函数，模块顶层谁都不碰对方的导出。
@@ -215,11 +215,25 @@ export function openReview() {
         <p class="result-basis" id="resultBasis"></p>
       </section>
 
-      <div class="scoreline">
-        <div class="metric"><b class="num" id="sTrust"></b><span id="sTrustCap">最终信任</span></div>
-        <div class="metric"><b class="num" id="sRounds"></b><span>使用轮次</span></div>
-      </div>
+      <!-- ── 2026-09-06：时机对照上移，两个数字下沉 ──────────────────────
+           **这一段注释里不许出现反引号**，整张模板是一个模板字符串
+           （上面 .summary 那段已经写过一次，这次改动当场又栽了一次）。
 
+           POSITIONING「成功标准 · 对用户」的落地要求是一句原话：
+           **第一屏是他最后按没按下确认，紧接着是「同一句话，换个时候说」。**
+           而在此之前，这两样中间隔着 ¥0、免责那一段、和这条 scoreline。
+           实测（390×844，转账那一档）：折叠线在 844，时机对照那块顶在
+           **520**——**62% 的第一屏花在论点开始之前**，而它的最后一行正好被
+           折叠线切掉，可探索版整块在线下。
+           素材脚本自己写着「它在第一屏底下，不滚过去截不到」。
+
+           **scoreline 不是被贬低，是归位。** 最终信任与使用轮次是事后量出来
+           的参照，和上面那个金额是同一类东西；它们该跟在论点后面，
+           不该挡在论点前面。它上下本来就是细线，做一条分隔性数据带，
+           摆在「同一句话」与「你没看见的」之间同样成立。
+
+           **块数没变**：scoreline 不带 group / summary 类，两处数块的测试
+           （review.test.mjs 与 browser.test.mjs）都不数它。 -->
       <div class="group" id="contrastWrap" hidden>
         <div class="group-title">同一句话，换个时候说</div>
         <div class="panel" id="contrastBox"></div>
@@ -232,6 +246,11 @@ export function openReview() {
           <p class="contrast-cap" id="contrastCap" aria-live="polite"></p>
           <div class="contrast-bars" id="contrastBars"></div>
         </div>
+      </div>
+
+      <div class="scoreline">
+        <div class="metric"><b class="num" id="sTrust"></b><span id="sTrustCap">最终信任</span></div>
+        <div class="metric"><b class="num" id="sRounds"></b><span>使用轮次</span></div>
       </div>
 
       <div class="group">
@@ -554,6 +573,13 @@ function resumeUnfinished(view) {
   $('composer').hidden = false;
   saveGame();
   view.remove();
+  // **必须显式回聊天屏，不能只靠 `view.remove()` 露出底下那一屏。**
+  // 在 2026-09-06 之前这条路只有一个入口——`endEarly()` 从聊天屏调起，
+  // 底下那一屏本来就是聊天，摘掉遮罩正好落回去。现在工作台上那行
+  // 「看这几轮的复盘」是第二个入口，从那儿进来底下是 `#opening`：
+  // 摘掉遮罩之后，玩家按了一颗写着「回去接着打」的按钮，
+  // 却被送回了工作台——按钮说的话没兑现。
+  showScreen('chat');
   syncSend();
   // 抬头那颗「看复盘」跟着回来：他撤回了"就到这儿"，这一局又在打了
   syncEarlyReview();

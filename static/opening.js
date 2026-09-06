@@ -318,6 +318,44 @@ export function paintOpening() {
   paintTodayCount();
 }
 
+/** 工作台上那一行「进行中的对话」。**只有这一处决定它显不显示。**
+ *
+ *  两件事一次说清，而且都只说事实：
+ *
+ *  1. **存档还在。** 退出抽屉的「稍后继续」承诺过"这一局给你留着"，
+ *     而在此之前回到这一屏什么都看不出来——承诺兑现了，玩家却不知道。
+ *  2. **那几轮有复盘可看。** 抬头那颗「看复盘」第 4 轮才出现
+ *     （`EARLY_REVIEW_FROM`，理由见 control.js，不动它），
+ *     一到三轮就走的人因此一条路都没有。
+ *
+ *  **点它走的是 `endEarly()`，不是直接 `openReview()`。** 后者会让
+ *  `resultAmount()` 落到 `transferred` 那一档，给一个第 2 轮就走的人
+ *  印上「¥450,000 已全部转出」——那正是 state.js 里那段注释记着的、
+ *  已经修过一次的凭空捏造。走 `endEarly()` 才会落到 `unfinished`：
+ *  判分照常，不编资金结局，而且复盘页那颗「回去接着打」还能把它撤销。
+ *
+ *  打完的局、已经主动结束的局都不显示：前者复盘里有自己的出口，
+ *  后者这一行会变成一句不实的记录。
+ */
+export function syncOpeningResume(onReview) {
+  const el = $('openingResume');
+  if (!el) return;
+  const 打过 = game.turns.length;
+  el.hidden = !(game.entered && 打过 > 0 && !game.ending && !game.exited);
+  if (el.hidden) return;
+  el.replaceChildren();
+  // 文案里的数是**打完的轮数**，不是抬头那个"正在打第几轮"——
+  // 这一行说的是已经发生的事，不是下一步（两者差一，chat.js 那段注有讲）
+  el.append(`这次对话进行到第 ${打过} 轮，给你留着。`);
+  const link = document.createElement('button');
+  link.type = 'button';
+  link.className = 'resume-link';
+  link.id = 'resumeReview';
+  link.textContent = '看这几轮的复盘';
+  link.addEventListener('click', onReview);
+  el.append(link);
+}
+
 /** 抬头那行「今日第 N 位客户」。
  *
  * **原先写死成「今日 1 / 3」。** 那个分母是假的：客户由系统随机派发，

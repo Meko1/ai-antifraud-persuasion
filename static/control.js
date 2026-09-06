@@ -3,6 +3,7 @@ import { KEYS } from './keys.js';
 import { reportExit } from './api.js';
 import { openSheet } from './sheet.js';
 import { openReview } from './review.js';
+import { syncOpeningResume } from './opening.js';
 import { game, saveGame, withTa } from './state.js';
 
 // ── 用户控制：退出、暂停、提前结束 ────────────────────────────────────────
@@ -74,7 +75,12 @@ export function openExitSheet() {
       {
         label: '稍后继续',
         note: '这一局给你留着。回到这个页面就接着打。',
-        onPick: () => { reportExit(game.token, 'abandoned'); showScreen('opening'); },
+        // 「留着」这件事要在他落地的那一屏上看得见，否则这句承诺
+        // 只兑现在存档里，不兑现在他眼里（opening.js `syncOpeningResume`）
+        onPick: () => {
+          reportExit(game.token, 'abandoned');
+          backToDesk();
+        },
       },
       {
         label: played ? '就到这儿，看复盘' : '就到这儿',
@@ -115,6 +121,18 @@ export function endEarly() {
   openReview();
 }
 
+/** 回工作台，并把"这一局还留着"那一行同步上。
+ *
+ *  两条退出路径都落在这一屏，两条都该看到同一件事，所以只写一次。
+ *  复盘的入口传的是 `endEarly`，不是 `openReview`——理由写在
+ *  `syncOpeningResume` 的文档里（直接开复盘会给一个第 2 轮就走的人
+ *  编一个资金结局）。
+ */
+function backToDesk() {
+  showScreen('opening');
+  syncOpeningResume(endEarly);
+}
+
 /** 退出这次干预，回到开场那一屏。
  *
  *  **不清存档**：他可能只是想喘口气。真要重开有"开始一位新客户"那个按钮，
@@ -122,7 +140,7 @@ export function endEarly() {
  */
 export function leaveIntervention() {
   reportExit(game.token, game.turns.length ? 'abandoned' : 'dismissed');
-  showScreen('opening');
+  backToDesk();
 }
 
 /** 七把钥匙：对局中随时翻回来看。**识别优于回忆。**

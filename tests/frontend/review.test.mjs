@@ -164,8 +164,10 @@ describe('复盘第一屏：五块是硬上限', () => {
   test('第一屏的块数不超过五', () => {
     // 类名后面那一位不能省：少了它，`class="group-title"` 也会被数进来
     const blocks = template.match(/<(section|div) class="(summary|group)["\s]/g) || [];
-    // summary 与紧跟着的 scoreline 是同一块（结算卡），scoreline 不带 group/summary 类，
-    // 因此自然不计入
+    // scoreline 不带 group/summary 类，因此自然不计入。
+    // 2026-09-06：它已经不再紧跟结算卡了——时机对照上移到了两者之间
+    // （理由见 review.js 模板里那段注）。数块这件事不受影响，
+    // 但"summary 与紧跟着的 scoreline 是同一块"那句话已经不成立，不要照抄。
     assert.ok(
       blocks.length <= 5,
       `第一屏有 ${blocks.length} 块，上限 5（PIVOT-C-END §3.2）。`

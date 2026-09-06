@@ -60,6 +60,7 @@ import { $, showScreen } from './dom.js';
 import { playTurn, syncSend } from './chat.js';
 import {
   ackTransfer, boot, confirmTransfer, enterGame, markPrimerSeen, openClientSheet,
+  syncOpeningResume,
 } from './opening.js';
 import { endEarly, openExitSheet, openMethodsSheet } from './control.js';
 import { game, startNewClient } from './state.js';
@@ -86,7 +87,12 @@ $('openChen').addEventListener('click', enterGame);
   if (el) el.addEventListener('click', () => { markPrimerSeen(); enterGame(); });
 });
 $('openProfile').addEventListener('click', () => showScreen('home'));
-$('backOpening').addEventListener('click', () => showScreen('opening'));
+// 从客户档案返工作台也要把「这一局还留着」那一行同步上：
+// 退出抽屉那条路已经在 control.js 里同步过了，这是另一条进得来的路
+$('backOpening').addEventListener('click', () => {
+  showScreen('opening');
+  syncOpeningResume(endEarly);
+});
 // `startNewClient` 现在收一个可选的 sid，而事件回调的第一个参数是 Event——
 // 直接挂上去会把一个 MouseEvent 当成场景 id。包一层
 $('retryStart').addEventListener('click', () => startNewClient());

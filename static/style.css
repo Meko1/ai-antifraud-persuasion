@@ -821,13 +821,32 @@ body {
 .summary.blacklisted .tierpill,
 .summary.transferred .tierpill { color: #b3332f; background: #fdecec; }
 
-/* 一个大数，压住整屏。三档结局它是 ¥0——那正是它该有的分量 */
+/* 金额那一行。**2026-09-06 从 38px 降到 24px，主角让给结局那句话。**
+ *
+ * 原来这里写着"一个大数，压住整屏。三档结局它是 ¥0——那正是它该有的分量"。
+ * 那句话是照结算屏的逻辑写的，而这一屏不是结算屏。三条一起否掉它：
+ *
+ * 1. POSITIONING「成功标准 · 对用户」：**「救回多少钱」只是叙事外壳**，
+ *    「只按结果评分，等于告诉用户'做对了也白做'」。而 `balance_sim` 说
+ *    最低一档占 54.4%——一半以上的人打开这一屏，全屏最大的字是一个红色的 ¥0。
+ * 2. 同一页接着写着落地要求：**第一屏是他最后按没按下确认，紧接着是
+ *    「同一句话，换个时候说」**。金额不在那两样里。
+ * 3. 分享卡 2026-08-29 已经因为同一条论证换过主角了（CONTEST §6.3 S1：
+ *    低唤醒的沮丧是最不被转发的那一格）。**换了分享卡没换复盘，
+ *    是同一条论证在同一个产品里只执行了一半。**
+ *
+ * 24px 不是随手挑的：它正是 `.metric b`（最终信任 / 使用轮次）的字号。
+ * 金额和那两个数是同一类东西——事后量出来的参照，不是这一屏的论点，
+ * 所以它们该长得一样大。
+ *
+ * **降的是字号，不是这条信息。** 金额、`.savedcap` 那句、下面 `.result-basis`
+ * 的更正，一个字都没动。 */
 .summary .savedamt {
-  margin-top: 12px;
-  font-size: 38px;
-  font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.5px;
+  margin-top: 10px;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 .summary.persuaded .savedamt,
 .summary.intercepted .savedamt { color: #0a7d3f; }
@@ -2184,7 +2203,13 @@ button:disabled { cursor: not-allowed; }
 .result-kicker .tierrank:empty { display: none; }
 .summary .tierpill { font-weight: inherit; }
 .result-title { margin: 8px 0 0; font-size: 29px; line-height: 1.25; letter-spacing: -.035em; }
-.savedamt { margin-top: 18px; color: var(--success); font-size: 40px; line-height: 1.05; font-weight: 800; letter-spacing: -.045em; }
+/* **这一条只剩 `color` 是活的。** 排版那几位（`margin-top` `font-size`
+   `line-height` `font-weight` `letter-spacing`）原先写在这里，一个都没生效过：
+   上面 `.summary .savedamt` 是 (0,2,0)，这条是 (0,1,0)，全被压掉。
+   2026-09-06 把死掉的那几位删了——本文件自己的规矩是"两条同名规则并存时，
+   下一个人改其中一条会以为改完了"（见 reduced-motion 那条注）。
+   改字号请改上面那条。 */
+.savedamt { color: var(--success); }
 .savedcap { margin-top: 7px; color: var(--muted); font-size: 13px; }
 .saved { display: none; }
 .summary.intercepted .result-kicker, .summary.intercepted .savedamt,
@@ -2200,13 +2225,17 @@ button:disabled { cursor: not-allowed; }
  *
  * 也不给红：主动退出不是失败，它是这个产品明确允许的动作。 */
 .summary.unfinished .result-kicker, .summary.unfinished .savedamt { color: var(--muted); }
-/* **字号也要跟着降**（2026-08-29）。`.savedamt` 是 40px，而 `.result-title`
-   是 29px —— 走到结局的局里这是对的，那里它印的是「¥300,000」，钱是主角。
-   但 `unfinished` 这一档它印的是「未产生结果」：一句否定句，用全屏最大的字号，
-   把一次**被产品明确允许的退出**放大成了整屏最响的指责。
-   上面那条注释自己写着"主动退出不是失败……用红色标它，等于一边给退出按钮、
-   一边惩罚按下去的人"——字号原先在做和颜色相反的事。 */
-.summary.unfinished .savedamt { font-size: 25px; letter-spacing: -.03em; }
+/* **字号也要跟着降**（2026-08-29）。这一档 `.savedamt` 印的是「未产生结果」：
+   一句否定句，用全屏最大的字号，把一次**被产品明确允许的退出**放大成了
+   整屏最响的指责。上面那条注释自己写着"主动退出不是失败……用红色标它，
+   等于一边给退出按钮、一边惩罚按下去的人"——字号原先在做和颜色相反的事。
+
+   **2026-09-06 重算了这个数。** 基准从 38px 降到 24px 之后，原来的 25px
+   比基准还大 1px，这条规则等于反着生效了。而下面那条把 `unfinished` 的
+   标题也压到 24px——三个数字挤在同一挡，谁也不领先。
+   19px：比这一档的标题小一挡，让"你结束了对话"领先，
+   "未产生结果"退回它该有的位置——一句附注，不是一句判决。 */
+.summary.unfinished .savedamt { font-size: 19px; letter-spacing: -.02em; }
 /* 标题跟着降一档（2026-09-05）：这一档的标题是一句平铺直叙的事实
    （「第 2 轮，你结束了对话」），不是别的结局那种一句话定性（「他还是
    转走了」）。29px 是给后者用的分量，这里用了字号比内容更响，
@@ -2216,7 +2245,11 @@ button:disabled { cursor: not-allowed; }
 /* 复盘出现时焦点落在标题上（review.js 有解释）。它 tabindex=-1、进不了 Tab 序，
    画环只会像一处渲染错误。 */
 .result-title:focus { outline: none; }
-.scoreline { margin: 0 19px; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+/* 上边距 2026-09-06 从 0 改成 14px：它不再紧贴结算卡底边，而是跟在
+   「同一句话，换个时候说」后面（换位理由写在 review.js 模板里）。
+   14px 与 `.review .group` 的块间距同一个数——它现在是块与块之间的
+   一条数据带，节奏要跟着块走，不是跟着卡走。 */
+.scoreline { margin: 14px 19px 0; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .metric { padding: 14px 0; }
 .metric + .metric { padding-left: 18px; border-left: 1px solid var(--line); }
 .metric b { display: block; font-size: 24px; line-height: 1.25; }
@@ -2566,7 +2599,9 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 }
 @media (max-width: 370px) {
   .assignment-copy h1, .opening-body h1 { font-size: 30px; }
-  .savedamt { font-size: 36px; }
+  /* `.savedamt { font-size: 36px }` 删于 2026-09-06：它是 (0,1,0)，
+     被 `.summary .savedamt` (0,2,0) 压着，**从来没在任何一个 370px 屏上
+     生效过**。基准现在是 24px，窄屏也不需要再降一挡。 */
   .bubble { max-width: calc(100% - 48px); }
 }
 /* 全局 reduced-motion 兜底**在本文件 1229 行**，与这里原有的一条逐字相同。
@@ -2754,6 +2789,59 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
   box-shadow: 0 8px 22px rgba(43, 92, 230, .26);
 }
 
+/* 「这次对话进行到第 N 轮，给你留着 · 看这几轮的复盘」。
+ *
+ * **一行字，不是一块卡。** 它要说的是"东西还在"，不是"来点我"——
+ * 做成卡片或横幅就成了第三个和主按钮抢注意力的东西，
+ * 而这一屏的主线是「查看异常记录」。它排在两颗按钮之下、
+ * 「最多 10 轮」那句之上：先给动作，再给凭据。
+ *
+ * 13px 不是 12px（`.primary-foot p` 的缺省）：那一句是纯说明，
+ * 这一行里有一个可点的东西，比说明高半档。
+ *
+ * 对比度按**渐变最顶那一档**（`#e8ecfb`，最差的那个底）算，
+ * 脚本算的，不是估的（DESIGN.md「数字必须是算出来的」）：
+ *   `--mx-muted` #69697b → 4.56:1 ✓
+ *   `--mx-brand` #2b5ce6 → 4.72:1 ✓   两者都过 13px 正文的 4.5:1 */
+.opening-resume {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px 6px;
+  line-height: 1.5;
+}
+/* 字号写在这条选择器上，**不写在上面那条**：`.primary-foot p` 是 (0,1,1)，
+   `.opening-resume` 只有 (0,1,0)，写在上面会被压回 12px（实测栽过一次）。
+   颜色同理，一并放这儿。 */
+#opening .primary-foot .opening-resume {
+  color: var(--mx-muted);
+  font-size: 13px;
+}
+/* 文字链，不是按钮：视觉上小，**点击区不小**——
+   上下各 6px 的内边距把它撑到 ~30px 高，落在拇指够得着的范围里
+   （craft floor：可见的记号可以小，触达区不可以）。 */
+.resume-link {
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  color: var(--mx-brand);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+}
+.resume-link:hover { text-decoration-thickness: 2px; }
+/* 焦点圈用妙想那支蓝，不用浏览器缺省的那圈——
+   缺省焦点环属于任何设计系统之外（craft floor 那条「浏览器自带的那几处」）。 */
+.resume-link:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 #opening .ghost-action,
 .review .ghost-action {
   border: 0;
@@ -2789,6 +2877,21 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
   outline: 3px solid rgba(43, 92, 230, .34);
   outline-offset: 3px;
 }
+
+/* **复盘标题不画环**（2026-09-06 修回）。
+ *
+ * 上面 `.result-title:focus { outline: none }` 那条从妙想焦点环上线那天起
+ * 就一直没生效：两条都是 (0,2,0)，而 `.review :focus-visible` 在后面，
+ * 平局按顺序判——**正是本文件反复警告的"两条同名规则并存"**。
+ *
+ * 后果一直看不见，因为素材脚本拍照前会先 `blur()`（capture_materials 里
+ * 那句注：真人用鼠标点进来是看不到那圈的）——于是每一张复盘截图都是干净的，
+ * 而每一个真实打开复盘的人都看得见一个 3px 蓝框套在「他还是交了」外面。
+ *
+ * `.result-title` 是 `tabindex="-1"`、进不了 Tab 序的**程序化焦点**（送给
+ * 读屏器用，review.js 有解释）。它不是键盘落点，画环只会像一处渲染错误。
+ * (0,3,0) 压过上面那条，不再靠顺序。 */
+.review .result-title:focus-visible { outline: none; }
 
 .review-body { scrollbar-width: thin; scrollbar-color: rgba(43,92,230,.28) transparent; }
 .review-body::-webkit-scrollbar { width: 6px; }
