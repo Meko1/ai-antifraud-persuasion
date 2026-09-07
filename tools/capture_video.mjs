@@ -34,6 +34,25 @@
  *
  * **`剧本` 的头两章加起来 12 秒**，这是 CONTEST-POSITIONING §六 S5 那条
  * "前 12 秒把角色对调演完"的硬要求，改时长时先看那一条。
+ *
+ * ## 2026-09-07：从 48 秒扩到约两分钟
+ *
+ * 上一版只演到"同一句话，换个时候说"就收，九章。它作为一支 60 秒的钩子
+ * 是够的，但**看完不知道这东西怎么接进业务、也不知道复盘里还有什么**——
+ * 客户档案一闪而过，揭晓清单、K 线、逐轮、分享卡、入口卡一样都没有。
+ *
+ * 扩到十七章之后新增的六块，各自答一个此前答不了的问题：
+ *
+ *   profile   牌全在一侧，胜负手全在另一侧——档案里为什么什么都查不到
+ *   pressure  骗局那一侧也在说话（PRESSURE_EVERY=3），不是静止的靶子
+ *   explorer  时机那张表是**能翻的**，不是一句结论
+ *   clues     信息差就是玩法：他手机上那几条，他跟你说了几条
+ *   detail    判分不是黑箱：K 线 + 逐轮命中，且是纯函数算的
+ *   mirror    冷开场那个环在这里合上——少了它，看完只知道"这是个游戏"
+ *   entry     它怎么接进真实业务流程（评审真正奖励的那个问题）
+ *
+ * **入口卡放片尾不放片头**：它答的问题最重要，但插在开头会把角色对调那个
+ * 钩子推到第 20 秒，S5 那条就破了。
  */
 
 import fs from 'node:fs';
@@ -95,6 +114,25 @@ const 台词 = [
 /** 前几轮按原速演，之后的快进带过。 */
 const 慢放轮数 = 6;
 
+/** 第 i 轮打完之后停多久（毫秒）。
+ *
+ *  **这三个数是从「成片时长 ÷ 该章轮数」倒推的，不是手感调的。**
+ *  离线态一轮只花 0.75s，而 `铺时间轴()` 会把该章录到的帧线性拉到目标
+ *  时长上——录 6s 铺成 12s 就是半速播放，SSE 逐句到的动效一眼看得出被拉过
+ *  （跑完那张表里的 `×倍` 就是这个比值，脚本会自己在 chat 那一行报警）。
+ *
+ *  第一版扩到十七章时忘了跟着调，实测 chat ×0.50、fast ×0.27——
+ *  **字幕写着"其余几轮快进"，而那是全片最慢的一段。**
+ *
+ *    i 0–2  chat      12s ÷ 3 轮 ≈ 4.0s/轮 → 停 3300ms
+ *    i 3–5  pressure   8s ÷ 3 轮 ≈ 2.7s/轮 → 停 2300ms
+ *    i 6–9  fast       5s ÷ 4 轮 ≈ 1.3s/轮 → 停  950ms
+ *
+ *  改 `剧本` 里这三章的秒数，就要回来改这三个数，否则那张表立刻歪。
+ *  **一轮本身的耗时按实测 0.3s 算**（离线态回话是瞬时的），第一版按 0.75s
+ *  估，fast 那一章因此少录了近两秒、被拉成 ×0.67。 */
+const 读秒表 = (i) => (i < 3 ? 3300 : i < 慢放轮数 ? 2300 : 950);
+
 /** 剧本：每一章占几秒、右边那块写什么。
  *
  *  **总时长 48 秒**，留在 60 秒线内。眉是小字，题是大字，注是灰的一行。
@@ -106,24 +144,47 @@ const 慢放轮数 = 6;
  *  静止的几屏拉长一点看不出来，**只有 chat 那一章不行**——它有 SSE 逐句
  *  到的动效，拉慢了一眼看得出。那一章的时长与 `台词` 的条数是一起定的。 */
 const 剧本 = [
-  { id: 'transfer', 秒: 5, 眉: '这是一个真实存在的时刻',
+  // ── 钩子：12 秒把角色对调演完（S5 硬要求，改时长先看那一条）──────────
+  { id: 'transfer', 秒: 4, 眉: '这是一个真实存在的时刻',
     题: '你正要转出 45 万', 注: '钱转到自己卡上，合规、正常、不需要理由' },
-  { id: 'handoff', 秒: 7, 眉: '而这也是券商能看见的最后一帧',
+  { id: 'handoff', 秒: 8, 眉: '而这也是券商能看见的最后一帧',
     题: `接下来${轮数汉字}轮，请你坐到对面`, 注: '角色对调：被劝的人，去劝一个和他处境一样的人' },
+
+  // ── 这一局怎么打 ────────────────────────────────────────────────────
   { id: 'desk', 秒: 6, 眉: '你手上只有账户那一侧的一条预警',
     题: '有人正要做同样的事', 注: '骗局的一切，都得从他嘴里挖出来' },
-  { id: 'primer', 秒: 4, 眉: '开局只给词汇，不给答案',
-    题: '你手里有七把钥匙', 注: '给的是动作的名字，不是什么时候用' },
-  { id: 'chat', 秒: 11, 眉: `${轮数汉字}轮，信任度是唯一的状态量`,
-    题: '难的从来不是说什么，是什么时候说', 注: '同一把钥匙，早一轮晚一轮，效果差很远' },
-  { id: 'fast', 秒: 3, 眉: '其余几轮快进',
+  { id: 'profile', 秒: 6, 眉: '客户档案：开户年限、持仓、风险测评、交易频次',
+    题: '牌全在一侧，胜负手全在另一侧', 注: '那笔钱的用途、催他的人、截止时间——账户里一个字都没有' },
+  { id: 'primer', 秒: 5, 眉: '开局只给词汇，不给答案',
+    题: '你手里有七把钥匙', 注: '给的是动作的名字，不是什么时候用——时机才是这一局要考的' },
+  { id: 'chat', 秒: 12, 眉: `${轮数汉字}轮，信任度是唯一的状态量`,
+    题: '难的从来不是说什么，是什么时候说', 注: '每轮并发两件事：演他的回应，把你这句话归进闭集' },
+  { id: 'pressure', 秒: 8, 眉: '骗局那一侧也一直在说话',
+    题: '每三轮，对方又被催了一遍', 注: '你不动作，信任度自己也会往下掉' },
+  { id: 'fast', 秒: 5, 眉: '其余几轮快进',
     题: `${轮数汉字}轮打满`, 注: '每一轮都在算：命中了哪一把、扎没扎根、时机对不对' },
-  { id: 'ending', 秒: 4, 眉: '结局不另起一块界面',
-    题: '它就是这段对话里的最后一件东西', 注: '一张转账凭证——劝住没劝住，在屏幕上只有这一个样子' },
-  { id: 'review', 秒: 5, 眉: '复盘',
-    题: '每一分都是程序按规则表算的', 注: '不是模型打的分——这张表是纯函数，可以离线重跑' },
-  { id: 'contrast', 秒: 6, 眉: '这一局判的就是这个差值',
+
+  // ── 结局与复盘 ──────────────────────────────────────────────────────
+  { id: 'ending', 秒: 5, 眉: '结局不另起一块界面',
+    题: '它就是这段对话里的最后一件东西', 注: '劝住／拦下／拖住／转账——四档阶梯，不是输赢' },
+  { id: 'review', 秒: 6, 眉: '复盘第一屏',
+    题: '他最后按没按下确认', 注: '每一分都是程序按规则表算的，不是模型打的' },
+  { id: 'contrast', 秒: 9, 眉: '这一局判的就是这个差值',
     题: '同一句话，换个时候说', 注: '这是全作品唯一一处竞品没有的判据' },
+  { id: 'explorer', 秒: 7, 眉: '可探索版：任意一轮都能翻',
+    题: '同一把钥匙，四个情绪档位四个价', 注: '换一个客户，这张表还会整个翻过来' },
+  { id: 'clues', 秒: 8, 眉: '这一局你没看见的',
+    题: '他手机上那几条，他只跟你说了一条', 注: '挖不出来，你就只能泛泛地劝——这是扎根加成要奖励的东西' },
+  { id: 'detail', 秒: 7, 眉: '展开逐轮',
+    题: '信任度 K 线 + 每一轮命中了什么', 注: '判分算术是纯函数，两万局蒙特卡洛离线重跑过' },
+  { id: 'mirror', 秒: 8, 眉: '冷开场那个环，在这里合上',
+    题: '回到你自己那一笔', 注: '你刚才对他说的这几句，换到你自己身上还成立吗' },
+  { id: 'card', 秒: 5, 眉: '分享卡',
+    题: '卡面主角是那个差值', 注: '不是"你输了多少"——低唤醒的沮丧没人转发' },
+
+  // ── 它怎么接进真实业务 ──────────────────────────────────────────────
+  { id: 'entry', 秒: 7, 眉: '它怎么接进真实业务流程',
+    题: '设计为账户安全技能', 注: '异动触发，不打断交易主链路。这一屏是设计，不是现状' },
 ];
 
 // ── 一、录 ────────────────────────────────────────────────────────────
@@ -236,10 +297,32 @@ async function 打一轮(call, 说, 读秒 = 1500) {
   await sleep(读秒);
 }
 
-/** 走一遍流程，边走边打点。 */
-async function 走一遍(call, 录像) {
+/** 滚到某一块，**滚不到就报错**。
+ *
+ *  复盘后半段那五章全靠滚动定位，而 `document.getElementById(...)?.scrollIntoView()`
+ *  在元素不存在时是**静默不动**的——那一章于是录到上一块的画面，而字幕
+ *  照旧念着这一章的词。`contrast` 那一章早就为这件事单独抛过错
+ *  （"说的和演的对不上，比少一块更糟"），扩章的时候那道防线没跟着复制，
+ *  这个函数把它补齐成一条通用的。
+ *
+ *  `取` 是一段返回元素的表达式，`位` 传给 `scrollIntoView` 的 `block`。 */
+async function 滚到(call, 取, 位, 叫什么) {
+  const 成 = await evaluate(call, `(() => {
+    const el = ${取};
+    if (!el) return false;
+    el.scrollIntoView({ block: ${JSON.stringify(位)}, behavior: 'smooth' });
+    return true;
+  })()`);
+  if (!成) {
+    throw new Error(`复盘里找不到「${叫什么}」——这一章会录到上一块的画面，`
+      + '而字幕照旧念这一章的词。先确认这一局真的走到了结局。');
+  }
+}
+
+/** 走一遍流程，边走边打点。`base` 只在最后一章用：入口卡要重新导航。 */
+async function 走一遍(call, 录像, base) {
   录像.录('transfer');
-  await sleep(4500);                       // 让人看清这是一张转账确认单
+  await sleep(4000);                       // 让人看清这是一张转账确认单
 
   await evaluate(call, `document.getElementById('transferGo').click()`);
   await waitFor(call, `!document.getElementById('transferHandoff').hidden`, '拦截那一面');
@@ -258,16 +341,20 @@ async function 走一遍(call, 录像) {
     '工作台', 25000);
   await 钉住老邵(call);
   录像.录('desk');
-  await sleep(2800);
+  await sleep(5000);
 
+  // 客户档案自己占一章：它是「牌全在一侧，胜负手全在另一侧」那句话在屏幕上
+  // 的样子——开户年限、持仓、风险测评都在，而王老师、那个疗程、四十五万
+  // 一个字都没有。此前它被并进 desk 那一章，一闪而过。
   await evaluate(call, `document.getElementById('openProfile').click()`);
   await waitFor(call, `document.getElementById('home')?.classList.contains('on')`, '客户档案');
-  await sleep(2600);
+  录像.录('profile');
+  await sleep(5200);
 
   await evaluate(call, `document.getElementById('openChen').click()`);
   await waitFor(call, `document.getElementById('primer')?.classList.contains('on')`, '课程表');
   录像.录('primer');
-  await sleep(3600);
+  await sleep(4400);
 
   await evaluate(call, `document.getElementById('primerGo').click()`);
   await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`, '聊天屏');
@@ -276,23 +363,28 @@ async function 走一遍(call, 录像) {
   await sleep(900);
   for (let i = 0; i < 台词.length; i += 1) {
     if (await evaluate(call, `!!document.querySelector('.review')`)) break;
-    // 前几轮一轮一轮看清楚，之后快进带过——全场按原速，一分钟装不下。
+    // 前几轮一轮一轮看清楚，之后快进带过——全场按原速，两分钟也装不下。
     // **但一定要打满**：不走到结局，复盘里就没有落点那一块（见 `台词` 顶部）
     if (i === 慢放轮数) { 录像.录('fast'); }
-    await 打一轮(call, 台词[i], i < 慢放轮数 ? 1500 : 0);
+    await 打一轮(call, 台词[i], 读秒表(i));
+    // **施压那一章的边界打在第 3 轮之后。** `PRESSURE_EVERY = 3`
+    // （app/scoring.py），所以第 3 轮结束时 chat.js 的 `narrate(pressureNote())`
+    // 刚把那条旁白插进对话流——这一章一开场画面上就有它，字幕说的
+    // "每三轮，对方又被催了一遍"和演的是同一件事。第 6 轮那次也落在这一章里。
+    if (i === 2) { 录像.录('pressure'); }
   }
 
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西（chat.js `finish`）
   await waitFor(call, `!!document.querySelector('.endcta') || !!document.querySelector('.review')`,
     '结局那一帧', 40000);
   录像.录('ending');
-  await sleep(4000);
+  await sleep(5000);
   if (await evaluate(call, `!!document.querySelector('.endcta')`)) {
     await evaluate(call, `document.querySelector('.endcta').click()`);
   }
   await waitFor(call, `!!document.querySelector('.review')`, '复盘页', 25000);
   录像.录('review');
-  await sleep(4600);
+  await sleep(5600);
 
   // 滚到「同一句话，换个时候说」那一块——它是这个作品的招牌判据，也是落点。
   // **滚不到就直接报错**：字幕在这一章写着这句话，画面上却是另一块的话，
@@ -308,7 +400,65 @@ async function 走一遍(call, 录像) {
       + '多半是这一局没走到结局（contrastFacts 拿不到效力矩阵就整块不画）');
   }
   录像.录('contrast');
-  await sleep(5500);
+  await sleep(8500);
+
+  // 可探索版：轮次按钮 + 四档横条。**这一章要真的点一下**——字幕写着
+  // "任意一轮都能翻"，光滚过去看不出它是能翻的，得让观众看见按钮被按下、
+  // 横条跟着换一组数。挑最后一个按钮（离当前选中最远，变化最明显）。
+  await 滚到(call, `document.getElementById('contrastExplorer')`, 'start', '可探索版');
+  录像.录('explorer');
+  await sleep(2600);
+  await evaluate(call, `(() => {
+    const 按钮 = document.querySelectorAll('#contrastPills .contrast-pill');
+    if (按钮.length > 1) 按钮[按钮.length - 1].click();
+  })()`);
+  await sleep(4400);
+
+  // 「这一局你没看见的」：揭晓清单。全片唯一讲清"信息差就是玩法"的一块——
+  // 他手机上那几条，这一局他跟你说了几条。
+  await 滚到(call, `document.getElementById('phoneTitle')`, 'start', '揭晓清单');
+  录像.录('clues');
+  await sleep(7800);
+
+  // 展开折叠：K 线 + 逐轮命中。**等 chart 真的量到宽度再算这一章开始**，
+  // canvas 是 details 展开后才铺的，抢在前面滚过去录到的是一块空白
+  // （capture_materials 那边踩过同一条，用的是同一个 waitFor）。
+  await evaluate(call, `(() => {
+    const d = document.getElementById('reviewDetails');
+    d.open = true; d.dispatchEvent(new Event('toggle'));
+  })()`);
+  await waitFor(call, `document.getElementById('chart')?.width > 200`, 'K 线铺开', 20000);
+  await 滚到(call, `document.getElementById('chart')?.closest('.group')`, 'center', 'K 线那一块');
+  录像.录('detail');
+  await sleep(6800);
+
+  // 「回到你自己那一笔」：冷开场那个环在这里合上，是全作品唯一把反思
+  // 落回本人的一块。片子少了它，观众看完只知道"这是个游戏"。
+  await 滚到(call, `document.getElementById('mirrorLead')?.closest('.group')`,
+    'start', '回到你自己那一笔');
+  录像.录('mirror');
+  await sleep(7800);
+
+  await evaluate(call, `document.getElementById('makeCard').click()`);
+  await waitFor(call, `document.getElementById('card')?.width > 0`, '分享卡', 20000);
+  await evaluate(call, `document.getElementById('card')
+    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })`);
+  录像.录('card');
+  await sleep(4800);
+
+  // 收尾：入口卡。**它答的是评审真正奖励的那个问题**——"这东西怎么接进
+  // 真实业务流程"。放在片尾不放片头，是因为 S5 那条要求前 12 秒把角色对调
+  // 演完，而入口卡插在开头会把钩子推到第 20 秒。
+  //
+  // 入口卡只在**真正的冷开场**那一次出现（opening.js:69），所以三个键都得清：
+  // 存档、转账屏已看过、以及挑客户——留着挑客户会让它跳过入口直接进工作台。
+  await evaluate(call, `sessionStorage.removeItem('aap.game.v1');
+    sessionStorage.removeItem('aap.transfer.seen');
+    sessionStorage.removeItem('aap.pick.sid')`);
+  await call('Page.navigate', { url: `${base}/?from=miaoxiang` });
+  await waitFor(call, `document.getElementById('entry')?.classList.contains('on')`, '入口卡', 25000);
+  录像.录('entry');
+  await sleep(6800);
 }
 
 // ── 二、编 ────────────────────────────────────────────────────────────
@@ -575,7 +725,7 @@ async function main() {
 
     console.log('走一遍并收帧…');
     const 录像 = await 开录(cdp, call);
-    await 走一遍(call, 录像);
+    await 走一遍(call, 录像, server.base);
     await 录像.停();
     console.log(`  收到 ${录像.帧.length} 帧，实录 ${(录像.打点.at(-1).t / 1000).toFixed(1)}s`);
 

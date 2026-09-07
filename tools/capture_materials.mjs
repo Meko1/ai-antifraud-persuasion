@@ -598,7 +598,15 @@ function 排上传盘() {
     fs.copyFileSync(源, path.join(盘, 新));
     console.log(`  ${新}`);
   });
-  console.log(`  → ${path.relative(process.cwd(), 盘)}/  （视频另传 demo-51s.mp4）`);
+  // **视频文件名不许写死。** `capture_video.mjs` 按实录时长现取名
+  // （`demo-${秒}s.mp4`），改一次剧本它就变一次——写死在这儿的话，
+  // 交卷当天这行会指着一个不存在的文件，而且跑一万次也发现不了。
+  // 同一条教训见 tools/rounds.mjs 顶部那次轮数。
+  const 片 = fs.existsSync(OUT)
+    ? fs.readdirSync(OUT).filter((f) => /^demo-\d+s\.(mp4|webm)$/.test(f)).sort()
+    : [];
+  const 片名 = 片.length ? 片.join(' / ') : '（还没跑 capture_video.mjs）';
+  console.log(`  → ${path.relative(process.cwd(), 盘)}/  （视频另传 ${片名}）`);
 }
 
 main().catch((e) => {
