@@ -53,6 +53,23 @@ from fastapi.responses import JSONResponse
 #     留着会和 CSP 打架，而 CSP 的 frame-ancestors 在现代浏览器里优先级更高
 #
 # 换句话说：点击劫持的防线仍然在，只是从「谁都不许」收窄成「只许这一个」。
+#
+# ── 2026-09-07：**协议是 origin 的一部分**，白名单要连协议一起列 ──────────
+#
+# 平台的人反馈「作品展示」那一栏嵌不进来，他截的图指向 `X-Content-Type-Options:
+# nosniff`——那条与 iframe 无关（它只管 MIME 嗅探）。真正拦下来的是这里：
+# 当时的白名单只写了 `https://ai-creator.eastmoney.com`，而那个门户
+# **http 与 https 两个入口都活着**（实测 `https://ai-creator.eastmoney.com/`
+# 会 302 到 `http://ai-creator.eastmoney.com/portal/`，那一跳再 302 回 https）。
+# CSP 的 origin 匹配带协议，`https://x` 不匹配 `http://x`——于是同一个页面，
+# 停在 https 的人看得见，停在 http 的人看到一块空白。
+#
+# **这类 bug 作者自己永远撞不到**：他手里那个链接是 https 的。
+# 所以白名单一律把 http/https 两种都写上（`.env.example` 那段同批改了）。
+#
+# 顺带记一笔，这一条我们改不了、要平台自己修：他们的 Tengine 对不带尾斜杠的
+# 地址回 `301 → http://…/`（没吃 X-Forwarded-Proto），https 的父页面跟着跳
+# 到 http 子框架就是混合内容，浏览器直接拦。iframe 的 src 带上尾斜杠可以绕开。
 def build_security_headers(frame_ancestors: str = "") -> Dict[str, str]:
     """按 `frame_ancestors` 组一份响应头。
 
