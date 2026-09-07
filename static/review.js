@@ -12,7 +12,6 @@ import { syncSend } from './chat.js';
 // control.js 也 import 了本文件的 openReview。这条环在 ESM 下是安全的：
 // 两边都只在运行时调对方的函数，模块顶层谁都不碰对方的导出。
 import { syncEarlyReview } from './control.js';
-import { syncStuckHints } from './hints.js';
 import {
   RESULT_BASIS, SCENE, TONES, breachTurns, endingMeta, game, peerPronoun,
   pressureNote, resultAmount, reviewKind, saveGame, scoredTurns, startNewClient,
@@ -583,7 +582,6 @@ function resumeUnfinished(view) {
   syncSend();
   // 抬头那颗「看复盘」跟着回来：他撤回了"就到这儿"，这一局又在打了
   syncEarlyReview();
-  syncStuckHints();
   $('say').focus();
 }
 

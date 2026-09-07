@@ -450,16 +450,6 @@
       <p class="strangertip">对方、机构与人物均为虚构，不构成投资建议；你输入的内容会发送至大模型生成回复。</p>
     </main>
     <form class="composer" id="composer" autocomplete="off">
-      <!-- 卡住时的兜底句（2026-09-04）。**只在一轮都没打过、或连续两轮
-           一把钥匙都没命中时出现**——不是全程给答案，触发条件天然把
-           读得懂人的玩家排除在外，理由与判据都在 static/hints.js。
-
-           点一句只是把它填进输入框，**不直接发送**：这一局判的是玩家自己
-           挑的话，兜底句只兜"想不出词"，发不发仍然是他的选择。 -->
-      <div class="stuck-hints" id="stuckHints" hidden>
-        <p class="stuck-hints-label">不知道说什么？可以试试：</p>
-        <div class="stuck-hints-row" id="stuckHintsRow"></div>
-      </div>
       <div class="inputrow">
         <!-- 「七把钥匙」在对局中要能随时翻回来看。
              **这是识别优于回忆**：开打前那一屏（primer）只出现一次，

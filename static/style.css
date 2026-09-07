@@ -2137,39 +2137,6 @@ button:disabled { cursor: not-allowed; }
    它是这个作品的安全约束，不是版权声明。小到看不见的安全提示等于没有。 */
 .composer > p { margin: 7px 1px 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 
-/* 卡住时的兜底句（2026-09-04）。**刻意做得像输入框上方的一排候选词，
- * 不是一块"系统建议卡"**——理由与 `.mood-hint` 上面那条注释同源：
- * 做得越像"系统在提示"，越会诱使玩家等它发话，而这一局要练的是自己读人。
- * 显隐与内容全部由 `static/hints.js` 的 `syncStuckHints()` 决定。 */
-.stuck-hints { margin: 0 1px 8px; }
-.stuck-hints[hidden] { display: none; }
-.stuck-hints-label { margin: 0 0 6px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
-.stuck-hints-row { display: flex; flex-wrap: wrap; gap: 8px; }
-/* **选择器要写成 `.composer .stuck-hint-chip`，不能只写 `.stuck-hint-chip`。**
- * 这几个 chip 是 `<button>`，天生落进了 `.composer button` 的选区
- * （宽 46px、纯色橙底、24px 字——那条规则是给发送键写的），而它的特指度
- * 是 (0,1,1)，比单独一个 class 的 (0,1,0) 高，赢的是它，不是这里。
- * `.composer .stuck-hint-chip` 两个 class 记 (0,2,0)，稳赢 (0,1,1)。
- * 与 `button.composer-help` 那次是同一条坑（本文件那段注释写过一遍）。 */
-.composer .stuck-hint-chip {
-  flex: none;
-  max-width: 100%;
-  width: auto;
-  height: auto;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--paper-strong);
-  color: var(--ink);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.45;
-  text-align: left;
-  cursor: pointer;
-}
-.composer .stuck-hint-chip:hover { border-color: var(--quiet); background: var(--paper); }
-.composer .stuck-hint-chip:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 /* **15 → 19px，同 `.primary-action` 那条无障碍修复（本文件 1650 行那段）。**
  * 8-29 那次只改了 `.primary-action` / `.deskcta` 两个类，`.endcta`（「看复盘」）
  * 与 `.actions button`（「生成分享卡」）漏在外面，白字压在品牌橙上仍是 3.64:1。
@@ -2569,14 +2536,7 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
  * 自己已经是定位上下文了。
  *
  * `.turn-review`（2026-09-04 加）同样只有 12px 字号撑起来的高度，
- * 挤在轮次条这一行里，不补这一圈就是全产品第二小的可点目标。
- *
- * **`.stuck-hint-chip` 刻意不在这份名单里。** 它们是一个会按视口宽度
- * 换行的多行候选词列表，不是固定位置的单个控件——一圈居中的 44×44
- * 看不见的 `::after`，在相邻两行挨得近的时候会互相盖住对方的命中区，
- * 点上排最后一个字可能落到下排第一个词头上，这比"目标小一点"更糟。
- * 这里换一种做法：`padding: 10px 14px` 直接把可见框做到接近 44px，
- * 不再叠一层看不见的判定区。 */
+ * 挤在轮次条这一行里，不补这一圈就是全产品第二小的可点目标。 */
 .chat-exit, .composer button, .ghost-action, .review-mark, .turn-review { position: relative; }
 .chat-exit::after,
 .composer button::after,
