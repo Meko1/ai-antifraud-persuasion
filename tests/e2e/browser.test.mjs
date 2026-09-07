@@ -181,9 +181,15 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
     const 兜底 = await evaluate(call, `({
       hidden: document.getElementById('stuckHints').hidden,
       count: document.querySelectorAll('.stuck-hint-chip').length,
+      texts: [...document.querySelectorAll('.stuck-hint-chip')].map((b) => b.textContent),
     })`);
     assert.equal(兜底.hidden, false, '一轮都没打过，正是最该给兜底句的时候');
-    assert.equal(兜底.count, 3, '三把本能钥匙（锚定用途/苏格拉底提问/拆矛盾）各给一句');
+    // **三条是这一排的形状，不是"一把钥匙一条"**：第 1 轮拆矛盾那一把
+    // 拿不出话来（她统共只说了一句开场白，没有两件事可核对），
+    // 那一格由别把钥匙的下一句补上（static/hints.js 的 `stuckHints`）
+    assert.equal(兜底.count, 3, '兜底句这一排是三条');
+    assert.ok(!兜底.texts.some((t) => t.includes('两件事')),
+      `第 1 轮不该出拆矛盾那一句——她还没说够两件事：${兜底.texts}`);
 
     await evaluate(call, `document.querySelector('.stuck-hint-chip').click()`);
     const 填完 = await evaluate(call, `({

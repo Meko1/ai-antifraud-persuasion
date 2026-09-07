@@ -207,6 +207,7 @@ const EPILOGUE = `
 ;globalThis.__app = {
   get game() { return game; },
   get KEYS() { return KEYS; },
+  get STUCK_HINTS() { return STUCK_HINTS; },
   get PENALTIES() { return PENALTIES; },
   get BREACHES() { return BREACHES; },
   get TONES() { return TONES; },
