@@ -101,6 +101,33 @@ export function boot() {
  *  它挡的是同一串连击，不是慢手。 */
 const HANDOFF_ARM_MS = 450;
 
+/** 「坐到对面」这一下有没有解锁。锁本身在 `armHandoff()`，闸在 `ackTransfer()`。 */
+let handoffArmed = false;
+
+/** 给「坐到对面」上那 450ms 的锁。
+ *
+ *  **用 `aria-disabled` 而不是原生 `disabled`（2026-09-07）。** 两者挡得住的
+ *  是同一串连击，但读屏那一侧差得很远：原生 `disabled` 的按钮**不进 Tab 序、
+ *  也不进无障碍树**，而这一面把焦点送在 `h1` 上（见下面那段注），屏幕阅读器
+ *  用户按完「确认转出」的下一个动作就是往后 Tab——那 450ms 里他 Tab 过去，
+ *  这一屏唯一的出口是**不存在**的，没有任何一句话告诉他为什么。
+ *  `aria-disabled` 保留焦点与朗读，他听到的是「坐到对面，按钮，不可用」，
+ *  等半拍再按就行。
+ *
+ *  代价是 `aria-disabled` 不会真的挡住 click，得自己在 `ackTransfer()` 里
+ *  加一道闸——这正是原生 `disabled` 白送的那件事，换来上面那一段。
+ *
+ *  低动态偏好下不制造人为等待，但**锁仍然要上**（立刻解开）：它挡的是
+ *  0ms 硬切之后同一坐标上的第二下，不是慢手。 */
+function armHandoff(go) {
+  handoffArmed = false;
+  go.setAttribute('aria-disabled', 'true');
+  setTimeout(() => {
+    handoffArmed = true;
+    go.removeAttribute('aria-disabled');
+  }, REDUCED ? 0 : HANDOFF_ARM_MS);
+}
+
 /** 拦截那一下的提示音与震动。
  *
  *  **放在按下「确认转出」那一刻，不放在开屏**——这不是取舍，是浏览器的规矩：
@@ -153,6 +180,15 @@ export function confirmTransfer() {
   $('transferHandoff').hidden = false;
   $('handoffFoot').hidden = false;
 
+  // 头也一起换手：交底面自己带着「妙想 · 账户安全」那一行，顶上再挂一条
+  // 「银证转账」就成了两个品牌同屏。理由与取舍见 index.html 那段注。
+  //
+  // 头撤掉之后 `aria-labelledby` 指向的 `#transferBar` 进了 `display:none`，
+  // 无障碍名会算空——所以同时把它改指交底面的 `h1`。这一面的名字本来
+  // 也该是「这笔转账没有提交。」，比「银证转账」准。
+  $('transferAppbar').hidden = true;
+  $('transfer').setAttribute('aria-labelledby', 'handoffTitle');
+
   // 身份那一行的 `{ta}`。**在这里换而不是在 `paintTransfer()` 里**：
   // 那个函数按设计"玩家已经签过字就不动"（改写发生在他眼皮底下会闪），
   // 而这一行属于翻开的这一面，此刻才第一次被看见。
@@ -165,9 +201,7 @@ export function confirmTransfer() {
       + '你可以问，<b>但不能替{ta}做决定，也不能向{ta}推荐任何产品</b>——那是执业红线。');
   }
 
-  const go = $('handoffGo');
-  go.disabled = true;
-  setTimeout(() => { go.disabled = false; }, REDUCED ? 0 : HANDOFF_ARM_MS);
+  armHandoff($('handoffGo'));
 
   // 焦点送**标题**，不送按钮。送按钮的话，屏幕阅读器用户按完「确认转出」
   // 听到的唯一一句是「坐到对面，按钮」——他有充分理由认为转账成功了，
@@ -178,6 +212,9 @@ export function confirmTransfer() {
 /** 按下「坐到对面」：真正离开转账屏。
  *  开局请求已经回来就直接进工作台，没回来就去接入动画那一屏等着。 */
 export function ackTransfer() {
+  // `aria-disabled` 拦不住 click，闸在这里。`armHandoff()` 那段注写了
+  // 为什么值得多这一行。
+  if (!handoffArmed) return;
   try {
     sessionStorage.setItem(TRANSFER_KEY, '1');
   } catch { /* 隐私模式：下次刷新再演一遍，不影响任何别的东西 */ }

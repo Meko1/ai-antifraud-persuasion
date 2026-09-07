@@ -119,7 +119,13 @@
          就是同一件事说两遍。低动态偏好下由全局那条规则自动静止。 -->
     <span class="transfer-alarm" aria-hidden="true"></span>
     <div class="osbar"><span>14:46</span><span class="os-signals" aria-hidden="true"><i></i><i></i><i></i><b></b></span></div>
-    <header class="appbar appbar-centered">
+    <!-- **这条头只属于第一面（2026-09-07 加 id）。** 按下「确认转出」之后
+         这一屏换手给妙想，而交底面自己带着一行 `.mx-handoff-brand`
+         （妙想 · 账户安全）——两个品牌同时挂在一屏上，叙事是自相矛盾的：
+         上面还写着这是那个 App 的银证转账页，下面已经是另一方在说话了。
+         `confirmTransfer()` 把它整条撤掉，顺便把 44px 还给交底面
+         （矮屏上那一面此前顶部会被裁，见 git log `cf6996e`）。 -->
+    <header class="appbar appbar-centered" id="transferAppbar">
       <span class="transfer-brand">
         <img src="static/assets/eastmoney-mark.png" alt="" width="20" height="20">
         <strong id="transferBar">银证转账</strong>

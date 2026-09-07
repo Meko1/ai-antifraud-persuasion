@@ -401,7 +401,13 @@ async function main() {
     // （opening.js 的 `HANDOFF_ARM_MS`，防的是同一坐标连点两下把拦截面
     // 一帧不渲染地跳过去）。直接点会落在禁用态上，什么都不发生，
     // 然后卡在下一个 waitFor 上超时——**症状看着像页面坏了，其实是脚本手快**。
-    await waitFor(call, `!document.getElementById('handoffGo').disabled`, '「坐到对面」解锁');
+    //
+    // **等的是 `aria-disabled`，不是 `disabled`（2026-09-07）。** 那把锁为了
+    // 屏幕阅读器改成了 `aria-disabled`（`armHandoff()`），`.disabled` 从此
+    // 恒为 false——这一行要是不跟着改，它会立刻放行，脚本又落回上面说的
+    // 那个超时里，而且这次连"手快"都看不出来。
+    await waitFor(call, `!document.getElementById('handoffGo').hasAttribute('aria-disabled')`,
+      '「坐到对面」解锁');
     await evaluate(call, `document.getElementById('handoffGo').click()`);
     await waitFor(call, `document.querySelector('.screen.on')?.id !== 'transfer'`, '离开转账屏', 25000);
     await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
@@ -458,10 +464,24 @@ async function main() {
     await sleep(500);
     await 存图(call, 'phone-08-复盘首屏.png');
 
-    // 时机对照那一块是全作品唯一竞品没有的判据，单独给它一张：
-    // 它在第一屏底下，不滚过去截不到
-    await evaluate(call, `document.getElementById('contrastWrap')?.scrollIntoView(
-      { block: 'center', behavior: 'instant' })`);
+    // 时机对照那一块是全作品唯一竞品没有的判据，单独给它一张。
+    //
+    // **锚点是 `#contrastExplorer`，不是 `#contrastWrap`（2026-09-07 改）。**
+    // 复盘首屏很短，`phone-08` 那一张在滚动位置 0 就已经把整个 `#contrastBox`
+    // （引文 + 两个倍数 + 「动作是对的，差的是时候」）装进去了；而
+    // `contrastWrap` 居中会把同一段文字再摆一遍，两张图重叠约七成——
+    // 正是 §6 砍掉 `phone-06-对局中` 时用的那条理由（「12 格里不该有一格是
+    // 复读」），当时没量到这一对。
+    //
+    // 换成 explorer 之后这一张只剩独有内容：轮次按钮 + 四条档位横条，
+    // 也就是"换一轮看看"这件事本身——`phone-08` 只用文字讲了论点，
+    // 这一张给的是能上手翻的那份证据。
+    //
+    // `block: 'start'` 不是 `'center'`：居中会让上一块的尾巴露半行在顶上，
+    // 而这一张此前正是开在一句被拦腰切开的免责声明上。对齐到滚动容器顶部，
+    // 上面一个字都不剩。
+    await evaluate(call, `document.getElementById('contrastExplorer')?.scrollIntoView(
+      { block: 'start', behavior: 'instant' })`);
     await sleep(400);
     await 存图(call, 'phone-09-同一句话换个时候说.png');
 

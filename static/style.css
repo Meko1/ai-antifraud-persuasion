@@ -1661,13 +1661,29 @@ button:disabled { cursor: not-allowed; }
 /* 触发信号那一行：清仓 + 大额转出，POSITIONING 三条里的两条。
    做成一块浅色底，把它和上面的核对表分开——它不是要核对的字段，
    是这笔转账为什么会被盯上。 */
+/* **风险提示要压过它下面那两行营销文案（2026-09-07）。**
+ *
+ * 这一屏从上往下三样东西在争同一段注意力：异动提示（这一条）、悬念行
+ * `.transfer-hook`、分享卡线索 `.transfer-tease`。此前的权重是反的——
+ * 异动提示 13px 不加粗，而悬念行是 `--ink` + 760，**营销语气那一行比
+ * 拦截的正当性依据还重**。
+ *
+ * 它是这一屏唯一一句"为什么偏偏拦你"：没有它，「确认转出」上面就只剩
+ * 一张普通转账单加两句吆喝，拦截显得是随机发生的。
+ *
+ * 改的是字重、字号与一道左侧色条，**颜色一格没动**——`--danger` 对
+ * `--signal-soft` 的对比度是这一屏已经核过的那个数，调色就得重核一遍。
+ * 色条用 `--danger`（自己的文字色）不用 `--signal`：`.fact.warn` 那条是
+ * 素底上的分隔语言，这里是填色块，锚回自己的文字色才不是第三种红。 */
 .transfer-moves {
   margin: 18px 0 0;
   padding: 10px 12px;
+  border-left: 3px solid var(--danger);
   border-radius: 10px;
   background: var(--signal-soft);
   color: var(--danger);
-  font-size: 13px;
+  font-size: 13.5px;
+  font-weight: 600;
   line-height: 1.6;
   /* 只跳两下就归于静止（2026-09-01）：这一屏是访客落地的第一屏，
      异动提示要像"刚弹出的新警报"抓一下视线，跳个不停反而是噪音。
@@ -1717,7 +1733,10 @@ button:disabled { cursor: not-allowed; }
   display: block;
   margin-top: 4px;
   color: var(--ink);
-  font-weight: 760;
+  /* 760 → 700（2026-09-07）：仍然是这三行里最重的一行——它要的是"值得
+     点进去"，这一点没变；但它不该重过上面那块异动提示，理由见
+     `.transfer-moves` 那段注。颜色保持 `--ink`，只让字重退一档。 */
+  font-weight: 700;
   animation: transfer-hook-in .5s ease-out .5s both;
 }
 @keyframes transfer-hook-in {
@@ -1910,7 +1929,11 @@ button:disabled { cursor: not-allowed; }
  * 鼠标不动的人（触屏、无鼠标）完全看不出这一下按了没用。
  * 其余按钮组（`.composer button` / `.actions button`）disabled 时都会变浅，
  * 这两个漏了，补齐同一条规矩。 */
-.primary-action:disabled, .deskcta:disabled { opacity: .55; cursor: not-allowed; }
+/* `[aria-disabled]` 与 `:disabled` 同款（2026-09-07）：「坐到对面」那 450ms
+ * 改用 `aria-disabled` 上锁而不是原生 `disabled`（理由见 opening.js
+ * `armHandoff()`），少了这一行，锁上的按钮就一点也看不出来了。 */
+.primary-action:disabled, .deskcta:disabled,
+.primary-action[aria-disabled="true"], .deskcta[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
 /* 呼吸光晕只挂在这一屏的「确认转出」上，不挂进共用的 `.primary-action`——
    后面「坐到对面」「知道了，开始」「联系客户」用的是同一个类，那几屏
    已经进入对话情境，一个持续呼吸的按钮和那时候的语气不搭。

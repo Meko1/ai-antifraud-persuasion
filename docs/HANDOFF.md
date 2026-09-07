@@ -17,15 +17,20 @@
 - **真实人身安全信号词表是第一版，未经危机干预专业人士审核**
   （[`app/safety.py`](../app/safety.py) 的 `detect_real_world_risk`），
   上线前需要业务/合规确认。
-- **转账拦截屏（`#transfer` → 交底）还有三处 UI 待打磨**（一次设计评审
-  遗留，P0 项"按钮换手无色彩反馈"已在最近一次提交修复）：
-  - 交底 CTA 处于 450ms 锁定期（`HANDOFF_ARM_MS`）时没有视觉反馈，
-    也没有 `aria-disabled`，快速点击或屏幕阅读器用户拿到的是一个
-    "看起来能点却没反应"的按钮
-  - 拦截面按钮上方的风险提示框、`.transfer-hook`、`.transfer-tease`
-    三处视觉权重接近，风险提示（拦截的正当性依据）应该明显压过另外两条
-    营销语气的文案
-  - 交底面头部仍显示"银证转账"与东财标，与"已经换手给妙想"的叙事重复
+- ~~**转账拦截屏（`#transfer` → 交底）还有三处 UI 待打磨**~~
+  **三处已于 2026-09-07 全部做完**，留在这里是因为每一处的取舍值得记：
+  - 450ms 锁定期（`HANDOFF_ARM_MS`）：色彩反馈那一半此前已补
+    （`.primary-action:disabled`）；这次把锁**从原生 `disabled` 换成
+    `aria-disabled`**（`opening.js` 的 `armHandoff()`）。原生 `disabled`
+    不进 Tab 序也不进无障碍树，而这一面把焦点送在 `h1` 上，屏幕阅读器用户
+    下一个动作就是往后 Tab——那 450ms 里这一屏唯一的出口对他**不存在**。
+    代价是 `aria-disabled` 拦不住 click，`ackTransfer()` 里多了一道闸
+  - 三处视觉权重：`.transfer-moves` 加了字重、字号与一道左侧色条，
+    `.transfer-hook` 从 760 退到 700。**颜色一格没动**——那几个对比度
+    是核过的数，调色就得重核
+  - 交底面头部：`confirmTransfer()` 把 `#transferAppbar` 整条撤掉，
+    `aria-labelledby` 同时改指 `#handoffTitle`（否则无障碍名会算空）。
+    顺带把 44px 还给交底面，矮屏上那一面本来就紧（`cf6996e`）
 
 ## 需要项目所有者决定的问题（不要替他拍板）
 

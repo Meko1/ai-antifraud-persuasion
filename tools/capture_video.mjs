@@ -248,7 +248,10 @@ async function 走一遍(call, 录像) {
 
   // **等按钮解锁再点。** 「坐到对面」换面之后被锁 450ms（`HANDOFF_ARM_MS`），
   // 点在禁用态上什么都不发生，然后卡在下一个 waitFor 上超时
-  await waitFor(call, `!document.getElementById('handoffGo').disabled`, '「坐到对面」解锁');
+  // 等的是 `aria-disabled` 不是 `disabled`：那把锁 2026-09-07 为了屏幕阅读器
+  // 换了形态（opening.js 的 `armHandoff()`），`.disabled` 从此恒为 false。
+  await waitFor(call, `!document.getElementById('handoffGo').hasAttribute('aria-disabled')`,
+    '「坐到对面」解锁');
   await evaluate(call, `document.getElementById('handoffGo').click()`);
   await waitFor(call, `document.querySelector('.screen.on')?.id !== 'transfer'`, '离开转账屏', 25000);
   await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
