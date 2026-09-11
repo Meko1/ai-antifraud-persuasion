@@ -3,9 +3,12 @@ import { fetchStats } from './api.js';
 import { contrastFacts, contrastTimeline, timingClause } from './contrast.js';
 import { fitCanvas, paintKline, palette } from './chart.js';
 import {
-  canCompareEndings, canCompareKeys, percentileCopy, trustPercentile,
+  canCompareEndings, canCompareKeys, localRank, localRankCopy, percentileCopy,
+  trustPercentile, trustSample,
 } from './stats.js';
-import { makeCard, paintHistory, tierRankNote } from './history.js';
+import {
+  TIER_RANK, loadHistory, makeCard, paintHistory, tierRankNote,
+} from './history.js';
 import { openClientSheet, transferSeen } from './opening.js';
 import { $, showScreen, thread } from './dom.js';
 import { syncSend } from './chat.js';
@@ -311,7 +314,13 @@ export function openReview() {
                把它闷在第二屏里，是这次砍块唯一可能砍出的实质损失。 -->
           <summary id="reviewMore">详细复盘</summary>
           <div class="evidence-content">
-            <p class="percentile" id="percentileLine">排行样本积累中 · 暂不显示百分位</p>
+            <!-- 默认 hidden，有东西说了才解开（paintLocalRank / paintStats）。
+                 **2026-09-11 之前这里写死着一句占位文案**，而三条路——Redis
+                 没配、连不上、样本没攒够——都不会回来改这一行，于是那句话是
+                 常驻的：屏幕上永远挂着"我们这儿有个功能坏着"。
+                 stats.js 顶上那条"没数据就不出现"本来就管着它，
+                 占位文案是那条原则唯一没落地的地方。 -->
+            <p class="percentile" id="percentileLine" hidden></p>
 
             <section class="turning-point" id="turningPoint">
               <b id="turningTitle"></b>
@@ -538,6 +547,11 @@ export function openReview() {
 
   paintStats(view, kind);
   paintHistory(view, kind);
+  // **必须排在 paintHistory 后面**：本局那一笔是 `recordGame` 记进去的
+  // （paintHistory 里），先跑就会拿不到自己，名次的分母少一个。
+  // paintStats 是异步的（`/api/stats` 旁路），它那一份如果够格会在稍后
+  // 把这一行覆盖掉——同步的本机排名先垫上，别让那一行空等一个网络往返。
+  paintLocalRank(view, kind);
 
   view.querySelector('#restart').onclick = () => startNewClient();
   const another = view.querySelector('#pickAnother');
@@ -1305,6 +1319,36 @@ export function scoreLedger(t) {
  * 复盘的其余部分一个字都不受影响。绝不让一个纯展示功能拖累最后一屏。
  */
 
+/** 排行那一行的兜底：跟这台设备上自己打过的局比（2026-09-11）。
+ *
+ * **它不是百分位的替代品，是它的下一级。** 服务端样本够了 `paintStats`
+ * 会把这一行覆盖成真正的人群百分位；不够、或者 Redis 根本连不上（本机、
+ * 以及 `REDIS_URL` 没填的那台服务器），至少还有一句站得住的话可说。
+ * 两级都没有——第一局、或者 localStorage 被禁——那一行整个不出现，
+ * 跟 stats.js 顶上那条"没数据就不出现"一致，不再留占位文案。
+ *
+ * 结局门槛与服务端同源：被拉黑与主动结束不入档，不拿它们去排名
+ * （history.js 的 `TIER_RANK`、`app/stats.py` 的 `_LADDER_KINDS`）。
+ */
+export function paintLocalRank(view, kind) {
+  if (!(kind in TIER_RANK)) return;
+  const line = view.querySelector('#percentileLine');
+  if (!line || !line.hidden) return;  // 服务端那一份已经先到了，不许降级覆盖
+  let res = null;
+  try {
+    res = localRank(loadHistory().filter((e) => e && e.kind in TIER_RANK), {
+      sid: SCENE ? SCENE.id : '',
+      trust: game.trust,
+    });
+  } catch {
+    return; // localStorage 不可用：这一行不出现，复盘其余部分一个字不受影响
+  }
+  if (!res) return;
+  line.hidden = false;
+  line.classList.add('local');
+  line.textContent = localRankCopy(res, SCENE ? SCENE.client.name : '');
+}
+
 export async function paintStats(view, kind) {
   // 被拉黑是提前出局，不属于四档完整对局，不拿 0 分和完成对局比较。
   // 主动结束同理，而且更明显：他自己按下的结束，拿它跟打满的人比排名，
@@ -1326,10 +1370,17 @@ export async function paintStats(view, kind) {
   // 后者没数据不该连累前者也不出现。
   const pct = trustPercentile(data.trust_buckets, game.trust);
   if (pct != null) {
+    const sample = trustSample(data.trust_buckets);
     game._percentile = pct;
+    // 分享卡也要印这个 n（history.js 的 `makeCard`）：卡是要发出去的，
+    // 一句不写分母的「超过了 62% 的人」在别人手机上比在这一屏上更经不起问
+    game._percentileSample = sample;
     const line = view.querySelector('#percentileLine');
     line.hidden = false;
-    line.textContent = percentileCopy(pct);
+    // 可能是 paintLocalRank 先垫上的那一句：这里是升级成真正的人群百分位，
+    // 本机那个修饰类要摘掉，否则两套口径的样式混在同一行上
+    line.classList.remove('local');
+    line.textContent = percentileCopy(pct, sample);
     // 底色不在这儿判：它跟着整屏的 data-tone 走（style.css 的 .review[data-tone]），
     // 与上面那个大数同色。一屏一个语义色，玩家不用学第二套规则。
   }

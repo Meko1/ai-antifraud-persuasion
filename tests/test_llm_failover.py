@@ -46,6 +46,29 @@ class Test判据只认那句原文:
                               body='{"error":{"message":"该令牌状态不可用"}}')
         assert exc.quota_exhausted is True
 
+    def test_并发撞上RPM上限算降级信号(self) -> None:
+        """30 RPM 是这个令牌对 claude-sonnet-5 的真实上限，`tools/act_eval.py`
+        并发 4 跑批时当场撞到过。展示当天三四位评委同时玩就会复现，而那一刻
+        不降级的话，玩家拿到的每一句都是兜底罐头台词。
+
+        **它不是 token 用尽**（那边额度归零不会自愈，这边一分钟后自愈），
+        所以 `quota_exhausted` 仍然为假；共用的只是"切到退路"这条处置。
+        """
+        exc = wrap_llm_error(
+            "流式调用失败",
+            RuntimeError("RateLimitError: Error code: 429 - 该令牌对模型 "
+                         "claude-sonnet-5 的RPM已经到达上限，当前值 31，RPM限制 30"),
+        )
+        assert exc.rate_limited
+        assert not exc.quota_exhausted
+        assert exc.failover_worthy
+
+    def test_普通网络错误既不是用尽也不是限流(self) -> None:
+        """两条判据都不许把随便一个超时算进去——那会让一次网络抖动
+        把整个进程永久钉在公网退路上。"""
+        exc = wrap_llm_error("调用失败", TimeoutError("timed out"))
+        assert not exc.failover_worthy
+
     def test_普通网络错误不是token用尽(self) -> None:
         exc = wrap_llm_error("调用失败", TimeoutError("timed out"))
         assert exc.quota_exhausted is False

@@ -338,6 +338,21 @@ describe('真浏览器：整条路走一遍', { skip: 跳过 }, () => {
       '「最少历练」那张卡没画出来 —— {ta} 那条断言就落空了');
   });
 
+  test('排行那一行没东西说的时候，屏幕上一个字都没有', async () => {
+    /* 2026-09-11。在此之前那一行写死着一句占位文案，而三条路——Redis 没配、
+       连不上、样本没攒够——都不会回来改它，于是它是一句常驻文案。
+       这一趟正好把三条路走全了：E2E 不连 Redis，而这一局是**主动结束**
+       （上面那条「不编造资金结局」），不入档，本机排名那一级也不该开口。
+       两级都没有 = 整行不出现，不是显示一句"暂不显示"。 */
+    const 行 = await evaluate(call, `(() => {
+      const el = document.getElementById('percentileLine');
+      return { 有: !!el, 藏着: el?.hidden, 字: (el?.textContent || '').trim() };
+    })()`);
+    assert.equal(行.有, true, '那一行的节点本身得在，是 hidden 不是删了');
+    assert.equal(行.藏着, true, '没数据就不出现（static/stats.js 顶上那条原则）');
+    assert.equal(行.字, '', '不许再留占位文案');
+  });
+
   test('分享卡画得出来，而且是张真图', async () => {
     await evaluate(call, `document.getElementById('makeCard').click()`);
     await waitFor(call, `document.getElementById('card')?.width > 0`, '分享卡');

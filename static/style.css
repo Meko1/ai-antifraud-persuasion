@@ -2391,6 +2391,14 @@ button:disabled { cursor: not-allowed; }
    还没攒够样本时落到中性灰的默认值。 */
 .percentile { margin: 14px 19px 0; padding: 13px 14px; border-radius: 11px; background: var(--soft, #eceeea); color: var(--accent, #4c5651); font-size: 14px; line-height: 1.55; font-weight: 700; }
 .percentile.unranked { background: var(--danger-soft); color: var(--danger); }
+/* 本机排名那一级（stats.js 的 `localRank`）：**不吃整屏那个 tone**。
+   tone 是"这一局打得怎么样"的语义色，而这一行说的是"跟你自己比排第几"——
+   让它染成劝住那罐绿，等于把一句本机记录冒充成人群战绩。中性灰 + 常规字重，
+   与百分位共用同一块排版，只在分量上让开一档。 */
+.percentile.local {
+  background: none; padding-left: 0; padding-right: 0;
+  color: var(--muted); font-size: 13px; font-weight: 600;
+}
 .turning-point, .result-review { margin: 16px 19px 0; padding: 15px 0; border-bottom: 1px solid var(--line); }
 .turning-point > b, .result-review h3 { margin: 0; font-size: 14px; }
 .turning-point blockquote { margin: 9px 0 0; padding: 10px 11px; border-radius: 8px; background: rgba(25,35,31,.045); font-size: 13.5px; line-height: 1.6; }

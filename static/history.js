@@ -339,6 +339,11 @@ export async function makeCard(view) {
   // 分享卡生成时百分位可能还没算出来（`/api/stats` 是异步旁路）：没有就不画，
   // 跟正文里 `#percentileLine` 的 hidden 处理是同一条原则，不硬凑一个数。
   const pct = typeof game._percentile === 'number' ? game._percentile : null;
+  // 跟它一起来的样本数。**卡上也要印**（2026-09-11，与 stats.js 的
+  // `TRUST_SAMPLE_MIN` 降档同一笔）：这张卡是要发给别人看的，
+  // 一句不写分母的「超过了 62% 的人」在别人手机上比在复盘里更经不起问。
+  // 本机排名那一级不上卡——它是"跟自己比"，发出去就会被读成人群排名。
+  const pctN = typeof game._percentileSample === 'number' ? game._percentileSample : 0;
 
   // 妙想小图标（真实资产，`static/assets/miaoxiang-mark.png`，与入口卡、
   // 拦截交接屏同一份文件）。`loadImage` 从不 reject——加载失败也不该让
@@ -566,6 +571,15 @@ export async function makeCard(view) {
     ctx.font = `600 20px ${c.sans}`;
     ctx.textBaseline = 'middle';
     ctx.fillText(`信任度${percentileHeadline(pct)}`, pad + 18, PCT_TOP + PCT_H / 2);
+    // 分母右对齐排在同一块里，小一号：它是口径不是主张，不该跟那句话抢重音，
+    // 但也不能挪到别处去——脚注在别处、正文里不提，正是当初那个洞的形状
+    if (pctN) {
+      ctx.font = `400 13px ${c.sans}`;
+      ctx.fillStyle = good ? c.brand : c.note;
+      ctx.textAlign = 'right';
+      ctx.fillText(`统计自 ${pctN} 局`, pad + contentW - 18, PCT_TOP + PCT_H / 2);
+      ctx.textAlign = 'left';
+    }
     ctx.textBaseline = 'top';
   }
 
