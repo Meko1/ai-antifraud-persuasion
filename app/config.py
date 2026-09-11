@@ -109,8 +109,22 @@ class Settings:
     # 在聊天页第一行写着。8-22 网关停了八小时，路演不会挑好天气来。
     offline_demo: bool
     # 每分钟每个来源允许开几局 / 打几轮（§P0-6）。0 = 不限，本机调试用。
-    # 默认值按"一局最多 10 轮、一局约 3 分钟"定：正常用户够用得多，
-    # 一条 curl 循环打不出量来。
+    #
+    # ── 2026-09-11：默认值从 20/60 抬到 120/240 ──────────────────────────
+    #
+    # 原值按"一个人一局最多 10 轮、一局约 3 分钟"定，而**分桶键是 IP**
+    # （app/http.py 的 `client_key`）。这两条凑在一起有个没被算进去的情况：
+    # 平台反代不透传真实 IP，或者几位评委坐在同一个出口 NAT 后面时，
+    # **全站共用一个桶**。20 局/分钟于是不再是"一个人每分钟 20 局"，
+    # 而是"这台服务每分钟总共只接 20 个人"——第 21 个人起一律 429，
+    # 前端打出的正是那句「暂时无法接入客户」。复现见 dbg 脚本的场景 B。
+    #
+    # 抬高不等于放开：这道闸要挡的是"一条 curl 循环把共享网关额度吃光"
+    # （见 app/http.py 顶部），而循环打得出的量比这高几个数量级。
+    # 真正该做的是给桶换一个比 IP 更准的键，那要动前端，另开一件事。
+    #
+    # **开局这一条尤其不该卡**：`/api/game/start` 一次模型都不调
+    # （开场白是预生成的），它吃不到任何网关额度。
     rate_limit_start: int
     rate_limit_turn: int
     # `POST /api/outcome/report` 的鉴权密钥（app/outcome.py）。空 = 端点直接
@@ -158,8 +172,8 @@ def load_settings() -> Settings:
         redis_url=os.getenv("REDIS_URL", "").strip(),
         transcript_retention=_bool("TRANSCRIPT_RETENTION", False),
         offline_demo=_bool("OFFLINE_DEMO", False),
-        rate_limit_start=int(os.getenv("RATE_LIMIT_START", "20")),
-        rate_limit_turn=int(os.getenv("RATE_LIMIT_TURN", "60")),
+        rate_limit_start=int(os.getenv("RATE_LIMIT_START", "120")),
+        rate_limit_turn=int(os.getenv("RATE_LIMIT_TURN", "240")),
         outcome_report_secret=os.getenv("OUTCOME_REPORT_SECRET", "").strip(),
         # 平台强制固定 21818；保留环境变量只是为了本地调试时能换端口
         port=int(os.getenv("PORT", "21818")),

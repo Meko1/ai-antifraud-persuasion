@@ -1,17 +1,26 @@
-"""[DEBUG-c0nc] 并发下「暂时无法接入客户」的复现环。
+"""并发下「暂时无法接入客户」的复现环（2026-09-11）。
 
-用法：
-    python dbg_concurrency.py                       # 默认 40 并发
-    python dbg_concurrency.py --users 40 --xff      # 每个用户一个独立 IP
-    python dbg_concurrency.py --users 40 --no-xff   # 全部挤在同一个桶里
+    python -m tools.concurrency_repro            # 四个场景全跑，约 20 秒
+    python -m tools.concurrency_repro --only C   # 只跑用户报的那一条
 
-判据只有一条：**有没有用户在 `POST /api/game/start` 上拿到非 200**。
-那一下就是前端 opening.js 打出「暂时无法接入客户。」的时刻。
+**和 `tools/loadtest.py` 是两件事**：那个打真实 HTTP、真实花钱，量的是
+首句延迟 P95；这个在进程内用 ASGI 直连、上游全是假的，**量的是有没有人
+被挡在门外**。判据只有一条——有没有用户在 `POST /api/game/start` 上拿到
+非 200。那一下就是前端（static/opening.js）打出「暂时无法接入客户。」
+的时刻。
 
-上游用假客户端模拟，不打真网关：
-  --upstream-capacity  网关同时能服务几个请求，超了就排队（模拟拥塞）
-  --upstream-latency   单个请求的耗时
-  --upstream-rpm       每分钟额度，超了立刻 429（模拟 RPM 闸；0=不限）
+四个场景各自钉一条已经修过的路：
+
+  A 对照组，上游健康、每人一个 IP —— 本来就该全进得来
+  B 反代不透传真实 IP，所有人挤在一个限流桶里（app/config.py 的
+    RATE_LIMIT_START 那段注释）
+  C **用户报的那一条**：上游没坏，只是人多到本机并发闸排不过来。
+    这种时候一个人都不该被挡住，该发生的只是"这一轮走兜底台词"
+  D 上游真挂了：熔断张开是对的，**但上游恢复之后它得自己合上**
+    （app/guard.py 的 Breaker，那一层是"项目不可用"的出处）
+
+改动 app/gateway.py、app/guard.py、app/engine.py 之后跑一遍这个。
+逐层的快速回归在 tests/test_concurrency_lockout.py，不用起服务。
 """
 
 from __future__ import annotations
@@ -29,6 +38,7 @@ os.environ.setdefault("REDIS_URL", "")
 
 import httpx  # noqa: E402
 
+from app import gateway as gateway_mod  # noqa: E402
 from app.gateway import ModelGateway  # noqa: E402
 from app.guard import breaker, guard  # noqa: E402
 from app.llm import LLMError  # noqa: E402
@@ -79,6 +89,30 @@ class CongestedClient:
                 yield ch
 
 
+class DeadClient:
+    """网关每次都回 400。**取自 09-11 那天的真实日志**（Bedrock 那条
+    ValidationException）——它不是 429，ADR-0007 的自动切换判不到它。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.rejected = 0
+        self.cfg = SimpleNamespace(
+            provider="internal", model="fake-internal", protocol="anthropic"
+        )
+
+    def _boom(self) -> LLMError:
+        self.calls += 1
+        self.rejected += 1
+        return LLMError("调用大模型失败: BadRequestError: Error code: 400")
+
+    async def chat(self, messages: List[Dict[str, str]], **_: Any) -> str:
+        raise self._boom()
+
+    async def stream(self, messages: List[Dict[str, str]], **_: Any) -> AsyncIterator[str]:
+        raise self._boom()
+        yield ""  # pragma: no cover - 让它是个异步生成器
+
+
 async def one_user(
     client: httpx.AsyncClient, idx: int, *, xff: bool, rounds: int
 ) -> Dict[str, Any]:
@@ -122,9 +156,17 @@ async def scenario(
     capacity: int,
     latency: float,
     rpm: int,
+    gates: tuple = (),
+    late: int = 0,
 ) -> bool:
     guard.reset()
     breaker.reset()
+    # `gates` 把本机那两道并发闸缩小，用几十个人站出"几百人打十六个名额"
+    # 的队形——**要复现的是"并发远超闸门额度"这个比例**，不是那两个具体数字。
+    saved = (gateway_mod.ACT_GATE, gateway_mod.CLASSIFY_GATE)
+    if gates:
+        gateway_mod.ACT_GATE = asyncio.Semaphore(gates[0])
+        gateway_mod.CLASSIFY_GATE = asyncio.Semaphore(gates[1])
     upstream = CongestedClient(capacity=capacity, latency=latency, rpm=rpm)
     app.dependency_overrides[get_gateway] = lambda: ModelGateway(client=upstream)
 
@@ -138,9 +180,15 @@ async def scenario(
                 await asyncio.sleep(ramp * i / max(users, 1))
             return await one_user(client, i, xff=xff, rounds=rounds)
 
-        results = await asyncio.gather(*(staggered(i) for i in range(users)))
+        results = list(await asyncio.gather(*(staggered(i) for i in range(users))))
+        # **高峰过去之后才点进来的那几个人。** 他们是"随机接入客户直接报错"
+        # 里最刺眼的一批：高峰已经散了、上游好着，他们照样接不进去——
+        # 因为熔断器在高峰期间被拥塞顶开了，而它自己出不来。
+        for i in range(late):
+            results.append(await one_user(client, 9000 + i, xff=xff, rounds=0))
     elapsed = time.monotonic() - t0
     app.dependency_overrides.pop(get_gateway, None)
+    gateway_mod.ACT_GATE, gateway_mod.CLASSIFY_GATE = saved
 
     starts = Counter(r["start"] for r in results)
     failed = [r for r in results if r["start"] != 200]
@@ -164,23 +212,31 @@ SCENARIOS = (
     dict(name="B 反代不透传真实 IP（所有人共用一个限流桶）",
          users=40, rounds=1, ramp=0.0, xff=False,
          capacity=16, latency=0.05, rpm=0),
-    dict(name="C 上游撞额度，后到的人被熔断挡在门外",
-         users=24, rounds=2, ramp=4.0, xff=True,
-         capacity=8, latency=0.05, rpm=12),
+    # 用户报的就是这一条：**大模型并发过高导致服务异常**。
+    # 上游没坏，只是人多到本机并发闸排不过来——这种时候一个人都不该被挡在门外，
+    # 该发生的只是"这一轮走兜底台词"。
+    dict(name="C 上游没坏，只是人多到排不过来（用户报的那一条）",
+         users=120, rounds=1, ramp=12.0, xff=True,
+         capacity=256, latency=1.0, rpm=0, gates=(3, 4), late=5),
 )
 
 
 async def scenario_latch() -> bool:
-    """D 上游已经恢复，但熔断器自己出不来。
+    """D 上游真挂了，熔断张开是对的；**但上游恢复之后它得自己合上。**
 
-    熔断器只有 `record(ok=True)` 能合上，而那一行只在**一轮对局**里被调到。
-    张开之后新对局一律 503 → 没有新对局 → 没有人能给它一次成功 → 永远张着。
+    原先合上的唯一途径是 `record(ok=True)`，而那一行只在**一轮对局**里被调到。
+    张开 → 新对局一律 503 → 没有新对局 → 没有人能给它一次成功 → 永远张着。
     在场的那几局打完、人走干净，这台服务就再也接不进任何人，直到重启。
     """
     guard.reset()
     breaker.reset()
+    # 冷静期在这个复现环里缩到 1 秒，省得干等 20 秒。**判的是"会不会自己合上"，
+    # 不是"几秒合上"**——时长那一格由 tests/test_gateway.py 钉。
+    breaker._cooldown = 1.0
 
-    dead = CongestedClient(capacity=8, latency=0.0, rpm=1)   # 第 2 次调用起全 429
+    # 全程 400：这是 09-11 那天日志里真实的那一种，**不是** 429，
+    # 所以 ADR-0007 的自动切换救不了它，只剩熔断器这一道。
+    dead = DeadClient()
     healthy = CongestedClient(capacity=16, latency=0.0, rpm=0)
 
     async with httpx.AsyncClient(
@@ -189,27 +245,32 @@ async def scenario_latch() -> bool:
         # 1. 上游挂着，几个人在打——把熔断器顶开
         app.dependency_overrides[get_gateway] = lambda: ModelGateway(client=dead)
         await asyncio.gather(
-            *(one_user(client, i, xff=True, rounds=2) for i in range(6))
+            *(one_user(client, i, xff=True, rounds=2) for i in range(8))
         )
         tripped = breaker.open
 
-        # 2. 上游完全恢复，现场一个人都不剩
+        # 2. 上游完全恢复，现场一个人都不剩（没有任何一局能给它一次成功）
         app.dependency_overrides[get_gateway] = lambda: ModelGateway(client=healthy)
-        await asyncio.sleep(1.0)
+        during = (await client.post(
+            "/api/game/start", json={}, headers={"X-Forwarded-For": "10.9.0.1"},
+        )).status_code
+        await asyncio.sleep(1.2)
 
-        # 3. 新人来了。上游是好的，他该进得去
+        # 3. 冷静期满，新人来了。上游是好的，他该进得去
         codes = [
             (await client.post(
                 "/api/game/start", json={},
-                headers={"X-Forwarded-For": f"10.9.0.{i}"},
+                headers={"X-Forwarded-For": f"10.9.1.{i}"},
             )).status_code
             for i in range(3)
         ]
 
     app.dependency_overrides.pop(get_gateway, None)
-    ok = codes == [200, 200, 200]
-    print(f"[{'PASS' if ok else 'FAIL'}] D 上游恢复之后，熔断器自己出不来")
-    print(f"        顶开熔断={tripped} · 上游已恢复 · 新用户 /api/game/start → {codes}")
+    breaker.reset()
+    ok = tripped and during == 503 and codes == [200, 200, 200]
+    print(f"[{'PASS' if ok else 'FAIL'}] D 上游真挂了：该张开，也该自己合上")
+    print(f"        顶开熔断={tripped} · 冷静期内新用户→{during} · "
+          f"冷静期满新用户→{codes}")
     if not ok:
         print("        上游是好的，人却接不进来——这台服务要重启才能复原")
     return ok

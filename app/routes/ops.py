@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from .. import APP_ID, APP_VERSION
 from ..config import settings
-from ..guard import guard
+from ..guard import breaker, guard
 from ..http import client_key, line_sources, too_many
 from ..llm import llm_client
 from ..outcome import outcome_store
@@ -94,6 +94,11 @@ async def healthz(request: Request, probe: int = 0) -> JSONResponse:
         # 重放防护现在到底是共享的还是单进程的。多 worker 部署时这一位
         # 决定了防护是真的在生效，还是只在各自的进程里生效
         "replay_shared": guard.shared,
+        # **熔断张着的时候，这台服务对新用户就是坏的，而 `status` 仍然是 ok。**
+        # 在此之前这件事在 /healthz 上一个字都看不到：用户那边写着"暂时无法
+        # 接入客户"，运维这边一路绿，只能从"没人进得来"倒推。
+        # 窗口内的失败数与样本数一并报出来——它回答的是"网关是挂了还是忙"。
+        "breaker": breaker.snapshot(),
     }
     if probe:
         if not _probe_allowed(request):

@@ -17,6 +17,7 @@ import logging
 
 from .classify import Classification, evidence_present, parse_classification
 from .fallback import AVOID_WINDOW, ending_fallback, fallback_line
+from .gateway import GatewayBusy
 from .guard import breaker
 from .scenario import scenario_for
 from .safety import (
@@ -100,6 +101,11 @@ async def _classified(task: "asyncio.Task[str]", *, timeout: float) -> Optional[
     分类**不重试也不猜**：拿不到就按"既没命中钥匙也没触发失误"记，玩家仍吃
     这一轮的信任流失。这比让整轮作废好得多——作废意味着已经播出去的台词
     留在聊天记录里，令牌却停在上一轮，服务端当这一轮压根没发生过。
+
+    **降级和"网关挂了"是两件事**（2026-09-11）。这一轮判不了分，玩家那边
+    照样降级；但熔断器只该听见真正打到网关之后的坏消息——排不上号
+    （`GatewayBusy`）说明的是这一刻人多，不是网关不在了。混为一谈的后果
+    见 app/guard.py 顶部那段：并发越高，这台服务越是在说服自己该关门。
     """
     try:
         result = parse_classification(await asyncio.wait_for(task, timeout))
@@ -107,7 +113,14 @@ async def _classified(task: "asyncio.Task[str]", *, timeout: float) -> Optional[
         # schema 会在格式漂移时返回 None）。那和超时一样，都是"这一轮判不了分"
         breaker.record(ok=result is not None)
         return result
+    except GatewayBusy as exc:
+        logger.info("分类让路（本机并发闸，L2 降级）：%s", exc)
+        breaker.record(ok=False, busy=True)
+        return None
     except asyncio.TimeoutError:
+        # 排队有自己的预算（gateway.CLASSIFY_QUEUE_BUDGET），排不上号走的是
+        # 上面那条。走到这里说明**已经打到网关**、而它十秒没答话——那是
+        # 一次货真价实的网关故障，该记。
         logger.warning("分类超时（L2 降级），本轮按中性判分")
     except Exception:  # noqa: BLE001 - 网关抛什么都不该让这一轮作废
         logger.exception("分类失败（L2 降级），本轮按中性判分")
@@ -284,6 +297,10 @@ async def play_turn(
                 ):
                     spoken.append(text)
                     yield Event("sentence", {"text": text})
+            except GatewayBusy as exc:
+                # 排不上号。**这不是故障，不该打成 exception 级**——并发高峰
+                # 期间每个让路的请求都刷一条堆栈，真正的网关报错就淹没了。
+                logger.info("演绎让路（本机并发闸，L1 降级）：%s", exc)
             except asyncio.TimeoutError:
                 logger.warning("演绎超时（L1 降级），改用兜底台词")
             except Exception:  # noqa: BLE001 - 网关抛什么都不该让这一轮作废
@@ -413,6 +430,9 @@ async def play_turn(
                 ),
                 scene.safe_fallback,
             )
+        except GatewayBusy as exc:
+            logger.info("结局台词让路（本机并发闸），改用预置收尾：%s", exc)
+            lines = []
         except Exception:  # noqa: BLE001 - 判分已经下发了，这一屏绝不能再丢
             logger.exception("结局台词生成失败，改用预置收尾")
             lines = []

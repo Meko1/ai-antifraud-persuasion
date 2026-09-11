@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
 
 from .llm import LLMClient, LLMError, llm_client
@@ -27,6 +28,67 @@ logger = logging.getLogger(__name__)
 # 演绎请求长、可降级；分类请求短、不可降级，因此额度给得更宽。
 ACT_GATE = asyncio.Semaphore(16)
 CLASSIFY_GATE = asyncio.Semaphore(24)
+
+
+class GatewayBusy(RuntimeError):
+    """本机这一侧的并发闸排不上号。**这是拥塞，不是故障。**
+
+    两者必须分开，否则并发一高这台服务就开始给自己伪造故障证据：
+    熔断器（app/guard.py）只认"网关挂没挂"，而人多不等于网关不在了。
+    """
+
+
+# ── 排队也要有预算 ────────────────────────────────────────────────────────
+#
+# **2026-09-11。并发下「暂时无法接入客户」的放大器就在这里。**
+#
+# 在此之前 `async with ACT_GATE` 是**无限期**等下去的，而调用方
+# （app/engine.py 的 `_act_with_deadline` / `_classified`）的 6 秒 / 10 秒预算
+# 是**在排队之前就开始走表**的。于是并发一上 16，后到的那些请求：
+#
+#   1. 在信号量上干等，网关一次都没被调到；
+#   2. 预算走完，抛出 `asyncio.TimeoutError`；
+#   3. 那个 TimeoutError 在下游看起来，和"网关真的挂了"一模一样；
+#   4. 熔断器攒够几次就张开，`/api/game/start` 开始返回 503。
+#
+# 换句话说：**人越多，这台服务越是在说服自己"网关挂了"，然后把新来的人
+# 挡在门外。** 复现脚本里 40 人同时进场，27 人接不进来。
+#
+# 排队因此要有自己的预算，而且排不上号要抛 `GatewayBusy`——它告诉下游
+# "这一轮走兜底台词，但别把这笔记在网关头上"。
+#
+# 预算取调用方预算的三分之一上下：排得上就还剩三分之二的时间留给真正的调用，
+# 排不上就趁早让路，别把整格预算都耗在队列里。
+ACT_QUEUE_BUDGET = 2.0       # 对应 engine.ACT_TIMEOUT_SECONDS = 6.0
+CLASSIFY_QUEUE_BUDGET = 4.0  # 对应 engine.CLASSIFY_TIMEOUT_SECONDS = 10.0
+
+# 结局台词的排队预算单独一份，而且给得宽得多。两条理由：
+#   · 它**一局只有一次**，不是每轮一次——多等几秒换不来多少负载；
+#   · 它是整局的最后一屏，也是唯一会被截图发出去的那一屏。
+#     逐轮台词降级还能靠"骗子本来就说车轱辘话"糊过去，这一屏糊不过去。
+# 用演绎那 2 秒的话，高峰期这一屏会大面积退成预置收尾——那是拿最贵的
+# 一屏去省最不该省的地方。
+ENDING_QUEUE_BUDGET = 8.0
+
+
+@asynccontextmanager
+async def _admit(
+    gate: asyncio.Semaphore, budget: float, what: str
+) -> AsyncIterator[None]:
+    """排队进闸，排不上号就抛 `GatewayBusy`。
+
+    `wait_for` 取消一个等在 `Semaphore.acquire()` 上的协程是安全的
+    （CPython ≥3.10.9 / 3.11.1 起会把名额让给下一个等待者），所以这里
+    不需要自己补一层唤醒。
+    """
+    try:
+        await asyncio.wait_for(gate.acquire(), budget)
+    except asyncio.TimeoutError as exc:
+        raise GatewayBusy(f"{what}并发闸排队超过 {budget}s，本轮让路") from exc
+    try:
+        yield
+    finally:
+        gate.release()
 
 # 演绎指示（每档一句、第 1 轮单独一档、每 3 轮的施压）**全部搬进了场景**
 # （app/scenario.py）。搬走的理由不是整洁：老陈的「戒备」是"你想赚我的钱"，
@@ -265,7 +327,7 @@ class ModelGateway:
             *_history_messages(history),
             {"role": "user", "content": utterance},
         ]
-        async with ACT_GATE:
+        async with _admit(ACT_GATE, ACT_QUEUE_BUDGET, "演绎"):
             # 客户端产出的已经是文本增量，协议差异在那一层就抹平了
             async for delta in self._client.stream(messages, temperature=0.8):
                 yield delta
@@ -289,7 +351,7 @@ class ModelGateway:
                 "content": _classify_payload(utterance, history, opening),
             },
         ]
-        async with CLASSIFY_GATE:
+        async with _admit(CLASSIFY_GATE, CLASSIFY_QUEUE_BUDGET, "分类"):
             return await self._client.chat(messages, temperature=0.1)
 
     async def narrate_ending(
@@ -323,7 +385,7 @@ class ModelGateway:
             *_history_messages(history),
             {"role": "user", "content": "（对话到此结束，说出你最后的话。）"},
         ]
-        async with ACT_GATE:
+        async with _admit(ACT_GATE, ENDING_QUEUE_BUDGET, "结局"):
             return await self._client.chat(messages, temperature=0.8)
 
 

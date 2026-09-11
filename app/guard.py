@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from typing import Any, Optional
 
 from .config import settings
@@ -231,41 +231,131 @@ class Guard:
 # 所以再加一道：**连续失败到一定次数就不再发放新的干预**。已经在打的那一局
 # 照常降级走完（不能半途掐掉），但 `/api/game/start` 开始返回 503。
 #
-# 判据是"连续"不是"累计"：一次成功就清零。偶发失败本来就该被降级吸收，
-# 要熔断的是持续性故障。
+# 要熔断的是**持续性故障**。这句话一直没变，变的是怎么判。
+#
+# ── 2026-09-11：原来那个判据在并发下会把自己锁死 ──────────────────────────
+#
+# 原判据是"连续 8 次失败"，一次成功就清零。它在单人调试时完全正确，
+# 在并发下是错的，而且错法有三层，一层比一层严重：
+#
+# 1. **"连续 8 次"在并发下不是"连着 8 个时刻都失败"。** 40 人在线时，
+#    同一瞬间的 8 个并发请求一起失败就凑满了这个数——而那只是 20% 的
+#    失败率，网关好得很。这个计数器把**并发数当成了时间**。
+#
+# 2. **拥塞被算成了故障。** 本机并发闸排不上号（`GatewayBusy`）说明的是
+#    "这一刻人多"；调用方预算走完抛出的 TimeoutError，在此之前和
+#    "网关挂了"长得一模一样。人越多，这台服务越是在给自己伪造故障证据。
+#
+# 3. **张开之后它自己出不来。** 合上的唯一途径是 `record(ok=True)`，
+#    而那一行只在**一轮对局**里被调到。张开 → 新对局一律 503 → 没有新对局
+#    → 没有人能给它一次成功 → 永远张着。在场那几局打完、人走干净，
+#    这台服务就再也接不进任何人，**直到重启**。
+#
+#    这一条才是"并发高了项目就不可用"的最后一环：故障是一阵子的，
+#    锁死是永久的。
+#
+# 现在的判据：**一个时间窗内，失败占比高到不像拥塞，才算网关挂了**；
+# 张开之后过一段冷静期自己放人进去探路；拥塞压根不记账。
 class Breaker:
-    """连续失败计数。**进程内，不共享**——这是刻意的。
+    """网关健康度。**进程内，不共享**——这是刻意的。
 
     每个 worker 各自观察自己那一份网关调用。共享的话，一个 worker 上的
     网络抖动会把所有 worker 一起熔断；而分开看，真正的整体故障本来就会
     让每个 worker 各自都数到阈值。
+
+    `threshold` 的含义变了：它现在是**窗口内至少要攒够多少次失败**才谈得上
+    熔断（量的下限），不再是"连续多少次"。光有比例不够——开服头两次调用
+    都失败就是 100%，那通常只是网关在热身。
     """
 
-    def __init__(self, threshold: int = 8) -> None:
+    def __init__(
+        self,
+        threshold: int = 8,
+        *,
+        window: float = 60.0,
+        failure_ratio: float = 0.75,
+        cooldown: float = 20.0,
+    ) -> None:
         self._threshold = threshold
-        self._consecutive = 0
+        self._window = window
+        self._ratio = failure_ratio
+        self._cooldown = cooldown
+        self._events: "deque[tuple[float, bool]]" = deque()
+        self._opened_at: Optional[float] = None
+
+    def _prune(self, now: float) -> None:
+        while self._events and now - self._events[0][0] > self._window:
+            self._events.popleft()
 
     @property
     def open(self) -> bool:
-        """熔断了没有。True = 停止发放新干预。"""
-        return self._consecutive >= self._threshold
+        """熔断了没有。True = 停止发放新干预。
 
-    def record(self, *, ok: bool) -> None:
+        **读这一位可能把自己从张开状态里放出来**（半开）。看着不纯，
+        但这是唯一正确的地方：冷静期到了要不要再试一次，只有在"有人来敲门"
+        的那一刻问才有意义，而这个属性就是那扇门。没有它，熔断器只能靠
+        已经在打的那几局把自己救出来——人走干净就再也救不回来了。
+        """
+        now = time.monotonic()
+        self._prune(now)
+        if self._opened_at is None:
+            return False
+        if now - self._opened_at < self._cooldown:
+            return True
+        # 半开：冷静期满，放人进去探路。探成了会 record(ok=True)，
+        # 探砸了会重新攒够失败再张开——两条路都走得通，不必重启。
+        logger.warning("熔断冷静期满，放行新干预探一次路")
+        self._opened_at = None
+        self._events.clear()
+        return False
+
+    def record(self, *, ok: bool, busy: bool = False) -> None:
+        """记一次网关调用的结果。
+
+        `busy=True` 表示这一次压根没打到网关（本机并发闸排不上号）。
+        **它一个字都不记**：拥塞不是网关的健康状况，拿它熔断就是
+        "人一多就关门"。
+        """
+        if busy:
+            return
+        now = time.monotonic()
+        self._events.append((now, ok))
+        self._prune(now)
+
         if ok:
-            was_open = self.open
-            self._consecutive = 0
-            if was_open:
+            if self._opened_at is not None:
+                self._opened_at = None
+                self._events.clear()
                 logger.warning("网关恢复，重新发放新干预")
-        else:
-            self._consecutive += 1
-            if self._consecutive == self._threshold:
-                logger.error(
-                    "连续 %s 次网关故障，暂停发放新干预（已开局的对局照常降级走完）",
-                    self._threshold,
-                )
+            return
+        if self._opened_at is not None:
+            return
+
+        failures = sum(1 for _, healthy in self._events if not healthy)
+        if failures >= self._threshold and failures >= self._ratio * len(self._events):
+            self._opened_at = now
+            logger.error(
+                "近 %.0fs 内 %s/%s 次网关调用失败，暂停发放新干预 %.0fs"
+                "（已开局的对局照常降级走完）",
+                self._window, failures, len(self._events), self._cooldown,
+            )
+
+    def snapshot(self) -> dict:
+        """给 `/healthz` 用。**兜底台词是故意让人察觉不出来的**，熔断状态
+        因此必须自己报出来，否则运维只能从"没人能进来"倒推。"""
+        now = time.monotonic()
+        self._prune(now)
+        failures = sum(1 for _, healthy in self._events if not healthy)
+        return {
+            "open": self.open,
+            "failures": failures,
+            "samples": len(self._events),
+            "window_seconds": self._window,
+        }
 
     def reset(self) -> None:
-        self._consecutive = 0
+        self._events.clear()
+        self._opened_at = None
 
 
 breaker = Breaker()
