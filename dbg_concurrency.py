@@ -112,59 +112,125 @@ async def one_user(
     return out
 
 
-async def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--users", type=int, default=40)
-    ap.add_argument("--rounds", type=int, default=1)
-    ap.add_argument("--ramp", type=float, default=0.0, help="用户进场铺开的秒数")
-    ap.add_argument("--upstream-capacity", type=int, default=4)
-    ap.add_argument("--upstream-latency", type=float, default=1.0)
-    ap.add_argument("--upstream-rpm", type=int, default=0)
-    grp = ap.add_mutually_exclusive_group()
-    grp.add_argument("--xff", dest="xff", action="store_true", default=True)
-    grp.add_argument("--no-xff", dest="xff", action="store_false")
-    args = ap.parse_args()
-
+async def scenario(
+    name: str,
+    *,
+    users: int,
+    rounds: int,
+    ramp: float,
+    xff: bool,
+    capacity: int,
+    latency: float,
+    rpm: int,
+) -> bool:
     guard.reset()
     breaker.reset()
-
-    upstream = CongestedClient(
-        capacity=args.upstream_capacity,
-        latency=args.upstream_latency,
-        rpm=args.upstream_rpm,
-    )
+    upstream = CongestedClient(capacity=capacity, latency=latency, rpm=rpm)
     app.dependency_overrides[get_gateway] = lambda: ModelGateway(client=upstream)
 
-    transport = httpx.ASGITransport(app=app)
     t0 = time.monotonic()
     async with httpx.AsyncClient(
-        transport=transport, base_url="http://dbg", timeout=120
+        transport=httpx.ASGITransport(app=app), base_url="http://dbg", timeout=120
     ) as client:
 
         async def staggered(i: int) -> Dict[str, Any]:
-            if args.ramp:
-                await asyncio.sleep(args.ramp * i / max(args.users, 1))
-            return await one_user(client, i, xff=args.xff, rounds=args.rounds)
+            if ramp:
+                await asyncio.sleep(ramp * i / max(users, 1))
+            return await one_user(client, i, xff=xff, rounds=rounds)
 
-        results = await asyncio.gather(*(staggered(i) for i in range(args.users)))
+        results = await asyncio.gather(*(staggered(i) for i in range(users)))
     elapsed = time.monotonic() - t0
     app.dependency_overrides.pop(get_gateway, None)
 
     starts = Counter(r["start"] for r in results)
     failed = [r for r in results if r["start"] != 200]
-    print(f"并发 {args.users} · {args.rounds} 轮 · 耗时 {elapsed:.1f}s")
-    print(f"上游：capacity={args.upstream_capacity} latency={args.upstream_latency}s "
-          f"rpm={args.upstream_rpm or '不限'} 调用 {upstream.calls} 次 "
-          f"拒绝 {upstream.rejected} 次")
-    print(f"/api/game/start 状态码分布：{dict(starts)}")
+    verdict = "FAIL" if failed else "PASS"
+    print(f"[{verdict}] {name}")
+    print(f"        {users} 人 · {rounds} 轮 · {elapsed:.1f}s · "
+          f"上游 cap={capacity} lat={latency}s rpm={rpm or '不限'} "
+          f"（调用 {upstream.calls}，拒绝 {upstream.rejected}）")
+    print(f"        /api/game/start → {dict(starts)}"
+          f"   熔断 open={breaker.open}")
     if failed:
-        print(f"样例失败响应：{failed[0].get('start_body', '')!r}")
-    print(f"熔断器：consecutive={breaker._consecutive} open={breaker.open}")
-    if failed:
-        print(f"\nFAIL：{len(failed)}/{args.users} 位用户看到「暂时无法接入客户」")
-        return 1
-    print(f"\nPASS：{args.users} 位用户全部接入成功")
-    return 0
+        print(f"        {len(failed)}/{users} 位用户看到「暂时无法接入客户」："
+              f"{failed[0].get('start_body', '')!r}")
+    return not failed
+
+
+SCENARIOS = (
+    dict(name="A 对照：上游健康、每人独立 IP",
+         users=40, rounds=1, ramp=0.0, xff=True,
+         capacity=16, latency=0.05, rpm=0),
+    dict(name="B 反代不透传真实 IP（所有人共用一个限流桶）",
+         users=40, rounds=1, ramp=0.0, xff=False,
+         capacity=16, latency=0.05, rpm=0),
+    dict(name="C 上游撞额度，后到的人被熔断挡在门外",
+         users=24, rounds=2, ramp=4.0, xff=True,
+         capacity=8, latency=0.05, rpm=12),
+)
+
+
+async def scenario_latch() -> bool:
+    """D 上游已经恢复，但熔断器自己出不来。
+
+    熔断器只有 `record(ok=True)` 能合上，而那一行只在**一轮对局**里被调到。
+    张开之后新对局一律 503 → 没有新对局 → 没有人能给它一次成功 → 永远张着。
+    在场的那几局打完、人走干净，这台服务就再也接不进任何人，直到重启。
+    """
+    guard.reset()
+    breaker.reset()
+
+    dead = CongestedClient(capacity=8, latency=0.0, rpm=1)   # 第 2 次调用起全 429
+    healthy = CongestedClient(capacity=16, latency=0.0, rpm=0)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://dbg", timeout=120
+    ) as client:
+        # 1. 上游挂着，几个人在打——把熔断器顶开
+        app.dependency_overrides[get_gateway] = lambda: ModelGateway(client=dead)
+        await asyncio.gather(
+            *(one_user(client, i, xff=True, rounds=2) for i in range(6))
+        )
+        tripped = breaker.open
+
+        # 2. 上游完全恢复，现场一个人都不剩
+        app.dependency_overrides[get_gateway] = lambda: ModelGateway(client=healthy)
+        await asyncio.sleep(1.0)
+
+        # 3. 新人来了。上游是好的，他该进得去
+        codes = [
+            (await client.post(
+                "/api/game/start", json={},
+                headers={"X-Forwarded-For": f"10.9.0.{i}"},
+            )).status_code
+            for i in range(3)
+        ]
+
+    app.dependency_overrides.pop(get_gateway, None)
+    ok = codes == [200, 200, 200]
+    print(f"[{'PASS' if ok else 'FAIL'}] D 上游恢复之后，熔断器自己出不来")
+    print(f"        顶开熔断={tripped} · 上游已恢复 · 新用户 /api/game/start → {codes}")
+    if not ok:
+        print("        上游是好的，人却接不进来——这台服务要重启才能复原")
+    return ok
+
+
+async def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", default="", help="只跑某一个场景（A/B/C/D）")
+    args = ap.parse_args()
+
+    ok = True
+    for spec in SCENARIOS:
+        if args.only and not spec["name"].startswith(args.only.upper()):
+            continue
+        ok = await scenario(**spec) and ok  # type: ignore[arg-type]
+        print()
+    if not args.only or args.only.upper() == "D":
+        ok = await scenario_latch() and ok
+        print()
+    print("全部通过" if ok else "有用户接不进来——bug 还在")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
