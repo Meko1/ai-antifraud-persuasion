@@ -52,6 +52,60 @@ if [ -f "${PID_FILE}" ]; then
   fi
 fi
 
+# ── 1b. 端口必须真的是空的 ──────────────────────────────────────────────────
+#
+# **2026-09-11 实测撞见的一次"部署成功但跑的是旧版本"。**
+#
+# 上一次部署留下的进程还占着 21818（PID 文件里那个号已经对不上了，stop.sh
+# 因此没认出它，见 stop.sh 同批改动）。于是这一轮：
+#
+#   1. 新进程起来，bind 失败，一两秒后退出；
+#   2. 下面那个健康检查的 curl 打在**那个旧进程**上，照样 200；
+#   3. 脚本打印「服务就绪，健康检查通过 (2s)」，退出码 0，平台判定部署成功。
+#
+# 跑着的却是上一个版本。**这种失败最贵**：端口通、页面在、接口全对，
+# 只有行为是旧的——当天是靠 /healthz 里少了一个字段才看出来的。
+#
+# 下面那个 `kill -0 ${APP_PID}` 挡不住它：新进程要花一两秒 import 完才去
+# bind，而健康检查在第 1 秒就已经被旧进程答成功了，赛跑赢的是旧的那个。
+#
+# 所以在起进程**之前**先确认端口是空的。用真的 bind 一下来判，不靠
+# lsof/ss/netstat——那三个在部署机上不一定装、不一定有权限看到别人的进程，
+# 而 bind 失败与否正是 uvicorn 待会儿要面对的同一件事。
+port_is_free() {
+  "${VENV_PY}" - "${PORT}" <<'PY' >/dev/null 2>&1
+import socket, sys
+s = socket.socket()
+# uvicorn 也设这一位：TIME_WAIT 不算占用，真的有人在 LISTEN 才算
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    s.bind(("0.0.0.0", int(sys.argv[1])))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+if ! port_is_free; then
+  log "端口 ${PORT} 已被占用，先执行 stop.sh"
+  "${APP_DIR}/stop.sh" || true
+  sleep 1
+fi
+
+if ! port_is_free; then
+  # 走到这里说明占着端口的那个进程 stop.sh 认不出来（多半是上一次部署的
+  # 遗留，或者属于别的用户）。**绝不在这里乱杀**——打包契约写着"不得使用
+  # 范围过大的匹配条件影响其他作品"。如实报错、给出定位命令，交给人。
+  echo "[start][ERROR] 端口 ${PORT} 被别的进程占着，而 stop.sh 没能认出它。" >&2
+  echo "[start][ERROR] 继续启动的话，新进程会 bind 失败退出，" >&2
+  echo "[start][ERROR] 而健康检查会打在那个旧进程上，把部署判成功——跑的却是旧版本。" >&2
+  echo "[start][ERROR] 定位并处理：" >&2
+  echo "[start][ERROR]   sudo netstat -tlnp | grep ${PORT}    # 或 sudo ss -lptn 'sport = :${PORT}'" >&2
+  echo "[start][ERROR]   sudo kill <那个 PID>" >&2
+  exit 1
+fi
+
 # ── 2. 载入部署机上的本地环境文件（可选）────────────────────────────────────
 #
 # **这是给密钥用的唯一一条通路。** `.env` 里有真实 API key，按打包规范不进
