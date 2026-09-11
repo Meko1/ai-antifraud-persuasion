@@ -274,30 +274,15 @@ async function 开局前钉住老邵(call, base) {
 /** 工作台上那把补救钥匙。台词里写着"邵叔""那个疗程"，不钉住就会出现拿老邵的
  *  台词去劝周淑琴的画面。开局前那一手生效时这里直接返回——留着它是兜底：
  *  `aap.pick.sid` 万一读不到（隐私模式），这一步仍然把人换回来。 */
-async function 钉住老邵(call) {
-  if (await evaluate(call, `!!document.getElementById('pickClient')?.hidden`)) return;
-  await evaluate(call, `document.getElementById('pickClient').click()`);
-  await waitFor(call, `!document.getElementById('sheetHost').hidden`, '客户列表');
-  const 换了 = await evaluate(call, `(() => {
-    const it = [...document.querySelectorAll('.sheet-item')].find(b => /邵/.test(b.textContent));
-    if (!it) return false;
-    it.click();
-    return true;
-  })()`);
-  if (!换了) {
-    await evaluate(call, `document.querySelector('.sheet-cancel').click()`);
-    return;
-  }
-  await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
-    '换人之后重开的工作台', 25000);
-  await sleep(500);
-}
-
 /** 打一轮。`读秒` 是他回完话之后停多久——**这不是排版参数，是节奏**：
  *  离线态的回话几乎是瞬时的（一轮 0.75s），不停的话这一章只录到四秒多，
  *  铺到成片十四秒就成了 0.3 倍速慢放，SSE 逐句到的动效一眼看得出被拉过。
  *  停一下既让观众读得完，也让实录长度贴住成片长度。 */
 async function 打一轮(call, 说, 读秒 = 1500) {
+  // 第一轮结束后盖一层「时机判读」全屏揭晓（chat.js 的 `showRevealStage`，
+  // 4.2 秒自动散），盖着的时候 `requestSubmit()` 发不出去——素材脚本为这个
+  // 卡过两次，症状是"第 1 轮成功、第 2 轮永远等不到回话"。
+  await waitFor(call, `!document.querySelector('.reveal-stage')`, '全屏揭晓散掉', 12000);
   const 之前 = await evaluate(call, `document.querySelectorAll('#thread .msg.them').length`);
   await evaluate(call, `(() => {
     const el = document.getElementById('say');
@@ -351,29 +336,39 @@ async function 走一遍(call, 录像, base) {
   await waitFor(call, `!document.getElementById('handoffGo').hasAttribute('aria-disabled')`,
     '「坐到对面」解锁');
   await evaluate(call, `document.getElementById('handoffGo').click()`);
-  await waitFor(call, `document.querySelector('.screen.on')?.id !== 'transfer'`, '离开转账屏', 25000);
-  await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
-    '工作台', 25000);
-  await 钉住老邵(call);
+  // ── 动线跟着产品走（2026-09-11）────────────────────────────────────
+  //
+  // 快速进场之后「坐到对面」直接落进对话，工作台与客户档案不再拦在路上
+  // （opening.js 的 `enterChatDirect()`）。**片子的章节顺序一个都没动**——
+  // 那三屏仍然真实存在、仍然值得各占一章，只是改成切过去录、录完切回来，
+  // 不再假装它们是必经之路。老邵由 `开局前钉住老邵()` 在加载前钉好，
+  // 工作台那把补救钥匙连同函数一起删了（它会重开一局，把会话打乱）。
+  await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`,
+    '直接落进对话', 25000);
+  await waitFor(call, `document.querySelectorAll('#thread .msg').length >= 2`, '开场两条', 30000);
+  const 切屏 = (id) => evaluate(call,
+    `document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === '${id}'))`);
+  await 切屏('opening');
   录像.录('desk');
   await sleep(5000);
 
   // 客户档案自己占一章：它是「牌全在一侧，胜负手全在另一侧」那句话在屏幕上
   // 的样子——开户年限、持仓、风险测评都在，而王老师、那个疗程、四十五万
   // 一个字都没有。此前它被并进 desk 那一章，一闪而过。
-  await evaluate(call, `document.getElementById('openProfile').click()`);
-  await waitFor(call, `document.getElementById('home')?.classList.contains('on')`, '客户档案');
+  await 切屏('home');
   录像.录('profile');
   await sleep(5200);
 
-  await evaluate(call, `document.getElementById('openChen').click()`);
-  await waitFor(call, `document.getElementById('primer')?.classList.contains('on')`, '课程表');
+  // 七把钥匙换了入口：讲解屏不再在默认路径上，改录对局中那颗钥匙按钮
+  // 翻出来的抽屉（control.js 的 `openMethodsSheet()`），文案一字不差。
+  await 切屏('chat');
+  await evaluate(call, `document.getElementById('openMethods').click()`);
+  await waitFor(call, `!!document.querySelector('.sheet')`, '七把钥匙抽屉');
   录像.录('primer');
   await sleep(4400);
 
-  await evaluate(call, `document.getElementById('primerGo').click()`);
-  await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`, '聊天屏');
-  await waitFor(call, `document.querySelectorAll('#thread .msg').length >= 2`, '开场两条', 30000);
+  await evaluate(call, `document.querySelector('.sheet-cancel')?.click()`);
+  await waitFor(call, `!document.querySelector('.sheet')`, '抽屉收起');
   录像.录('chat');
   await sleep(900);
   for (let i = 0; i < 台词.length; i += 1) {

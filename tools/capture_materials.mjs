@@ -110,6 +110,12 @@ async function 存图(call, 文件名, 设备 = PHONE) {
 }
 
 async function 打一轮(call, 说) {
+  // **先等全屏层散掉再发下一句（2026-09-11）。** 第一轮结束后会盖上一层
+  // 「时机判读」全屏揭晓（chat.js 的 `showRevealStage`，4.2 秒自动消失），
+  // 命中钥匙那一下也会盖一层。盖着的时候 `requestSubmit()` 发不出去——
+  // **症状极具迷惑性**：第 1 轮明明成功了（对方回了话），卡的是第 2 轮，
+  // 而 `say` 里那句话还原样躺着。不等它，这条素材线就永远停在第 2 轮。
+  await waitFor(call, `!document.querySelector('.reveal-stage')`, '全屏揭晓散掉', 12000);
   const 之前 = await evaluate(call, `document.querySelectorAll('#thread .msg.them').length`);
   await evaluate(call, `(() => {
     const el = document.getElementById('say');
@@ -127,8 +133,9 @@ async function 打一轮(call, 说) {
 
 /** 开局**之前**就把这一局钉在老邵那一场。
  *
- *  `钉住老邵()` 是补救——它只能在工作台那一屏用（「换一位客户」在那儿），
- *  而**转账确认屏与拦截屏在它之前**。于是 2026-08-30 之前出的素材里
+ *  此前工作台上还有一把补救钥匙（「换一位客户」），而**转账确认屏与拦截屏
+ *  在它之前**；2026-09-11 快速进场之后工作台不再在路上，那把补救连同它的
+ *  函数一起删了，钉老邵**只剩这一处**。于是 2026-08-30 之前出的素材里
  *  `phone-01` / `phone-02` 是随机某位客户，`phone-03` 起才是本局那位：
  *  实测那一批的拦截屏印着「你是**她**的投资顾问」，紧挨着的下一张是位大爷。
  *  图集里这两张是相邻的。
@@ -154,34 +161,6 @@ async function 开局前钉住老邵(call, base) {
     sessionStorage.setItem('aap.pick.sid', 'shao')`);
   await call('Page.reload');
   await waitFor(call, `!window.__钉 && document.readyState === 'complete'`, '重载后的新文档', 25000);
-}
-
-/** 把这一局钉在老邵那一场（工作台上那把补救钥匙）。
- *
- *  **场景默认是随机分配的**（POSITIONING「主张边界」最后一条），而上面那
- *  一串台词里写着"邵叔""那个疗程"——不钉住，素材里就会出现拿着老邵的台词
- *  去劝周淑琴的画面。用的是界面自己的「换一位客户」，**没有为出素材改任何
- *  产品行为**；列表里找不到姓邵的，说明当前这一局本来就是他。
- *
- *  开局前那一手（`开局前钉住老邵`）生效时这里会直接返回——留着它是兜底：
- *  `aap.pick.sid` 万一读不到（隐私模式），这一步仍然把人换回来。 */
-async function 钉住老邵(call) {
-  if (await evaluate(call, `!!document.getElementById('pickClient')?.hidden`)) return;
-  await evaluate(call, `document.getElementById('pickClient').click()`);
-  await waitFor(call, `!document.getElementById('sheetHost').hidden`, '客户列表');
-  const 换了 = await evaluate(call, `(() => {
-    const it = [...document.querySelectorAll('.sheet-item')].find(b => /邵/.test(b.textContent));
-    if (!it) return false;
-    it.click();
-    return true;
-  })()`);
-  if (!换了) {
-    await evaluate(call, `document.querySelector('.sheet-cancel').click()`);
-    return;
-  }
-  await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
-    '换人之后重开的工作台', 25000);
-  await sleep(500);
 }
 
 /** 封面那一页的 HTML。手机原图以 data URL 塞进去，排完版再截一次。 */
@@ -583,17 +562,41 @@ async function main() {
     await waitFor(call, `!document.getElementById('handoffGo').hasAttribute('aria-disabled')`,
       '「坐到对面」解锁');
     await evaluate(call, `document.getElementById('handoffGo').click()`);
-    await waitFor(call, `document.querySelector('.screen.on')?.id !== 'transfer'`, '离开转账屏', 25000);
-    await waitFor(call, `document.getElementById('openingTitle')?.textContent.length > 0`,
-      '工作台铺好', 25000);
-    await 钉住老邵(call);
+    // ── 动线跟着产品走（2026-09-11 改写）──────────────────────────────
+    //
+    // 快速进场之后，「坐到对面」**直接落进对话**——工作台（`#opening`）与
+    // 客户档案（`#home`）不再是必经之路。旧动线是"等工作台铺好 → 在那儿
+    // 换客户 → 点联系客户开打"，三步现在全部落空：`enterGame()` 在
+    // `game.entered` 为真时直接 early-return，而 `钉住老邵()` 点的
+    // 「换一位客户」会**重开一局**，把刚刚已经开好的会话打乱——症状是
+    // 第 1 轮永远等不到回话（实测，两次）。
+    //
+    // 老邵是 `开局前钉住老邵()` 在页面加载前就钉好的，到这里不需要再补救，
+    // 那个补救函数连同它的调用一起删掉了。
+    await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`,
+      '直接落进对话', 25000);
+    await waitFor(call, `document.querySelectorAll('#thread .msg').length >= 2`, '开场两条', 30000);
+    await sleep(400);
+
+    // **确认真的是老邵。** 素材全套的台词写死了「邵叔」「那个疗程」「四十五万」，
+    // 钉错人这十句会串到别的场景上去（CONTEST §6 记着这条）。与其出一套串场
+    // 素材，不如当场断掉。
+    const 客户 = await evaluate(call, `document.getElementById('peer')?.textContent || ''`);
+    if (!/邵/.test(客户)) throw new Error(`这一局的客户是「${客户}」，不是老邵——素材台词会串场`);
+
+    // 工作台与客户档案仍然是产品里真实存在的两屏，只是不再拦在路上。
+    // 这里纯切视图拍照、拍完切回来：**不点任何会改游戏状态的按钮**，
+    // 上面那段说的就是点错一颗的代价。
+    await evaluate(call, `document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 'opening'))`);
     await sleep(400);
     await 存图(call, 'phone-03-异动预警.png');
 
-    await evaluate(call, `document.getElementById('openProfile').click()`);
-    await waitFor(call, `document.getElementById('home')?.classList.contains('on')`, '客户档案');
+    await evaluate(call, `document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 'home'))`);
     await sleep(300);
     await 存图(call, 'phone-04-客户档案.png');
+
+    await evaluate(call, `document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 'chat'))`);
+    await sleep(300);
 
     // ── 七把钥匙这一屏换了入口（2026-09-11）────────────────────────────
     //
@@ -607,11 +610,6 @@ async function main() {
     // `openMethodsSheet()`），文案与讲解屏那版一字不差。素材要展示的是
     // 「开局只给词汇、不给时机与分值」这件事，这个抽屉照样说得清楚，
     // 而且它比讲解屏更接近玩家现在真正会看到的样子。
-    await evaluate(call, `document.getElementById('openChen').click()`);
-    await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`, '聊天屏');
-    await waitFor(call, `document.querySelectorAll('#thread .msg').length >= 2`, '开场两条', 30000);
-    await sleep(400);
-
     await evaluate(call, `document.getElementById('openMethods').click()`);
     await waitFor(call, `!!document.querySelector('.sheet')`, '七把钥匙抽屉');
     await sleep(300);
