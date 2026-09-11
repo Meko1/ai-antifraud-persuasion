@@ -27,6 +27,19 @@ Message = Dict[str, str]
 # 不该触发一个"往后都不再试内网"的永久切换。判据只认这一句原文。
 QUOTA_EXHAUSTED_MARKER = "该令牌状态不可用"
 
+# **并发撞墙也走同一条降级路（2026-09-11 加）。** 这个令牌对
+# claude-sonnet-5 的上限是 30 RPM，而一局十轮、每轮并发两次调用
+# （演绎 + 分类）——`tools/act_eval.py` 并发 4 跑批时当场撞线，
+# 6 轮重试三次仍失败。展示当天三四位评委同时玩就会复现，而那时候
+# 玩家看到的每一句都是兜底罐头台词。
+#
+# **它和 token 用尽不是同一种故障，但remedy 是同一个**：那边是额度
+# 归零（不会自愈），这边是瞬时拥塞（一分钟后自愈）。仍然共用"切过去
+# 就不切回来、要切回去重启服务"这条策略，是因为展示期间在两个 provider
+# 之间来回抖动比稳定待在公网退路上更糟——评委看到的是一局里前半段
+# 一个语气、后半段另一个语气。
+RATE_LIMIT_MARKERS = ("RateLimitError", "RPM", "rate limit", "429")
+
 
 class LLMError(RuntimeError):
     """调用大模型失败。调用方负责决定是降级还是向用户报错。
@@ -36,9 +49,22 @@ class LLMError(RuntimeError):
     不同，统一在这里判一次文本，上层（FailoverLLMClient）不用关心协议。
     """
 
-    def __init__(self, message: str, *, quota_exhausted: bool = False) -> None:
+    def __init__(
+        self, message: str, *, quota_exhausted: bool = False, rate_limited: bool = False
+    ) -> None:
         super().__init__(message)
         self.quota_exhausted = quota_exhausted
+        self.rate_limited = rate_limited
+
+    @property
+    def failover_worthy(self) -> bool:
+        """该不该为这个异常切到退路去。
+
+        两种原因、同一条处置：token 用尽（不会自愈）与并发撞上 RPM 上限
+        （会自愈，但展示期间会持续复现）。判断集中在这里，两个调用点
+        （chat / stream）各自只问这一个问题。
+        """
+        return self.quota_exhausted or self.rate_limited
 
 
 def wrap_llm_error(prefix: str, exc: BaseException, *, body: str = "") -> LLMError:
@@ -52,7 +78,11 @@ def wrap_llm_error(prefix: str, exc: BaseException, *, body: str = "") -> LLMErr
     """
     text = f"{prefix}: {type(exc).__name__}: {exc}"
     haystack = f"{text} {body}" if body else text
-    return LLMError(text, quota_exhausted=QUOTA_EXHAUSTED_MARKER in haystack)
+    return LLMError(
+        text,
+        quota_exhausted=QUOTA_EXHAUSTED_MARKER in haystack,
+        rate_limited=any(m in haystack for m in RATE_LIMIT_MARKERS),
+    )
 
 
 class LLMClient:
@@ -306,7 +336,7 @@ class FailoverLLMClient:
         try:
             return await self._active.chat(messages, **kwargs)
         except LLMError as exc:
-            if called_primary and exc.quota_exhausted:
+            if called_primary and exc.failover_worthy:
                 self._record_switch(exc)
                 return await self._fallback.chat(messages, **kwargs)
             raise
@@ -324,7 +354,7 @@ class FailoverLLMClient:
                 yield delta
             return
         except LLMError as exc:
-            if spoken or not (called_primary and exc.quota_exhausted):
+            if spoken or not (called_primary and exc.failover_worthy):
                 raise
             self._record_switch(exc)
         async for delta in self._fallback.stream(messages, **kwargs):

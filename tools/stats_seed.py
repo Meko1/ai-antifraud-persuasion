@@ -2,8 +2,9 @@
 
 ## 这个脚本存在的理由
 
-复盘里「别人打成什么样」那一节要有样本才出现（信任度百分位的门槛是每场景
-20 局）。2026-08-18 为了验证渲染与分桶，手写 Redis 命令造过一批数据。
+复盘里「别人打成什么样」那一节要有样本才出现（信任度百分位的门槛见
+`PERCENTILE_FLOOR`，**按场景各算各的**）。2026-08-18 为了验证渲染与分桶，
+手写 Redis 命令造过一批数据。
 那次留下了三个毛病，这个脚本是来收拾它们的：
 
 1. **只写了 trust 一个键。** 于是本机 Redis 现在是
@@ -31,7 +32,7 @@
 
 用法：
     python -m tools.stats_seed --dry-run          # 只打印会写什么，不连 Redis
-    python -m tools.stats_seed                    # 每个场景各 20 局
+    python -m tools.stats_seed                    # 每个场景凑够百分位门槛
     python -m tools.stats_seed --games 50 --scenario zhou
     python -m tools.stats_seed --purge            # 清掉本作品的全部统计键
 """
@@ -52,9 +53,14 @@ from app.scenario import SCENARIOS, Scenario
 from app.scoring import Ending, GameState, evaluate_turn, new_game
 from tools.balance_sim import PERSONAS, Persona
 
-# 复盘里百分位那一节的门槛（`static/stats.js` 的 `trustPercentile`）。
+# 复盘里百分位那一节的门槛（`static/stats.js` 的 `TRUST_SAMPLE_MIN`）。
 # 少于这个数就不显示——宁可不显示，也不显示一个不成立的排名。
-PERCENTILE_FLOOR = 20
+#
+# **2026-09-11 跟着前端从 20 降到 8。** 降的理由写在 stats.js 那个常量上面
+# （20 乘上六个场景 = 一百二十局入档对局，那条线真实场合里跨不过去），
+# 换来的条件是那句话现在自带分母。这里是它的第二份，两处必须一起改——
+# 前端那份是真正生效的，这份只决定脚本灌多少。
+PERCENTILE_FLOOR = 8
 
 # 8-21 之前信任度分布是一个全局哈希，键名里不带场景。改成按场景分桶之后
 # 那个键**再也没有人读**，而大赛的 Redis 是共享 db0——留一把没人读的键在
@@ -116,19 +122,20 @@ def pick(rng: random.Random) -> Persona:
     return PERSONAS[-1]
 
 
-# 一局一局往上加时的上限。加权被拉黑率实测 6.5%~10.6%，到不了 20 局入档
-# 的可能性微乎其微，但一个没有上限的 while 循环不该出现在任何脚本里。
+# 一局一局往上加时的上限。加权被拉黑率实测 6.5%~10.6%，凑不够门槛那点入档
+# 局数的可能性微乎其微，但一个没有上限的 while 循环不该出现在任何脚本里。
 _MAX_GAMES = 200
 
 
 def seed_games(scene: Scenario, seed: int, games: int = 0) -> List[SeedGame]:
     """造一批局。`games` 为 0 时**按入档局数**凑够百分位门槛。
 
-    这个区别是 `--dry-run` 当场量出来的，值得写下来：**灌 20 局不等于
-    有 20 个样本。** 被拉黑不入档（`app/stats.py::_LADDER_KINDS`：提前出局，
+    这个区别是 `--dry-run` 当场量出来的，值得写下来：**灌 N 局不等于
+    有 N 个样本。** 被拉黑不入档（`app/stats.py::_LADDER_KINDS`：提前出局，
     信任度必然是 0，混进分布会把所有人的百分位顶得虚高），而加权被拉黑率
-    有 6.5%~10.6%——20 局造出来的是 17~19 个样本，**正好卡在门槛下面，
-    百分位那一行一行都不会出现**。8-18 那次八成就栽在这儿。
+    有 6.5%~10.6%——当年门槛还是 20 时，灌 20 局造出来的是 17~19 个样本，
+    **正好卡在门槛下面，百分位那一行一行都不会出现**。8-18 那次八成就栽在
+    这儿；门槛降到 8 之后差额小了，但"灌几局"和"有几个样本"仍然是两个数。
 
     所以这里数的是入档局数，不是灌了几局。
     """
@@ -236,7 +243,7 @@ def main() -> int:
     parser.add_argument(
         "--games", type=int, default=0,
         help=f"每个场景固定灌几局；默认按**入档**局数凑够 {PERCENTILE_FLOOR}"
-             "（被拉黑不入档，灌 20 局只有 17~19 个样本）",
+             "（被拉黑不入档，灌几局和有几个样本是两个数）",
     )
     parser.add_argument("--seed", type=int, default=818, help="给定就可复现")
     parser.add_argument("--dry-run", action="store_true", help="只打印，不连 Redis")

@@ -1,5 +1,6 @@
-import { $, showScreen, sleep, thread } from './dom.js';
-import { BREACHES, MOODS, MOOD_HINTS } from './keys.js';
+import { $, REDUCED, buzz, chime, showScreen, sleep, thread } from './dom.js';
+import { BREACHES, KEYS, MOODS, MOOD_HINTS } from './keys.js';
+import { startersFor } from './starters.js';
 import { postTurn, readEvents } from './api.js';
 import { openReview } from './review.js';
 import {
@@ -7,7 +8,7 @@ import {
   pressureNote, saveGame, setScene, startNewClient, withTa,
 } from './state.js';
 import { paintClientPicker, paintDesk, paintOpening } from './opening.js';
-import { syncEarlyReview } from './control.js';
+import { endEarly, syncEarlyReview } from './control.js';
 
 // ── 对话 ────────────────────────────────────────────────────
 
@@ -114,6 +115,47 @@ export function narrate(text) {
   sysnote([text]).classList.add('push');
 }
 
+/* ── 第一轮候选开场句（2026-09-11 加）──────────────────────────────────
+ *
+ * **只填输入框，不直接发送**——点一下把这句话搬进 `#say`，玩家还能删、
+ * 还能改、还能不点直接自己打字。这不是选择题：选择题是"点了就等于说了
+ * 这句话"，这里点了只是把话搬到了他自己那支笔下面。
+ *
+ * 只在第一轮出现，理由与内容来源见 `starters.js` 顶部那段长注释。
+ */
+const STARTER_ID = 'starterChips';
+
+export function paintStarters(sid) {
+  const list = startersFor(sid);
+  if (!list.length) return;
+  const wrap = document.createElement('div');
+  wrap.id = STARTER_ID;
+  wrap.className = 'starter-chips';
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', '开场句参考，点一下填进输入框');
+  list.forEach((s) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'starter-chip';
+    btn.textContent = s.text;
+    btn.addEventListener('click', () => {
+      const input = $('say');
+      input.value = s.text;
+      input.focus();
+      syncSend();
+    });
+    wrap.appendChild(btn);
+  });
+  thread.appendChild(wrap);
+  toBottom();
+}
+
+/** 第一轮一旦发出去就清掉——从第二轮起，对方已经说过话了，
+ *  再给候选句就是真正的泄题，这份表的使用期限只到这里为止。 */
+export function clearStarters() {
+  document.getElementById(STARTER_ID)?.remove();
+}
+
 export function paintMood(mood) {
   const el = $('mood');
   const word = MOODS[mood] || MOODS.guarded;
@@ -158,10 +200,268 @@ export function syncSend() {
   send.disabled = game.busy || !input.value.trim();
 }
 
+/* ── 非泄题即时反馈（2026-09-11 加，GPT复核报告 P0-3）───────────────────
+ *
+ * 报告原文举的例子是"他停顿了几秒""他开始解释而不是直接反驳"——这两句
+ * 这个仓库给不出：没有停顿时长这个数据，也没有"解释 vs 反驳"这个分类，
+ * 编一句听着真实但没有数据支撑的台词，是这个仓库明确不做的事
+ * （opening.js 那句"这个仓库不许对玩家断言一件没发生的事，哪怕它多半
+ * 发生了"，同一条原则）。
+ *
+ * 能诚实给的只有一件事：**这一轮信任度净变了多少**（`trust - before`），
+ * 这是真算出来的数，不是编的。但净变化本身已经很接近"分数"了——
+ * 所以只取**方向**（起色/没起色），不读出具体数字，且只在变化幅度
+ * 够不上"情绪档位跟着换了一档"（那部分 `paintMood` 已经在报）的时候才
+ * 单独说一句，避免和抬头那颗情绪徽章说重复的话。
+ *
+ * 第一轮不走这条路——它已经有自己的戏剧化亮相（上面那段 `showRevealStage`），
+ * 两个提示挤在同一轮会互相抢戏。
+ */
+
+/** 「净变化够不上一档」的阈值。**不是精确算出来的**（app/scoring.py 没有
+ *  为"多大算一档"单独定义一个数，档位切换本身由 `mood_for(trust)` 的
+ *  分段决定），这里给的是一个保守估计——宁可漏判几次真实的小起色，
+ *  也不要在噪声量级的波动上也念一句，把这条反馈变成每轮必有的背景音。 */
+const FEEDBACK_DELTA_FLOOR = 3;
+
+function turnFeedbackNote(prevMood) {
+  const last = game.turns[game.turns.length - 1];
+  if (!last) return null;
+  // 情绪档位已经变了：`#mood` 那颗徽章自己会播一次「turn」动画，
+  // 这里再说一遍是同一件事说两次。**判据是这一轮结束后的档位
+  // （`game.mood`，调用这个函数之前已经被 `score.mood` 重新赋值过）
+  // 对比这一轮开始前的档位（`prevMood`）**——`last.judgedMood` 是
+  // 分类器判这一轮用的档位，取的是轮次**开始前**那一刻，跟 `prevMood`
+  // 几乎总是同一个值，拿它俩比较等于这道闸永远不关，是踩过一次的错。
+  if (game.mood !== prevMood) return null;
+  const delta = last.trust - last.before;
+  if (Math.abs(delta) < FEEDBACK_DELTA_FLOOR) return null;
+  // {ta} 占位符：客户里「她」占一半，写死「他」在这儿会当场穿帮——
+  // 这条规矩全仓统一，见 keys.js 末尾 MOOD_HINTS 上面那段
+  return withTa(delta > 0 ? '这句，{ta}听进去了一点。' : '这句，{ta}没听进去。');
+}
+
+/* ── 命中钥匙的信心提示（2026-09-11 加，所有者明确要求）─────────────────
+ *
+ * 比上面 `turnFeedbackNote()` 更明确的一条：不是"净变化的方向"，是
+ * "这一轮有没有命中七把钥匙里的一把"，命中就给一句肯定，**不点名哪把**。
+ *
+ * 这条比 `turnFeedbackNote()` 更接近红线——它确认的是"一个具体的机制
+ * 刚刚触发了"，不只是"结果往好的方向走了一点"，更容易被反复试探摸出
+ * "什么样的话会触发这句话"。所有者在访谈里被明确告知这层风险之后，
+ * 选的仍然是这一版（对照选项是"维持现状不新增这个信号"），所以照这版做，
+ * 但止步于"命中过"这一件事——不点名具体哪把钥匙、不给分值、不给效力
+ * 矩阵，那几样仍然只留在复盘里。
+ *
+ * 优先级高于 `turnFeedbackNote()`：同一轮命中钥匙、净变化又恰好过线，
+ * 两句话挤一起是噪音，命中钥匙是更确定的信号，该赢的是它。
+ */
+function keyHitNote() {
+  const last = game.turns[game.turns.length - 1];
+  if (!last) return null;
+  const hit = (last.hits || []).some((h) => h in KEYS);
+  if (!hit) return null;
+  return withTa('这一下，{ta}听进去了——这句说到点子上了。');
+}
+
+/* ── 第一轮之后的戏剧化亮相（2026-09-11 加）─────────────────────────────
+ *
+ * GPT 复核报告 P0-2 想要的是把"同一句话换个时候说，效力差几倍"从十轮后的
+ * 复盘提前到第一句话之后。**这个仓库做不出报告原文那句话**（"现在说只有
+ * 0.6倍，他动摇时是1.2倍"），不是不想做，是两条更早的规矩挡在前面，
+ * 不能假装没看见就写过去：
+ *
+ * 一、**判分卡不在对局中出现**（POSITIONING「不做什么」、下面 `playTurn`
+ * 那段注释原话）。标签与分数一律留到复盘——"边打边给答案，玩家两轮就学会
+ * 照着清单刷分，不再读人"。这条红线不分是第几轮，第一轮同样管，而且
+ * 这条已经在这次改版的访谈里明确confirm过不松动。
+ *
+ * 二、**那份数据本身要等 `ending` 才存在**。"同一把钥匙在别的情绪档位值
+ * 多少倍"是 `game.ending.efficacy`（见 `contrast.js` `contrastFacts()`
+ * 开头那道闸），只在真正的结局事件里下发；第一轮更不可能有——
+ * `decide_ending()`（app/scoring.py）只在信任度冲过 80、跌破拉黑线，或者
+ * 撑到第 10 轮这三种情况下才给结局，一句话不可能提前触发这三条中的任何
+ * 一条。`endEarly()` 提前退出同样拿不到它——那条路走的是 `unfinished`，
+ * 服务端从没发过 `ending` 事件。
+ *
+ * 能提前、且不碰这两条线的，只有**已经在对局中公开展示的东西**——
+ * 情绪档位与时机线索（`#mood`、`#moodHint`，`paintMood()` 每轮都在刷新
+ * 它们，不是新数据）。这次改动做的是把这份本来摆在屏幕一角的信息，在
+ * 第一轮之后单独拿出来、放大、断网感地演一遍：把"这局在读你说话的时机"
+ * 这件事的分量提前立住，不是提前泄题——是把已经公开的信息重新排一次版。
+ */
+
+const REVEAL_KEY = 'aap.reveal.seen';
+
+function revealSeen() {
+  try { return localStorage.getItem(REVEAL_KEY) === '1'; } catch { return false; }
+}
+
+function markRevealSeen() {
+  try { localStorage.setItem(REVEAL_KEY, '1'); } catch { /* 存不了就每局都演一遍，不致命 */ }
+}
+
+/** 跳出手机边框的那一下。**挂在 `document.body` 上，不挂在 `.app-shell`
+ *  里**——`.app-shell` 自己 `overflow: hidden`，挂在里面会被裁成一个
+ *  贴在手机屏幕内的方块，"跳出边框"这件事就没发生。它要盖住的是整块
+ *  桌面舞台（`static/style.css` 里"桌面舞台"那一段新加的深色画布），
+ *  不只是手机屏幕那一小块。 */
+/** 跳出手机边框那一下的通用壳。两个调用点共用（第一轮揭晓、结束体验局
+ *  时的收束），差的只是文案、音效方向、要不要读秒——结构、无障碍处理、
+ *  低动态偏好豁免只写这一份，不许两份各写各的然后走散。 */
+function showFullscreenStage({
+  ariaLabel, eyebrow, moodWord, hint, thesis, cta, chimeNotes, chimeGain,
+  vibrate, autoDismissMs,
+}) {
+  if (vibrate) buzz(vibrate);
+  if (chimeNotes) chime(chimeNotes, chimeGain);
+  return new Promise((resolve) => {
+    const stage = document.createElement('div');
+    stage.className = 'reveal-stage';
+    stage.setAttribute('role', 'dialog');
+    stage.setAttribute('aria-label', ariaLabel);
+    stage.innerHTML = `
+      <div class="reveal-card">
+        <p class="reveal-eyebrow">${eyebrow}</p>
+        ${moodWord ? '<p class="reveal-mood-word"></p>' : ''}
+        ${hint ? '<p class="reveal-hint"></p>' : ''}
+        <p class="reveal-thesis">${thesis}</p>
+        <button type="button" class="reveal-continue">${cta}</button>
+      </div>`;
+    if (moodWord) stage.querySelector('.reveal-mood-word').textContent = moodWord;
+    if (hint) stage.querySelector('.reveal-hint').textContent = hint;
+    document.body.appendChild(stage);
+
+    let done = false;
+    const dismiss = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (REDUCED) { stage.remove(); resolve(); return; }
+      stage.classList.add('leaving');
+      stage.addEventListener('animationend', () => { stage.remove(); resolve(); }, { once: true });
+    };
+    stage.querySelector('.reveal-continue').addEventListener('click', dismiss);
+    // 点空白处也能走，和这个仓库其余抽屉/弹层的规矩一致——不设强制阅读。
+    stage.addEventListener('click', (e) => { if (e.target === stage) dismiss(); });
+    // 低动态偏好下不自动读秒，但仍然要有人能关掉它，交给按钮
+    const timer = REDUCED || !autoDismissMs ? null : setTimeout(dismiss, autoDismissMs);
+    stage.querySelector('.reveal-continue').focus({ preventScroll: true });
+  });
+}
+
+function showRevealStage(mood) {
+  return showFullscreenStage({
+    ariaLabel: '时机判定',
+    eyebrow: '妙想 · 正在判读时机',
+    moodWord: MOODS[mood] || MOODS.guarded,
+    hint: withTa(MOOD_HINTS[mood] || MOOD_HINTS.guarded),
+    thesis: '这局判的不只是你说了什么，还有你挑的时候对不对——同一句话，'
+      + '换个时候说，效果会完全不一样。',
+    cta: '继续对话',
+    // 两声上行（G5 → C6），跟 `opening.js` 的 `alarmFeedback()` 反过来——
+    // 那一下是"被摁住了"要读下行，这一下是"亮出一件事"，读上行
+    chimeNotes: [[784, 0], [1046.5, .1]],
+    chimeGain: .045,
+    vibrate: [16, 40, 16],
+    autoDismissMs: 4200,
+  });
+}
+
+/** 点「结束并看复盘」之后，先给一眼能看完的收束，再落进完整复盘页——
+ *  不是把完整复盘页做轻，是在它前面加一层"先接住这一局"的过渡，呼应
+ *  GPT复核报告 P1-3 想要的"短体验结束后立即生成轻量结果卡"。
+ *
+ *  **内容一个字不超出已经安全展示过的信息**：情绪档位（`#mood`本来就在
+ *  展示）、这是主动结束（对局本身就看得见）。不新增任何数字、标签，
+ *  不趁机塞一个之前没有过的判分维度。 */
+function showQuickFinishStage() {
+  return showFullscreenStage({
+    ariaLabel: '这一局先到这儿',
+    eyebrow: '妙想 · 这一局先到这儿',
+    moodWord: MOODS[game.mood] || MOODS.guarded,
+    thesis: withTa('这只是这一局的一个切面——完整复盘里还有逐轮证据和K线，'
+      + '能看出{ta}最后为什么停在这一档。'),
+    cta: '看完整复盘',
+    // 两声下行，跟揭晓那两声反过来——这次读的是"收一下"，不是"亮出来"
+    chimeNotes: [[659.3, 0], [523.3, .12]],
+    chimeGain: .04,
+    vibrate: 18,
+  });
+}
+
+const KEYS_HINT_KEY = 'aap.keyshint.seen';
+
+function keysHintSeen() {
+  try { return localStorage.getItem(KEYS_HINT_KEY) === '1'; } catch { return false; }
+}
+
+function markKeysHintSeen() {
+  try { localStorage.setItem(KEYS_HINT_KEY, '1'); } catch { /* 存不了就每局都演一遍，不致命 */ }
+}
+
+/** 「钥匙」按钮的一次性提示脉冲。**只在这台设备演一次**，理由与实现见
+ *  `static/style.css` 里 `.pulse-hint` 那段长注释——跳过 primer 屏之后，
+ *  这颗按钮是七把钥匙唯一的入口，得先让人看见它才谈得上"随时可查"。
+ *
+ *  放在第一轮揭晓收起来之后：不和那次全屏的戏剧化时刻抢注意力。 */
+function pulseKeysButton() {
+  if (keysHintSeen()) return;
+  markKeysHintSeen();
+  const btn = $('openMethods');
+  if (!btn) return;
+  btn.classList.add('pulse-hint');
+  const clear = () => btn.classList.remove('pulse-hint');
+  btn.addEventListener('click', clear, { once: true });
+  setTimeout(clear, 5000);
+}
+
+/** 只在这台设备的第一轮之后演一次。**判据是 `game.turns.length === 1`**，
+ *  不是"这局第一次调用"——续局重画（`resumeGame`）不经过 `playTurn`，
+ *  不会重复触发；同一局同一轮重试（`rollback` 之后重发）会话未推进，
+ *  这个函数根本不会被这条件命中第二次。 */
+function maybeShowFirstTurnReveal() {
+  if (game.turns.length !== 1 || revealSeen()) return null;
+  markRevealSeen();
+  return showRevealStage(game.mood);
+}
+
+/* ── 第一轮之后，正面邀请"现在结束看结果"（2026-09-11 加）─────────────
+ *
+ * 大赛体验局改版最初想做一个到点即停的短版本，后来收窄成"默认路径本身
+ * 变快"（见 opening.js「快速进场」那段注释），十轮上限没有变——但改窄
+ * 之后漏了一件事：**没有任何一处正面邀请"现在结束也可以"**。退出那条路
+ * 还在（`control.js` 的 `openExitSheet()`），但要点"退出"才找得到，
+ * 而且框的是"离开"，不是"这就是你想要的那个短体验"。
+ *
+ * 这一条不新建状态机、不改判分：点了就是调 `endEarly()`，跟退出抽屉里
+ * "就到这儿，看复盘"那一项完全同一个函数、同一份行为（已打的轮次照常
+ * 判分，不编造资金结局）。**每一局的第一轮都会出现**，不是只演一次的
+ * 教学提示——"要不要现在就看结果"是每一局都成立的真问题，跟只演一次的
+ * `showRevealStage()` 不是同一类东西，不共用那把 localStorage 的锁。
+ */
+function offerQuickFinish() {
+  const p = sysnote([
+    '这一轮就想看看效果？现在结束也能看复盘，已打的轮次照常判分。',
+  ]);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = '结束并看复盘';
+  btn.className = 'quick-finish-btn';
+  btn.addEventListener('click', async () => {
+    await showQuickFinishStage();
+    endEarly();
+  });
+  p.appendChild(btn);
+}
+
 export async function playTurn(utterance) {
   game.busy = true;
   $('send').disabled = true;
   $('say').disabled = true;
+  // 第一轮一发出去就清掉候选开场句——从第二轮起对方已经说过话了，
+  // 这份表的使用期限到这里为止（见 `clearStarters()` 的文档）。
+  clearStarters();
 
   // 这一轮作废时要原样退回去。服务端的令牌不会推进，界面也就一步都不能留。
   const prevRemaining = game.remaining;
@@ -292,6 +592,9 @@ export async function playTurn(utterance) {
       // 网关抖了一下，账记在人头上。
       degraded: !!score.degraded,
     });
+    // 这一轮开始前的档位，喂给下面 `turnFeedbackNote()`——它只在档位
+    // 没跟着换的时候才开口，档位换了自有 `#mood` 那颗徽章的动画去说。
+    const prevMood = game.mood;
     game.trust = score.trust;
     // **game.mood 必须跟着走。** 在这一行之前它只在开局被赋值过一次，
     // 之后十二轮一直是第 1 轮那个值——两处因此都是错的：
@@ -319,10 +622,28 @@ export async function playTurn(utterance) {
       sysnote([`合规红线 · ${names.join(' / ')}`, '真实展业中这句要留痕'], true);
     }
     if (score.pressure) narrate(pressureNote());
+    // 第一轮走的是戏剧化亮相（下面那段），不在这儿重复；第二轮起，
+    // 命中钥匙的确认优先于方向性反馈——两句话只留一句，见 `keyHitNote()`
+    // 顶部那段注释
+    if (game.turns.length > 1) {
+      const hit = keyHitNote();
+      const note = hit || turnFeedbackNote(prevMood);
+      if (note) sysnote([note]);
+      // 单音，比揭晓那两声更轻——命中钥匙每局能响好几次，
+      // 声音分量要压得比"只演一次"的揭晓更低，不然十轮打下来是噪音
+      if (hit) chime([[1318.5, 0]], .035);
+    }
   }
 
   saveGame();
   if (game.ending) return finish();
+
+  // 第一轮之后、放开输入框之前——见上面那段「跳出手机边框」的长注释，
+  // 讲的是为什么这里只演情绪与时机线索，不演任何数字。
+  const reveal = maybeShowFirstTurnReveal();
+  if (reveal) { await reveal; pulseKeysButton(); }
+  // 揭晓演过没演过都要出现——它是每局都成立的真问题，不是教学提示
+  if (game.turns.length === 1) offerQuickFinish();
 
   game.busy = false;
   $('say').disabled = false;
@@ -410,6 +731,13 @@ export async function finish() {
     say('them', line);
   }
   await sleep(400);
+
+  // 结局揭晓那一下的触感反馈。**四档结局用同一个震动模式**，不按好坏分——
+  // 结局是一道阶梯，不是胜负（POSITIONING「不做什么」），差异化的震动
+  // 强弱等于在暗示"这个结局该庆祝、那个该沮丧"，和"不做成输赢"是同一条线。
+  // 低动态偏好下跳过，与 `opening.js` 的 `alarmFeedback()` 同一条道理：
+  // 设了这条的人要的是别惊动我。
+  buzz(40);
 
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
   const meta = endingMeta(kind);

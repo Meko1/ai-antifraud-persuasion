@@ -56,7 +56,7 @@ export const STATIC = path.join(HERE, '..', '..', 'static');
  *  「声明顺序」那一组，它现在钉的就是这份拼接结果）。 */
 export const MODULES = [
   'dom.js', 'keys.js', 'state.js', 'api.js', 'stats.js', 'chart.js', 'qr.js',
-  'contrast.js', 'sheet.js', 'chat.js', 'review.js', 'history.js',
+  'starters.js', 'contrast.js', 'sheet.js', 'chat.js', 'review.js', 'history.js',
   'opening.js', 'control.js', 'app.js',
 ];
 

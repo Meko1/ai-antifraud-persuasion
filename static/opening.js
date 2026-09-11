@@ -1,9 +1,9 @@
-import { $, REDUCED, showScreen, sleep, thread } from './dom.js';
+import { $, REDUCED, buzz, showScreen, sleep, thread } from './dom.js';
 import { KEYS } from './keys.js';
 import { startGame } from './api.js';
 import { openSheet } from './sheet.js';
 import { loadHistory } from './history.js';
-import { divider, paintMood, resumeGame, say } from './chat.js';
+import { divider, paintMood, paintStarters, resumeGame, say, sysnote } from './chat.js';
 import {
   PICK_KEY, PING, SCENE, TOTAL, clearSaved, game, loadSaved, peerPronoun,
   saveGame, setScene, startNewClient, wholeMoney, withTa,
@@ -143,7 +143,7 @@ function armHandoff(go) {
  *  iOS 上根本不存在的 `vibrate`——任何一个都不许挡住拦截面翻开。 */
 function alarmFeedback() {
   if (REDUCED) return;
-  try { navigator.vibrate?.([28, 60, 28]); } catch { /* 不支持震动就算了 */ }
+  buzz([28, 60, 28]);
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
@@ -218,7 +218,77 @@ export function ackTransfer() {
     sessionStorage.setItem(TRANSFER_KEY, '1');
   } catch { /* 隐私模式：下次刷新再演一遍，不影响任何别的东西 */ }
   transferAcked = true;
-  showScreen(bootOutcome === 'ready' ? 'opening' : 'assignment');
+  // 数据已经到位就直接落进对话（见下面「快速进场」那段）；没到位就先给
+  // 接入动画，`startSession()` 的成功分支落地时会接着把他放进对话。
+  if (bootOutcome === 'ready') enterChatDirect();
+  else showScreen('assignment');
+}
+
+/* ── 快速进场（2026-09-11 加）────────────────────────────────────────────
+ *
+ * GPT 复核报告与真实同事反馈指向同一件事：核心资产（角色对调 + 时机判分）
+ * 藏在「确认转出→坐到对面→查看异常记录→联系客户→知道了开始」五步操作
+ * 之后，而这五步里没有一步在还债。默认路径因此改成：坐到对面之后直接
+ * 落进对话，跳过工作台（`#opening`/`#home`）与七把钥匙讲解屏（`#primer`）。
+ *
+ * **跳过不等于丢掉信息**，两处都还在，只是从"开局必经"变成"随时可查"：
+ *   · 七把钥匙——对局中`.composer-help`那颗「钥匙」按钮随时翻得到
+ *     （`control.js` 的 `openMethodsSheet()`），内容和 `#primer` 屏一字不差。
+ *   · 客户档案——`FactRow.warn` 那几行（这一局最要紧的异动线索）改摘一条
+ *     放进对话顶部（`paintLeadFact()`），不是完整搬过来；完整档案仍在
+ *     `#home`，只是不再是必经之路。
+ *
+ * **不改一个判分参数**：跳的是屏幕，不是难度——`expert` 的胜率、七把钥匙
+ * 的效力矩阵、十轮上限，一个字都没碰。
+ */
+
+/** 对话顶上那一条「你手上的牌」。**只摘一条，不是整份档案。**
+ *
+ *  完整清单还在 `#home`；这里只挑 `FactRow.warn` 里第一条——快速路径跳过
+ *  了客户档案屏，玩家开口前不能两眼一抹黑，但也不该在聊天窗顶部堆一整张
+ *  档案，那样就是把 `#home` 搬了过来，白跳了。
+ */
+function paintLeadFact() {
+  if (!SCENE) return;
+  const lead = (SCENE.client.facts || []).find((f) => f.warn);
+  if (!lead) return;
+  sysnote([lead.note ? `${lead.label} · ${lead.value}，${lead.note}` : `${lead.label} · ${lead.value}`]);
+}
+
+/** 真正把玩家放进聊天的那几行。**两个调用点都已经确认数据到位才调用它**
+ *  （`ackTransfer()` 在 `bootOutcome==='ready'` 时、`startSession()` 自己
+ *  的成功分支里），所以这里不等 `ready`——`startSession()` 那个调用点尤其
+ *  不能等：`ready` 正是 `startSession()` 自己返回的那个 promise，在它自己
+ *  返回之前等它，这个 promise 永远不会落定，页面会卡死在这一屏上不动。
+ *
+ *  与 `enterGame()` 的尾段几乎一样，只是不经过 `primerSeen()` 那道闸——
+ *  这正是这次改动要跳过的那一屏。`enterGame()` 本身留着不动：存档续局、
+ *  `?from=miaoxiang` 入口卡之外的路径仍然可能调用它。
+ */
+function enterChatDirect() {
+  if (game.entered) {
+    showScreen('chat');
+    $('say').focus();
+    return;
+  }
+  game.entered = true;
+  showScreen('chat');
+  $('remaining').textContent = String(game.remaining);
+  $('turnCurrent').textContent = '1';
+  $('roundFill').style.width = `${100 / game.maxRounds}%`;
+  paintMood(game.mood);
+  // 「今日第 N 位客户」跟着这一屏一起被跳过了（它原来印在 `#opening`
+  // 的抬头上，那一屏不再是默认路径的一站），改搭在分隔线上带出来——
+  // 不是新加一处 UI，是把已经算好的那个数接回一个还留着的位置。
+  divider(`下午 2:47 · 今日第 ${todayCount()} 位客户`);
+  paintLeadFact();
+  say('me', PING());
+  say('them', game.opening);
+  // 只在第一轮画一次，且要等对方那句开场白先上屏——候选句排在他的话
+  // 后面，读起来才是"这几种是回应他的思路"，不是插在两人之间的广告位
+  if (SCENE) paintStarters(SCENE.id);
+  $('say').focus();
+  saveGame();
 }
 
 export async function loadGame() {
@@ -325,8 +395,9 @@ async function startSession() {
     const elapsed = Date.now() - assignmentStartedAt;
     if (!REDUCED && elapsed < 850) await sleep(850 - elapsed);
     bootOutcome = 'ready';
-    // 玩家还在转账确认屏上就别切走——他签完字自己会过来（ackTransfer）
-    if (transferAcked) showScreen('opening');
+    // 玩家还在转账确认屏上就别切走——他签完字自己会过来（ackTransfer）。
+    // 已经签过字、正等在接入动画上的人，这里直接放他进对话。
+    if (transferAcked) enterChatDirect();
     return true;
   } catch (error) {
     startError = error;
@@ -400,17 +471,22 @@ export function syncOpeningResume(onReview) {
  * （localStorage，与复盘那一节同源）。读不到就退回"今日第 1 位客户"，
  * 不因为一个装饰性的数字让开场屏崩掉。
  */
+/** 纯数字版，`paintTodayCount()`（`#opening` 屏用）与快速进场的分隔线
+ *  （`enterChatDirect()`）共用同一份取数——两处各算一遍，早晚会算出两个
+ *  不一样的数，那比没有这个数字更糟。 */
+export function todayCount() {
+  try {
+    const today = new Date().toDateString();
+    return loadHistory().filter((e) => new Date(e.ts).toDateString() === today).length + 1;
+  } catch {
+    return 1;
+  }
+}
+
 export function paintTodayCount() {
   const el = $('todayCount');
   if (!el) return;
-  let n = 1;
-  try {
-    const today = new Date().toDateString();
-    n = loadHistory().filter((e) => new Date(e.ts).toDateString() === today).length + 1;
-  } catch {
-    n = 1;
-  }
-  el.textContent = `今日第 ${n} 位客户`;
+  el.textContent = `今日第 ${todayCount()} 位客户`;
 }
 
 /** 客户档案里的一行。 */

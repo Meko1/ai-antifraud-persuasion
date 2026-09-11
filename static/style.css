@@ -1438,6 +1438,132 @@ button:disabled { cursor: not-allowed; }
   background: #18201d;
   pointer-events: none;
 }
+/* ── 桌面舞台：手机框外面那圈画布 ──────────────────────────────────────
+ *
+ * 手机框**内部**三个世界（东财/妙想/微信）互相不通用色，那条线不能碰，
+ * 见上面「三个世界」那段。这里改的是框**外面**那一圈——它从来不属于任何
+ * 一个被模拟的真实 App，一直是"跟着妙想走"的一块背景（见 --canvas 定义处
+ * 的注释：「手机框外面那一圈。跟着妙想走」）。往戏剧化推的时候，推的是
+ * 妙想自己这三个色（brand/violet/blue）往深、往浓走，不换一套陌生的
+ * 配色世界——三色取值与 --mx-brand / --mx-violet / --mx-blue 完全一致，
+ * 只是在这里以更低的不透明度铺成大面积的光晕，不新增任何 token。
+ *
+ * 窄屏（≤540px，见文件末尾 max-width:540px 那条）.app-shell 直接铺满
+ * 视口，框外的画布根本不可见——下面这些规则天然只在桌面宽度生效，
+ * 是纯粹的渐进增强，不影响手机上的任何一屏。
+ */
+@media (min-width: 541px) {
+  body {
+    background:
+      radial-gradient(ellipse 640px 520px at 50% 6%, rgba(43, 92, 230, .32), transparent 70%),
+      radial-gradient(ellipse 560px 620px at 90% 94%, rgba(123, 63, 228, .22), transparent 65%),
+      radial-gradient(ellipse 500px 540px at 4% 90%, rgba(30, 140, 240, .16), transparent 60%),
+      linear-gradient(165deg, #0a0e29 0%, #10123a 48%, #171340 100%);
+  }
+  /* 深色画布上，原本按浅底调的柔和投影会沉进背景里看不见——
+     补一圈同色系的光晕当"立体感"，不是纯装饰：手机框在这个底上要靠它
+     才读得出"浮在画布上"，而不是一块贴片。offset+blur 的主投影留着，
+     光晕是加的第二层，不是拿零偏移的色圈顶替第一层。 */
+  .app-shell {
+    box-shadow:
+      0 40px 100px rgba(3, 5, 18, .6),
+      0 0 0 1px rgba(255, 255, 255, .05),
+      0 0 130px -24px rgba(43, 92, 230, .6);
+  }
+}
+
+/* ── 第一轮揭晓：真正跳出手机边框的那一下 ──────────────────────────────
+ *
+ * 由 `chat.js` 的 `showRevealStage()` 挂在 `document.body` 上，不挂在
+ * `.app-shell` 里——那里 `overflow: hidden`，挂进去只会被裁成手机屏幕内
+ * 的一个方块。这里要盖住的是整块桌面舞台（上面「桌面舞台」那段的深色
+ * 画布），在窄屏上则盖住整个视口——**这一下所有宽度都生效**，不是桌面
+ * 渐进增强：它不是装饰框外空间，是一次主动的、内容层面的全屏接管。
+ *
+ * 配色不新开一套：仍然是 --mx-brand / --mx-violet 两个既有 token，
+ * 只是比「桌面舞台」那版更聚焦、更暗，因为这一下要的是唯一的高光时刻，
+ * 不是背景氛围。 */
+.reveal-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 28px;
+  background:
+    radial-gradient(ellipse 65% 55% at 50% 38%, rgba(43, 92, 230, .4), transparent 72%),
+    linear-gradient(170deg, #060815 0%, #0b0c26 45%, #120f2c 100%);
+  opacity: 0;
+  animation: reveal-in 380ms var(--ease) forwards;
+}
+.reveal-stage.leaving { animation: reveal-out 260ms var(--ease) forwards; }
+@keyframes reveal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes reveal-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.reveal-card {
+  max-width: 420px;
+  text-align: center;
+  animation: reveal-card-in 480ms var(--ease) 60ms both;
+}
+@keyframes reveal-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.reveal-eyebrow {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: #8fb2ff;
+}
+.reveal-mood-word {
+  margin: 0 0 16px;
+  font-size: clamp(2.1rem, 7vw, 3.2rem);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: #fff;
+}
+.reveal-hint {
+  margin: 0 0 22px;
+  font-size: 17px;
+  line-height: 1.6;
+  color: #d7deff;
+}
+.reveal-thesis {
+  margin: 0 0 32px;
+  font-size: 14px;
+  line-height: 1.7;
+  /* 二级文字从这块底色的色相里取，不用灰——craft-floor 的规矩：
+     有色底上的次级文字要么从这个色相里压，要么从前景色里压，不能拿灰色垫底 */
+  color: #a7b2e0;
+}
+.reveal-continue {
+  border: 0;
+  border-radius: 999px;
+  padding: 13px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--mx-brand);
+  box-shadow: 0 10px 28px -6px rgba(43, 92, 230, .65);
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+.reveal-continue:hover { transform: translateY(-1px); box-shadow: 0 14px 32px -6px rgba(43, 92, 230, .75); }
+.reveal-continue:active { transform: translateY(0); }
+.reveal-stage :focus-visible {
+  outline: 2px solid #8fb2ff;
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal-stage, .reveal-stage.leaving, .reveal-card { animation: none; opacity: 1; transform: none; }
+}
+
 .screen,
 .review { display: none; }
 .screen.on,
@@ -2106,6 +2232,22 @@ button:disabled { cursor: not-allowed; }
 .sysnote.bad { color: var(--danger); }
 .sysnote .sep { padding: 0 5px; color: #b5bbb7; }
 .sysnote button { margin-left: 5px; padding: 2px 7px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; }
+
+/* 「结束并看复盘」（2026-09-11 加）不是"重开一局"那种退路性质的次要按钮，
+ * 是一次正面邀请，要比上面那条 outline 按钮显眼——`flex-basis: 100%`
+ * 让它在 `.sysnote` 的 flex 容器里另起一行，不跟文字挤在同一行。
+ * 颜色用 `--wx-brand`：跟发送键、候选开场句是同一支绿，读起来像
+ * "这也是一个能按下去的动作"，不是一句提示语。 */
+.sysnote button.quick-finish-btn {
+  flex-basis: 100%;
+  margin: 6px 0 0;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--wx-brand);
+  color: #fff;
+  font-weight: 600;
+}
 /* **display 必须显式写成 block。** 上面还留着一条同名的旧规则
    （`.composer { display: flex }`），这条新规则没写 display，于是那句
    flex 一直生效：`.inputrow` 和下面那行提示被拉成了同一行的两个 flex 子项，
@@ -2249,6 +2391,14 @@ button:disabled { cursor: not-allowed; }
    还没攒够样本时落到中性灰的默认值。 */
 .percentile { margin: 14px 19px 0; padding: 13px 14px; border-radius: 11px; background: var(--soft, #eceeea); color: var(--accent, #4c5651); font-size: 14px; line-height: 1.55; font-weight: 700; }
 .percentile.unranked { background: var(--danger-soft); color: var(--danger); }
+/* 本机排名那一级（stats.js 的 `localRank`）：**不吃整屏那个 tone**。
+   tone 是"这一局打得怎么样"的语义色，而这一行说的是"跟你自己比排第几"——
+   让它染成劝住那罐绿，等于把一句本机记录冒充成人群战绩。中性灰 + 常规字重，
+   与百分位共用同一块排版，只在分量上让开一档。 */
+.percentile.local {
+  background: none; padding-left: 0; padding-right: 0;
+  color: var(--muted); font-size: 13px; font-weight: 600;
+}
 .turning-point, .result-review { margin: 16px 19px 0; padding: 15px 0; border-bottom: 1px solid var(--line); }
 .turning-point > b, .result-review h3 { margin: 0; font-size: 14px; }
 .turning-point blockquote { margin: 9px 0 0; padding: 10px 11px; border-radius: 8px; background: rgba(25,35,31,.045); font-size: 13.5px; line-height: 1.6; }
@@ -2416,6 +2566,27 @@ button.composer-help {
   cursor: pointer;
 }
 button.composer-help:hover { color: var(--ink); border-color: var(--quiet); }
+
+/* 「钥匙」按钮的一次性提示脉冲（2026-09-11 加）。
+ *
+ * 真实反馈里"词穷"那条，根子不是七把钥匙的文案不够具体——`KEYS[k].brief`
+ * 本来就在说方向（"让{ta}自己说出这笔钱本来是干什么用的"），根子是
+ * **主入场路径跳过了 primer 屏之后，很多人根本不知道这颗按钮存在**
+ * （见 opening.js「快速进场」那段：七把钥匙的说明没丢，只是从"开局必读"
+ * 变成了这颗按钮背后的"随时可查"，但"随时可查"的前提是知道它在那儿）。
+ * 所以这里不改内容，改的是**第一次让人看见它**——第一轮的戏剧化揭晓
+ * 收起来之后脉冲几下，只演一次（`chat.js` 的 `pulseKeysButton()`，
+ * localStorage 记忆），点过一次或看过一次就不再演。 */
+button.composer-help.pulse-hint {
+  animation: keys-pulse 1.5s var(--ease) 3;
+}
+@keyframes keys-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(43, 92, 230, .45); border-color: var(--line); }
+  50% { box-shadow: 0 0 0 7px rgba(43, 92, 230, 0); border-color: var(--mx-brand); }
+}
+@media (prefers-reduced-motion: reduce) {
+  button.composer-help.pulse-hint { animation: none; }
+}
 
 /* 次要动作：换一位客户。开场屏与复盘页共用。 */
 .ghost-action {
@@ -2903,9 +3074,52 @@ button.sheet-item:hover { border-color: var(--navy); background: var(--paper-str
 .msg.them .bubble::before { border-right-color: var(--wx-white); }
 .msg.me .bubble::before { border-left-color: var(--wx-green); }
 
+/* 2026-09-11 补一层极浅的投影（2555 行那条 `box-shadow: none` 一直生效，
+ * 赢过更早那条 `0 1px 1px rgba(25,35,31,.04)`）。真微信的聊天底是浅灰
+ * `#ededed`，白色气泡贴在上面要靠一圈几乎看不见的软投影才立得住，
+ * 不然亮屏上白气泡和灰底几乎融在一起，读起来是"贴图"不是"聊天"——
+ * 这条大概率就是"不够逼真"这条反馈里最主要的那一层。offset+blur，
+ * 不是零偏移的色圈，深浅参照真实截图里那种若有若无的分寸。 */
+.msg .bubble { box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+
+/* 头像同理：纯色块贴纯色底，没有任何分隔就是一块色卡。真人头像照片
+ * 天然有明暗层次，我们这儿只能用色块顶替，那就至少让它有一点点浮起来
+ * 的分寸——参照系统里其余头像（如 .chatrow .avatar）都没有这一层，
+ * 只在聊天气泡这个最容易被拿来跟真微信截图比对的地方补。 */
+.msg .avatar { box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+
 /* 真微信的头像是**方形圆角 4px**，不是 8px 更不是圆——
    这一格是最容易被一眼认出来的地方之一 */
 .msg .avatar { border-radius: 4px; }
+
+/* 第一轮候选开场句（2026-09-11 加）。**只是输入框上方的几个快捷按钮，
+ * 不是选择题**——配色留在微信这个世界里（wx-* token），不借用妙想的
+ * 蓝紫，跟发送键一样取绿色调，暗示"这些是能直接送出去的话"这件事，
+ * 但形状是胶囊按钮不是气泡，一眼看出跟聊天记录本身不是同一类东西。 */
+.starter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 4px 4px;
+  align-self: stretch;
+}
+.starter-chip {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  padding: 9px 13px;
+  border: 1px solid rgba(7, 193, 96, .3);
+  border-radius: 14px;
+  background: rgba(7, 193, 96, .07);
+  color: var(--wx-text);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+}
+.starter-chip:hover { background: rgba(7, 193, 96, .13); border-color: rgba(7, 193, 96, .5); }
+.starter-chip:active { background: rgba(7, 193, 96, .18); }
 
 /* **自己的头像要出现。** 实拍单聊里右侧一直有你自己的头像，
    而这里原先 `display: none`。少了它，右半边读起来像系统回执，不像对话。

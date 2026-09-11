@@ -4,9 +4,43 @@
  * （history.js）都要用，放在两边任何一边都会让另一边反向依赖。 */
 
 // 后端 `app/stats.py` 的 `_trust_bucket`：5 分一档、20 个桶，下标 = trust // 5。
-// 复盘定的门槛：样本（桶内计数之和）不满 20 局不显示——数据太少时报一个
-// "超过 100% 的人"没有意义，不如不说，跟这一节整体"没数据就不出现"是同一条原则。
-export const TRUST_SAMPLE_MIN = 20;
+// 样本 = 桶内计数之和，不满这个数就不显示百分位。
+//
+// **2026-09-11 从 20 降到 8。** 原来那个 20 判断没错，代价算错了：分布按
+// 场景 × 口径分开存（`app/stats.py` 的 `key_trust`），20 局的门槛乘上六个
+// 场景就是一百二十局**入档**对局，而被拉黑不入档——`tools/stats_seed.py`
+// 实测灌 20 局只落得下 17~19 个样本，真要跨过这条线得灌一百四十多局。
+// 结果是这条线在任何一次真实试用里都不会被跨过，屏幕上常驻那句
+// 「排行样本积累中」：一个从来没亮过的功能，跟没有这个功能的区别，
+// 只在于它还占着一行。
+//
+// 降下来不是把当初那条原则收回去。当初出事的不是样本小，是**样本看不见**
+// ——n=2 印「100% 的人也停在这一档」，而同一块的脚注写着「统计自 13 局」。
+// 所以这次是两件事一起改：门槛降到 8，同时把 n 写进那句话本身
+// （`percentileCopy`，分享卡同理见 history.js 的 `makeCard`）。
+// 读的人看得见自己在跟几局比，8 局的百分位就是一句成立的话——
+// 它本来声称的也只是"在这 8 局里排第几"。
+//
+// 8 这个数：5 分一桶、8 个样本的分辨率约 12 个百分点，高低两头还分得开；
+// 再往下（3~5 局）那个数会因为一局的进出大幅跳动，那才是编出来的精度。
+export const TRUST_SAMPLE_MIN = 8;
+
+/* 服务端样本还没攒够时的第二条路：**跟自己比**（2026-09-11）。
+ *
+ * 上面那条门槛无论降到几，都还有两种情况是它救不了的：
+ *  · `REDIS_URL` 没配、或者像本机这样连不上那台内网 Redis —— `/api/stats`
+ *    返回 `available: false`，一个桶都读不到；
+ *  · 换了个冷门场景、或者刚上线的头几十局。
+ * 这两种情况下原来的处理是"那一行原样留着占位文案"，等于把"我们这儿有个
+ * 功能坏着"写在复盘里。
+ *
+ * 本机记录（history.js 的 `loadHistory`）不依赖任何服务端设施，第二局起就有
+ * 东西可比。它**不是人群排名**，所以文案里必须把这件事说出口——把"你打过的
+ * 几局里排第几"说成"超过了多少人"，才是这一节真正不能犯的错。
+ *
+ * 2 局：第二局打完就能给出对比，而 1 局时"排第 1"是句废话。
+ */
+export const LOCAL_RANK_MIN = 2;
 
 /* 「别人打成什么样」那一块的同款门槛（2026-08-31 补）。
  *
@@ -49,12 +83,19 @@ export function canCompareKeys(data) {
   return ((data && data.turns) || 0) >= KEY_SAMPLE_MIN;
 }
 
+/** 这份分布一共几局。**要能单独拿到**：门槛降下来之后，n 不再是一个只用来
+ *  过闸的内部数，它得跟着百分位一起印到屏幕上（见 `percentileCopy`）。 */
+export function trustSample(buckets) {
+  if (!Array.isArray(buckets)) return 0;
+  return buckets.reduce((a, b) => a + (Number(b) || 0), 0);
+}
+
 /** 分布是分桶存的，不是每一局的原始值，百分位因此是个近似值：
  *  桶外的直接算"被我超过"，桶内按信任度在这 5 分区间里的相对位置插值——
  *  不然数字会卡在 5 分一档的台阶上，一眼就看得出是硬凑的。 */
 export function trustPercentile(buckets, trust) {
   if (!Array.isArray(buckets) || !buckets.length) return null;
-  const total = buckets.reduce((a, b) => a + b, 0);
+  const total = trustSample(buckets);
   if (total < TRUST_SAMPLE_MIN) return null;
   const mine = Math.max(0, Math.min(buckets.length - 1, Math.floor(trust / 5)));
   const below = buckets.slice(0, mine).reduce((a, b) => a + b, 0);
@@ -76,9 +117,45 @@ export function trustPercentile(buckets, trust) {
  *
  * （引的那句 2026-08-30 改过一次：原文以"下一局试着…"开头，而这个人
  * 只打这一局，许诺一个不会发生的下一次是训练器定位的残留。）
+ *
+ * **`sample` 是 2026-09-11 加的，不是装饰。** 门槛从 20 降到 8（见
+ * `TRUST_SAMPLE_MIN`），换来的条件就是这半句：一句不写分母的「高于 62%」，
+ * 读的人无从判断它是跟八局比还是跟八百局比。分母写在同一行里，
+ * 这句话才跟着样本一起变得诚实——脚注在别处、正文里不提，正是当初
+ * 「n=2 印 100%」那个洞的形状。
  */
-export function percentileCopy(pct) {
-  return `高于同场景 ${pct}% 的已完成对局`;
+export function percentileCopy(pct, sample) {
+  const n = Number(sample) || 0;
+  return `高于同场景 ${pct}% 的已完成对局` + (n ? ` · 统计自 ${n} 局` : '');
+}
+
+/** 本机排名：这一局在**这台设备打过的局**里排第几。
+ *
+ * 只收入档的局（调用方按 history.js 的 `TIER_RANK` 过滤好再传进来——
+ * 那张阶梯表是它的，不在这儿抄第二份）。同场景够两局就只跟同场景比，
+ * 理由与服务端百分位按场景分桶完全一样（`app/stats.py` 的 `key_trust`：
+ * 各场景难度不同，混着比量出来的是"抽到的场景难不难"）；不够就退回全部，
+ * 但那时文案要把"跨客户"说出来（见 `localRankCopy`）。
+ *
+ * 本局自己也在 `entries` 里（`recordGame` 先于这里跑），所以名次是
+ * "比我高的局数 + 1"，并列同名次。 */
+export function localRank(entries, { sid = '', trust = 0 } = {}) {
+  const list = (Array.isArray(entries) ? entries : []).filter(Boolean);
+  const same = sid ? list.filter((e) => e.sid === sid) : [];
+  const sameScene = same.length >= LOCAL_RANK_MIN;
+  const pool = sameScene ? same : list;
+  if (pool.length < LOCAL_RANK_MIN) return null;
+  const above = pool.filter((e) => (Number(e.trust) || 0) > trust).length;
+  return { rank: above + 1, total: pool.length, sameScene };
+}
+
+/** 本机排名那句话。**"本机记录"四个字不许省**：这一行长得跟百分位一模一样，
+ *  不说清楚它就会被读成人群排名——那正是这一节唯一不能犯的错。 */
+export function localRankCopy(res, name = '') {
+  if (!res) return '';
+  const 谁 = res.sameScene && name ? `跟${name}` : '';
+  const 口径 = res.sameScene ? '本机记录，不是人群排名' : '跨客户比，难度不完全一样';
+  return `这台设备${谁}打过 ${res.total} 局，这一局排第 ${res.rank} · ${口径}`;
 }
 
 /** 百分位配色跟着分数走，不是每次都用那罐"值得庆祝"的绿——

@@ -339,6 +339,11 @@ export async function makeCard(view) {
   // 分享卡生成时百分位可能还没算出来（`/api/stats` 是异步旁路）：没有就不画，
   // 跟正文里 `#percentileLine` 的 hidden 处理是同一条原则，不硬凑一个数。
   const pct = typeof game._percentile === 'number' ? game._percentile : null;
+  // 跟它一起来的样本数。**卡上也要印**（2026-09-11，与 stats.js 的
+  // `TRUST_SAMPLE_MIN` 降档同一笔）：这张卡是要发给别人看的，
+  // 一句不写分母的「超过了 62% 的人」在别人手机上比在复盘里更经不起问。
+  // 本机排名那一级不上卡——它是"跟自己比"，发出去就会被读成人群排名。
+  const pctN = typeof game._percentileSample === 'number' ? game._percentileSample : 0;
 
   // 妙想小图标（真实资产，`static/assets/miaoxiang-mark.png`，与入口卡、
   // 拦截交接屏同一份文件）。`loadImage` 从不 reject——加载失败也不该让
@@ -566,6 +571,15 @@ export async function makeCard(view) {
     ctx.font = `600 20px ${c.sans}`;
     ctx.textBaseline = 'middle';
     ctx.fillText(`信任度${percentileHeadline(pct)}`, pad + 18, PCT_TOP + PCT_H / 2);
+    // 分母右对齐排在同一块里，小一号：它是口径不是主张，不该跟那句话抢重音，
+    // 但也不能挪到别处去——脚注在别处、正文里不提，正是当初那个洞的形状
+    if (pctN) {
+      ctx.font = `400 13px ${c.sans}`;
+      ctx.fillStyle = good ? c.brand : c.note;
+      ctx.textAlign = 'right';
+      ctx.fillText(`统计自 ${pctN} 局`, pad + contentW - 18, PCT_TOP + PCT_H / 2);
+      ctx.textAlign = 'left';
+    }
     ctx.textBaseline = 'top';
   }
 
@@ -580,6 +594,37 @@ export async function makeCard(view) {
   // 所以得先知道结果
   const url = shareUrl();
   const qrX = W - pad - QR_BOX;
+
+  // 二维码外框（2026-09-11 加）：借的是大赛平台自己「扫码分享」卡片的
+  // 做法——深色渐变光晕框，让码本身更像"要被伸手去扫的东西"，不是版面
+  // 角落一块随手贴的方块。**只镶框，不动底色**：这张卡的地基论点仍然是
+  // "看着像一张微信截图"（见 `makeCard` 顶部那段长注释），框是这张卡上
+  // 唯一允许"看起来像海报"的地方——它挨着的正是最需要被一眼认出来的
+  // 那个元素，不会稀释"这是一张聊天截图"这条整体判断。
+  // 渐变两端取 --mx-violet / --mx-brand，与桌面舞台、第一轮揭晓用的是
+  // 同一份 token（见 static/style.css），不给这张卡另开一套颜色。
+  if (url) {
+    const FRAME_PAD = 10;
+    const frameX = qrX - FRAME_PAD;
+    const frameY = FOOT_TOP - FRAME_PAD;
+    const frameSize = QR_BOX + FRAME_PAD * 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(43, 92, 230, .38)';
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = '#0d0f2b';
+    roundRect(ctx, frameX, frameY, frameSize, frameSize, 18);
+    ctx.fill();
+    ctx.restore();
+    const frameGrad = ctx.createLinearGradient(
+      frameX, frameY, frameX + frameSize, frameY + frameSize);
+    frameGrad.addColorStop(0, '#7b3fe4');
+    frameGrad.addColorStop(1, '#1e8cf0');
+    ctx.strokeStyle = frameGrad;
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, frameX + 0.75, frameY + 0.75, frameSize - 1.5, frameSize - 1.5, 17);
+    ctx.stroke();
+  }
+
   const hasQR = !!url && drawQR(ctx, url, {
     x: qrX, y: FOOT_TOP, size: QR_BOX, dark: c.text, light: '#ffffff',
   });

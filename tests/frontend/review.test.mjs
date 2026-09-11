@@ -414,6 +414,100 @@ describe('人群对比：样本不够就不说，宁可不显示', () => {
   });
 });
 
+describe('排行那一行：一条从来没亮过的逻辑', () => {
+  /* 2026-09-11。屏幕上常驻着「排行样本积累中 · 暂不显示百分位」——
+     不是偶发，是那条路根本走不到头：
+
+     · 门槛 20 局，而分布按**场景 × 口径**分开存（app/stats.py `key_trust`），
+       六个场景就是一百二十局入档对局，被拉黑还不入档；
+     · 服务端 Redis 连不上（本机网段隔离、或 `REDIS_URL` 没填）时
+       `/api/stats` 返回 available:false，`paintStats` 早退，那一行没人碰；
+     · 于是模板里那句占位文案成了常驻文案。
+
+     三件事一起改：门槛降到 8 并把分母写进那句话、加一级本机排名兜底、
+     没得说时那一行整个不出现。 */
+  const app = loadApp();
+
+  const 桶 = (n, at = 10) => {
+    const b = new Array(20).fill(0);
+    b[at] = n;
+    return b;
+  };
+
+  test('门槛降到 8，但分母必须跟着那句话一起印出来', () => {
+    assert.equal(app.trustPercentile(桶(7), 60), null, '7 局还是不说');
+    assert.notEqual(app.trustPercentile(桶(8), 60), null, '8 局开口');
+    // 降门槛换来的条件就是这半句：不写分母的「高于 62%」，
+    // 读的人无从判断它是跟八局比还是跟八百局比
+    assert.match(app.percentileCopy(62, 8), /统计自 8 局/);
+  });
+
+  test('样本数单独拿得到，不再是一个只用来过闸的内部数', () => {
+    assert.equal(app.trustSample(桶(8)), 8);
+    assert.equal(app.trustSample(null), 0);
+  });
+
+  test('服务端没数据时退到本机排名，第二局起就有东西可说', () => {
+    const 局 = (sid, trust, kind = 'stalled') => ({ sid, trust, kind });
+    assert.equal(app.localRank([局('chen', 40)], { sid: 'chen', trust: 40 }), null,
+      '第一局没有可比的对象，"排第 1"是句废话');
+    // 逐项断言而不是 deepEqual：沙箱里造出来的对象换了个 realm，
+    // 结构一样也过不了 deepStrictEqual 的原型检查
+    const res = app.localRank(
+      [局('chen', 40), 局('chen', 71), 局('chen', 55)], { sid: 'chen', trust: 55 });
+    assert.equal(res.total, 3);
+    assert.equal(res.rank, 2, '本局自己也在列表里，名次是"比我高的局数 + 1"');
+    assert.equal(res.sameScene, true);
+  });
+
+  test('同场景够两局就只跟同场景比 —— 理由同服务端按场景分桶', () => {
+    const 局 = (sid, trust) => ({ sid, trust });
+    const 同场景 = app.localRank(
+      [局('chen', 20), 局('chen', 90), 局('zhou', 95)], { sid: 'chen', trust: 20 });
+    assert.equal(同场景.total, 2, '周阿姨那局不该混进老陈的排名');
+    assert.equal(同场景.sameScene, true);
+
+    // 同场景不够两局才退回全部，而那时文案要把"跨客户"说出来
+    const 跨客户 = app.localRank(
+      [局('chen', 20), 局('zhou', 90), 局('liu', 95)], { sid: 'chen', trust: 20 });
+    assert.equal(跨客户.total, 3);
+    assert.equal(跨客户.sameScene, false);
+    assert.match(app.localRankCopy(跨客户), /跨客户/);
+  });
+
+  test('本机排名不许自称人群排名 —— 这一节唯一不能犯的错', () => {
+    const copy = app.localRankCopy({ rank: 2, total: 4, sameScene: true }, '老陈');
+    assert.match(copy, /这台设备/, '口径必须写在这句话里');
+    assert.match(copy, /不是人群排名/);
+    assert.doesNotMatch(copy, /超过了|高于/, '"超过了 X% 的人"是隔壁那一级的话');
+  });
+
+  test('三级都没有时那一行整个不出现，不留占位文案', () => {
+    // 钉的是**那一个元素**：默认 hidden，而且里面一个字都没有。
+    // 在整份源码上做 doesNotMatch 会误伤上面那条解释占位文案为什么被撤掉的注释
+    assert.match(sourceOf('review.js'),
+      /<p class="percentile" id="percentileLine" hidden><\/p>/,
+      '没数据就不出现，与 stats.js 顶上那条原则一致；里面不许再留占位文案');
+  });
+
+  test('本机那一级垫上之后，服务端那一份到了要能覆盖掉它', () => {
+    const 本机 = bodyOf(sourceOf('review.js'), 'paintLocalRank');
+    assert.match(本机, /if \(!line \|\| !line\.hidden\) return/,
+      '服务端先到就不许降级覆盖');
+    assert.match(本机, /classList\.add\('local'\)/);
+
+    const 服务端 = bodyOf(sourceOf('review.js'), 'paintStats');
+    assert.match(服务端, /classList\.remove\('local'\)/,
+      '升级成人群百分位时，本机那个修饰类要摘掉');
+    assert.match(服务端, /percentileCopy\(pct, sample\)/, '分母要跟着一起印');
+  });
+
+  test('被拉黑与主动结束不进排名 —— 与服务端 _LADDER_KINDS 同源', () => {
+    const 本机 = bodyOf(sourceOf('review.js'), 'paintLocalRank');
+    assert.match(本机, /kind in TIER_RANK/, '不入档的局不该被排进名次');
+  });
+});
+
 describe('结局阶梯：「拖住」得自己说清站在第几档', () => {
   /* 2026-08-31。复盘首屏写着「本局结果 · 拖住 / 他说再想想 /
      暂未转出，风险尚未解除」——三句都准确，可第一次打的人读完仍然
