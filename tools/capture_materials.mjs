@@ -198,7 +198,26 @@ async function 钉住老邵(call) {
  *  头几条气泡，缩略图里仍然认得出。`phone-01` 那张不能这么裁——
  *  它的戏在底部那颗「确认转出」上，裁掉上半截以外的部分等于把戏裁没了。
  */
-function 封面HTML({ 图, 眉, 标题, 说明, 标签, 裁屏 = false, 字号 = 100 }) {
+/* ── 数据条（2026-09-11 加）──────────────────────────────────────────────
+ *
+ * 所有者定的方向是"更像券商专业工具"。药丸标签和方格数字的差别不是好看
+ * 不好看，是**读起来是谁**：圆角药丸是品牌海报的语汇，等宽数字加细分隔线
+ * 是仪表盘的语汇。同一组事实（6 场景 / 28 人格 / 7 把钥匙 / N 轮）换一种
+ * 排法，这一屏就从"一张宣传图"变成"一台仪器的铭牌"。
+ *
+ * **数字一个都不许是编的**：这四个数分别对应 app/scenario.py 的场景数、
+ * app/persona.py 的人格数、keys.js 的钥匙数、rounds.mjs 现读的轮次上限。
+ * 轮次那一格必须走 MAX_ROUNDS，写死会被 tests/test_materials_copy.py 拦下，
+ * 那条测试正是为这个踩出来的。
+ */
+function 数据条HTML(数据) {
+  if (!数据 || !数据.length) return '';
+  return `<div class="stats">${数据
+    .map((d) => `<div class="stat"><b>${d.值}</b><i>${d.名}</i></div>`)
+    .join('')}</div>`;
+}
+
+function 封面HTML({ 图, 眉, 标题, 说明, 标签, 数据, 底注, 裁屏 = false, 字号 = 100 }) {
   return `<!doctype html><meta charset="utf-8"><style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   /* ── 弹幕带（就绪度审计 §1.3 · S4）─────────────────────────────────
@@ -268,6 +287,32 @@ function 封面HTML({ 图, 眉, 标题, 说明, 标签, 裁屏 = false, 字号 =
     border: 1px solid rgba(201,162,39,.35); color: #e6e8ec;
     background: rgba(201,162,39,.07);
   }
+  /* 仪表盘那一条：直角、细分隔线、等宽数字。圆角与底色留给 .tags，
+     两者不要混用在同一张图上——混了就是既不像海报也不像仪器。 */
+  .stats {
+    display: flex; align-items: stretch; max-width: 46em;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 6px;
+    background: rgba(255,255,255,.035);
+  }
+  .stat {
+    flex: 1 1 0; padding: 20px 10px 18px; text-align: center;
+    border-left: 1px solid rgba(255,255,255,.10);
+  }
+  .stat:first-child { border-left: 0; }
+  .stat b {
+    display: block; font-size: 52px; font-weight: 700; line-height: 1;
+    color: #fff; font-variant-numeric: tabular-nums; letter-spacing: -.01em;
+  }
+  .stat i {
+    display: block; margin-top: 9px; font-style: normal;
+    font-size: 21px; font-weight: 500; letter-spacing: .1em; color: #9aa1ad;
+  }
+  /* 底注：仪器铭牌上那行小字。**它承载的是这套素材里最硬的一句主张**
+     （判分由程序算、可离线重跑），所以给它单独一行，不挤进数据格里。 */
+  .note {
+    margin-top: 18px; font-size: 22px; line-height: 1.5; color: #8d94a0;
+    letter-spacing: .02em;
+  }
   .shot {
     flex: 0 0 auto; position: relative; overflow: hidden;
     width: ${裁屏 ? '680px; height: 840px' : '500px'}; border-radius: 44px;
@@ -288,7 +333,8 @@ function 封面HTML({ 图, 眉, 标题, 说明, 标签, 裁屏 = false, 字号 =
     <div class="eyebrow">${眉}</div>
     <h1>${标题}</h1>
     <p>${说明}</p>
-    <div class="tags">${标签.map((t) => `<span>${t}</span>`).join('')}</div>
+    ${数据 ? 数据条HTML(数据) : `<div class="tags">${标签.map((t) => `<span>${t}</span>`).join('')}</div>`}
+    ${底注 ? `<div class="note">${底注}</div>` : ''}
   </div>
   <div class="shot"><img src="data:image/png;base64,${图}"></div>`;
 }
@@ -648,7 +694,16 @@ async function main() {
       标题: `<span class="setup">他正要按下确认。</span>你有${轮数汉字}轮，`
         + '<em>去劝另一个他。</em>',
       说明: '风险提示要人先承认自己被骗——正在转账的人恰恰最不肯承认。',
-      标签: ['6 场景 · 28 人格', `${MAX_ROUNDS} 轮对局 · 判分由程序算，不由模型打`],
+      // 标题那三行保持不动：#23 那一格 285 次浏览、同屏第二高，说明这句钩子
+      // 在抢点击这件事上是有效的，不拿它去换"专业感"。换掉的是下面那一条——
+      // 药丸标签改成仪表盘（见 数据条HTML 顶部那段），同一组事实，换一种读法。
+      数据: [
+        { 值: '6', 名: '场景' },
+        { 值: '28', 名: '人格' },
+        { 值: '7', 名: '钥匙' },
+        { 值: String(MAX_ROUNDS), 名: '轮次' },
+      ],
+      底注: '判分由程序算，不由模型打 · 纯规则可离线重跑 · 两万局蒙特卡洛标定',
     }));
     await 出整页(cdp, 'cover-02-异动触发.png', 封面HTML({
       图: 转账,
