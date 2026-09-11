@@ -1,4 +1,4 @@
-import { $, REDUCED, chime, showScreen, sleep, thread } from './dom.js';
+import { $, REDUCED, buzz, chime, showScreen, sleep, thread } from './dom.js';
 import { BREACHES, KEYS, MOODS, MOOD_HINTS } from './keys.js';
 import { startersFor } from './starters.js';
 import { postTurn, readEvents } from './api.js';
@@ -313,7 +313,7 @@ function showFullscreenStage({
   ariaLabel, eyebrow, moodWord, hint, thesis, cta, chimeNotes, chimeGain,
   vibrate, autoDismissMs,
 }) {
-  if (!REDUCED && vibrate) { try { navigator.vibrate?.(vibrate); } catch { /* 不支持就算了 */ } }
+  if (vibrate) buzz(vibrate);
   if (chimeNotes) chime(chimeNotes, chimeGain);
   return new Promise((resolve) => {
     const stage = document.createElement('div');
@@ -737,7 +737,7 @@ export async function finish() {
   // 强弱等于在暗示"这个结局该庆祝、那个该沮丧"，和"不做成输赢"是同一条线。
   // 低动态偏好下跳过，与 `opening.js` 的 `alarmFeedback()` 同一条道理：
   // 设了这条的人要的是别惊动我。
-  if (!REDUCED) { try { navigator.vibrate?.(40); } catch { /* 不支持就算了 */ } }
+  buzz(40);
 
   // 结局不另起一块 UI，它就是这段对话里的最后一件东西。
   const meta = endingMeta(kind);

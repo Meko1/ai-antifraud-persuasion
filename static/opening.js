@@ -1,4 +1,4 @@
-import { $, REDUCED, showScreen, sleep, thread } from './dom.js';
+import { $, REDUCED, buzz, showScreen, sleep, thread } from './dom.js';
 import { KEYS } from './keys.js';
 import { startGame } from './api.js';
 import { openSheet } from './sheet.js';
@@ -143,7 +143,7 @@ function armHandoff(go) {
  *  iOS 上根本不存在的 `vibrate`——任何一个都不许挡住拦截面翻开。 */
 function alarmFeedback() {
   if (REDUCED) return;
-  try { navigator.vibrate?.([28, 60, 28]); } catch { /* 不支持震动就算了 */ }
+  buzz([28, 60, 28]);
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;

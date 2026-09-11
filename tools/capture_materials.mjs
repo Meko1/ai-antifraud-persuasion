@@ -595,17 +595,34 @@ async function main() {
     await sleep(300);
     await 存图(call, 'phone-04-客户档案.png');
 
+    // ── 七把钥匙这一屏换了入口（2026-09-11）────────────────────────────
+    //
+    // 快速进场（opening.js 的 `enterChatDirect()`）之后，`#primer` 不再是
+    // 默认路径上的一站——`ackTransfer()` 直接把人放进对话，`game.entered`
+    // 当场置真，`openChen` 再点也不会回到讲解屏。这里等 `#primer` 会死等
+    // 15 秒然后整条素材线挂掉（实测：phone-04 之后就断在这儿）。
+    //
+    // **内容一个字没少，只是换了个入口**：七把钥匙现在挂在对局中输入框
+    // 旁边那颗钥匙按钮上（`#openMethods` → `control.js` 的
+    // `openMethodsSheet()`），文案与讲解屏那版一字不差。素材要展示的是
+    // 「开局只给词汇、不给时机与分值」这件事，这个抽屉照样说得清楚，
+    // 而且它比讲解屏更接近玩家现在真正会看到的样子。
     await evaluate(call, `document.getElementById('openChen').click()`);
-    await waitFor(call, `document.getElementById('primer')?.classList.contains('on')`, '课程表');
+    await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`, '聊天屏');
+    await waitFor(call, `document.querySelectorAll('#thread .msg').length >= 2`, '开场两条', 30000);
+    await sleep(400);
+
+    await evaluate(call, `document.getElementById('openMethods').click()`);
+    await waitFor(call, `!!document.querySelector('.sheet')`, '七把钥匙抽屉');
     await sleep(300);
     // 文件名跟着屏上那句走（2026-08-30 从「七种问法」改成「七把钥匙」：
     // 七把里有四把不是问法，复盘本来就管它们叫钥匙）
     await 存图(call, 'phone-05-七把钥匙.png');
 
-    await evaluate(call, `document.getElementById('primerGo').click()`);
-    await waitFor(call, `document.getElementById('chat')?.classList.contains('on')`, '聊天屏');
-    await waitFor(call, `document.querySelectorAll('#thread .msg').length >= 2`, '开场两条', 30000);
-    await sleep(400);
+    // 关掉抽屉再开打，否则后面每一张都蒙着这一层
+    await evaluate(call, `document.querySelector('.sheet-cancel')?.click()`);
+    await waitFor(call, `!document.querySelector('.sheet')`, '抽屉收起');
+    await sleep(300);
 
     console.log(`\n打一局（离线态，${轮数汉字}轮）：`);
     let 对局图 = null;
